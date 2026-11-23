@@ -13,7 +13,10 @@ import { makeRoomCode, MAX_PLAYERS } from '../../shared/logic';
 import type { Net, Handlers } from './net';
 import { getClientId } from './net';
 
-const BROKERS = ['wss://broker.emqx.io:8084/mqtt', 'wss://test.mosquitto.org:8081'];
+// Order matters: the Eclipse broker serves WSS on port 443 (standard HTTPS
+// port) — many networks/proxies block WebSockets on non-standard ports like
+// 8084/8081, which is why those are only fallbacks.
+const BROKERS = ['wss://mqtt.eclipseprojects.io:443/mqtt', 'wss://broker.emqx.io:8084/mqtt', 'wss://test.mosquitto.org:8081'];
 const topic = (code: string, part: string) => `ct1/${code}/${part}`;
 const cleanName = (n: string) => n.replace(/[<>]/g, '').trim().slice(0, 20) || 'Mouse';
 
