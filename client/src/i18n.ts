@@ -66,6 +66,7 @@ const dict = {
     errNeedMore: 'Need at least 4 players', errFailed: 'Something went wrong. Please try again.',
     statusCreating: 'Creating room…', statusConnecting: (code: string) => `Connecting to room ${code}…`,
     connecting: 'Connecting…',
+    recordTitle: '📊 Your session record', recordLine: (w: number, l: number) => `${w} wins · ${l} losses`,
     help: 'Help', round: 'Round', offline: 'offline',
     tutorial: [
       '🎲 Everyone secretly gets a role and a dice number (1–6). One player is the Cheese Mouse!',
@@ -144,6 +145,7 @@ const dict = {
     errNeedMore: 'Cần ít nhất 4 người chơi', errFailed: 'Đã xảy ra lỗi. Vui lòng thử lại.',
     statusCreating: 'Đang tạo phòng…', statusConnecting: (code: string) => `Đang kết nối tới phòng ${code}…`,
     connecting: 'Đang kết nối…',
+    recordTitle: '📊 Thành tích của bạn', recordLine: (w: number, l: number) => `Thắng ${w} · Thua ${l}`,
     help: 'Trợ giúp', round: 'Ván', offline: 'mất kết nối',
     tutorial: [
       '🎲 Mỗi người bí mật nhận một vai và một số xúc xắc (1–6). Một người là Chuột Phô Mai!',

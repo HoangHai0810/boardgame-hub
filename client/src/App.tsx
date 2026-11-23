@@ -69,6 +69,9 @@ export default function App() {
   const [muted, setMuted] = useState(() => localStorage.getItem('ct_muted') === '1');
   const toggleMuted = () => setMuted(m => { localStorage.setItem('ct_muted', m ? '0' : '1'); return !m; });
   const netRef = useRef<Net | null>(null);
+  // Personal session record (Cycle 8): my wins/losses, split by dealt role.
+  const [myRecord, setMyRecord] = useState<{ w: number; l: number; roles: Record<string, { w: number; g: number }> }>({ w: 0, l: 0, roles: {} });
+  const recordedRounds = useRef<Set<string>>(new Set());
   const chatEndRef = useRef<HTMLDivElement>(null);
   const now = useNow();
 
@@ -133,6 +136,18 @@ export default function App() {
         : w === 'thief' ? (priv?.role === 'thief' || !!priv?.isFollower)
         : w === 'sleepyheads' ? (!!priv && priv.role !== 'thief' && !priv.isFollower) : false;
       sfx(iWon ? 'win' : 'lose', muted);
+      // Record the round in my personal session record (once per round).
+      const key = pub.roomCode + ':' + pub.round;
+      if (priv?.role && !recordedRounds.current.has(key)) {
+        recordedRounds.current.add(key);
+        const role = priv.role;
+        setMyRecord(r => {
+          const roles = { ...r.roles };
+          const cur = roles[role] ?? { w: 0, g: 0 };
+          roles[role] = { w: cur.w + (iWon ? 1 : 0), g: cur.g + 1 };
+          return { w: r.w + (iWon ? 1 : 0), l: r.l + (iWon ? 0 : 1), roles };
+        });
+      }
     }
     if (pub.chat.length > (prev.chatLen ?? 0) && (pub.phase === 'lobby' || pub.phase === 'day' || pub.phase === 'results')) {
       const last = pub.chat[pub.chat.length - 1];
@@ -241,6 +256,26 @@ export default function App() {
       ))}
     </div>
   );
+
+  // Personal session record (Cycle 8): my own W/L split by dealt role.
+  const MyRecord = () => {
+    if (myRecord.w + myRecord.l === 0) return null;
+    const roleChip = (role: string, emoji: string, label: string) => {
+      const r = myRecord.roles[role];
+      if (!r) return null;
+      return <span key={role} className="bg-white rounded-full px-3 py-1 font-bold shadow">{emoji} {label} {r.w}/{r.g}</span>;
+    };
+    return (
+      <div className="max-w-md mx-auto bg-teal-50 rounded-2xl p-3 mt-3">
+        <div className="font-extrabold text-center">{d.recordTitle}</div>
+        <div className="text-center font-bold text-teal-700">{d.recordLine(myRecord.w, myRecord.l)}</div>
+        <div className="flex flex-wrap justify-center gap-2 mt-2">
+          {roleChip('sleepyhead', '🐭', d.sleepy)}
+          {roleChip('thief', '😈', d.thief)}
+          {roleChip('fallmouse', '💀', d.fall)}
+        </div>
+      </div>);
+  };
 
   // Session scoreboard (Cycle 1): rounds won in this room, leader gets 👑.
   const Standings = () => {
@@ -359,6 +394,7 @@ export default function App() {
                 : <span className="font-extrabold">{((pub as any).discussionMs ?? 120000) / 60000}:00</span>}
             </div>
             <Standings />
+            <MyRecord />
             {isHost ? (
               <>
                 <button className={`${btn} bg-green-500 hover:bg-green-600 text-white w-full text-xl`}
@@ -562,6 +598,7 @@ export default function App() {
                 </div>))}
             </div>
             <Standings />
+            <MyRecord />
             {(pub as any).recap?.length > 0 && (
               <div className="text-left max-w-md mx-auto bg-indigo-50 rounded-2xl p-3 mt-3">
                 <div className="font-extrabold text-center mb-1">{d.recapTitle}</div>
