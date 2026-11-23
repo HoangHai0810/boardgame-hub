@@ -162,7 +162,7 @@ t('7p: two followers know each other but NOT the thief', () => {
   assert.deepEqual(followerKnowledge(g, thief).knownFollowerIds, [vs[0].id, vs[1].id]);
 });
 
-t('8p: followers know the thief and each other', () => {
+t('8p HOUSE RULE: followers know each other but NOT the thief', () => {
   const g = gameWith(8, [0.99, 0.0, 0.2, 0.4, 0.6, 0.8, 0.15, 0.35, 0.55, 0.75]);
   assert.equal(recruitCount(g), 2);
   const thief = g.players.find(p => p.role === 'thief');
@@ -170,7 +170,7 @@ t('8p: followers know the thief and each other', () => {
   const vs = g.players.filter(p => p.role === 'sleepyhead');
   chooseFollower(g, thief, vs[0].id); chooseFollower(g, thief, vs[1].id);
   const k = followerKnowledge(g, vs[0]);
-  assert.equal(k.knownThiefId, thief.id);
+  assert.equal(k.knownThiefId, null); // house rule (PO 2026-11-23): blind like 7p
   assert.deepEqual(k.knownFollowerIds, [vs[1].id]);
 });
 
