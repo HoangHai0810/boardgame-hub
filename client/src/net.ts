@@ -11,6 +11,7 @@ import { io, Socket } from 'socket.io-client';
 import { HostEngine, Pub, Priv } from './hostEngine';
 import { makeRoomCode } from '../../shared/logic';
 import { createMqttNet } from './net-mqtt';
+import { getClientId } from './util';
 
 export type { Pub, Priv };
 
@@ -28,11 +29,7 @@ export interface Handlers {
   onError(msg: string): void; onStatus(msg: string): void;
 }
 
-export function getClientId(): string {
-  let id = sessionStorage.getItem('ct_client_id');
-  if (!id) { id = Math.random().toString(36).slice(2) + Date.now().toString(36); sessionStorage.setItem('ct_client_id', id); }
-  return id;
-}
+export { getClientId } from './util';
 const cleanName = (n: string) => n.replace(/[<>]/g, '').trim().slice(0, 20) || 'Mouse';
 const PEER_PREFIX = 'cheesethief-v1-';
 const PEER_OPTS = {

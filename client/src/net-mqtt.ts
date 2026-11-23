@@ -11,7 +11,7 @@ import { HostEngine, Pub, Priv } from './hostEngine';
 import { generateKeys, deriveAesKey, encryptJson, decryptJson, KeySet } from './crypto';
 import { makeRoomCode, MAX_PLAYERS } from '../../shared/logic';
 import type { Net, Handlers } from './net';
-import { getClientId } from './net';
+import { getClientId } from './util';
 
 // Order matters: the Eclipse broker serves WSS on port 443 (standard HTTPS
 // port) — many networks/proxies block WebSockets on non-standard ports like
@@ -20,12 +20,21 @@ const BROKERS = ['wss://mqtt.eclipseprojects.io:443/mqtt', 'wss://broker.emqx.io
 const topic = (code: string, part: string) => `ct1/${code}/${part}`;
 const cleanName = (n: string) => n.replace(/[<>]/g, '').trim().slice(0, 20) || 'Mouse';
 
+function brokerList(): string[] {
+  try {
+    const custom = new URLSearchParams(location.search).get('broker');
+    if (custom) return [custom];
+  } catch { /* non-browser test env */ }
+  return BROKERS;
+}
+
 function connect(extra: mqtt.IClientOptions): Promise<MqttClient> {
+  const brokers = brokerList();
   return new Promise((resolve, reject) => {
     let settled = false;
     const tryBroker = (i: number) => {
-      if (i >= BROKERS.length) { if (!settled) { settled = true; reject(new Error('bus unreachable')); } return; }
-      const c = mqtt.connect(BROKERS[i], { connectTimeout: 8000, reconnectPeriod: 2000, ...extra });
+      if (i >= brokers.length) { if (!settled) { settled = true; reject(new Error('bus unreachable')); } return; }
+      const c = mqtt.connect(brokers[i], { connectTimeout: 8000, reconnectPeriod: 2000, ...extra });
       const to = setTimeout(() => { if (!settled) { c.end(true); tryBroker(i + 1); } }, 9000);
       c.on('connect', () => { if (!settled) { settled = true; clearTimeout(to); resolve(c); } });
       c.on('error', () => { /* retry handled by timeout / reconnectPeriod */ });
@@ -60,17 +69,17 @@ export function createMqttNet(h: Handlers): Net {
     engine = new HostEngine(roomCode, {
       sendPub: (pub) => {
         h.onState(pub); // host's own UI
-        client?.publish(topic(roomCode, 'pub'), JSON.stringify({ type: 'state', data: pub }), { retain: true });
+        client?.publish(topic(roomCode, 'pub'), JSON.stringify({ type: 'state', data: pub }), { retain: true, qos: 1 });
       },
       sendPriv: (pid, priv) => {
         if (pid === myId) { h.onPrivate(priv); return; }
         const key = hostAes.get(pid);
         if (!key || !client) return; // key arrives with the join message
         encryptJson(key, { type: 'private', data: priv }).then(enc =>
-          client?.publish(topic(roomCode, 'p/' + pid), JSON.stringify(enc)));
+          client?.publish(topic(roomCode, 'p/' + pid), JSON.stringify(enc), { qos: 1 }));
       },
     });
-    client.subscribe(topic(roomCode, 'in'));
+    client.subscribe(topic(roomCode, 'in'), { qos: 1 });
     client.on('message', async (_t, payload) => {
       let msg: any; try { msg = JSON.parse(payload.toString()); } catch { return; }
       if (msg.type === 'join') {
@@ -78,7 +87,7 @@ export function createMqttNet(h: Handlers): Net {
         const verdict = engine!.canAcceptJoin(pid);
         if (verdict !== 'ok') {
           client?.publish(topic(roomCode, 'p/' + pid),
-            JSON.stringify({ type: 'error', msg: verdict === 'full' ? 'Room is full (8 players).' : 'Game already started — you cannot join now.' }));
+            JSON.stringify({ type: 'error', msg: verdict === 'full' ? 'Room is full (8 players).' : 'Game already started — you cannot join now.' }), { qos: 1 });
           return;
         }
         try {
@@ -87,7 +96,7 @@ export function createMqttNet(h: Handlers): Net {
         } catch { return; }
         engine!.addPlayer(pid, String(msg.name || 'Mouse'), false);
         client?.publish(topic(roomCode, 'p/' + pid),
-          JSON.stringify({ type: 'joined', code: roomCode, playerId: pid, isHost: false, hostPubJwk: myKeys!.pubJwk }));
+          JSON.stringify({ type: 'joined', code: roomCode, playerId: pid, isHost: false, hostPubJwk: myKeys!.pubJwk }), { qos: 1 });
         engine!.broadcast();
       } else if (msg.type === 'intent' && msg.playerId) {
         if (msg.action === '__gone') { engine!.disconnect(String(msg.playerId)); return; }
@@ -110,7 +119,8 @@ export function createMqttNet(h: Handlers): Net {
     }, 25000);
     client = await connect({ clientId: 'ct-c-' + myId + '-' + Math.random().toString(36).slice(2, 7),
       will: { topic: topic(roomCode, 'in'), payload: Buffer.from(JSON.stringify({ type: 'intent', playerId: myId, action: '__gone' })), qos: 1 } as any });
-    client.subscribe([topic(roomCode, 'pub'), topic(roomCode, 'p/' + myId)]);
+    client.subscribe(topic(roomCode, 'pub'), { qos: 1 });
+    client.subscribe(topic(roomCode, 'p/' + myId), { qos: 1 });
     client.on('message', async (t, payload) => {
       let msg: any; try { msg = JSON.parse(payload.toString()); } catch { return; }
       if (t === topic(roomCode, 'pub')) {
@@ -131,7 +141,7 @@ export function createMqttNet(h: Handlers): Net {
         try { const dec: any = await decryptJson(aesKey, msg); if (dec?.type === 'private') h.onPrivate(dec.data); } catch { /* ignore */ }
       }
     });
-    client.publish(topic(roomCode, 'in'), JSON.stringify({ type: 'join', clientId: myId, name: cleanName(name), pubJwk: myKeys.pubJwk }));
+    client.publish(topic(roomCode, 'in'), JSON.stringify({ type: 'join', clientId: myId, name: cleanName(name), pubJwk: myKeys.pubJwk }), { qos: 1 });
   }
 
   const intent = (action: string, extra: object = {}) => {
@@ -139,7 +149,7 @@ export function createMqttNet(h: Handlers): Net {
       const me = engine.state.players.find(p => p.id === myId);
       if (me) engine.handle(me, { action, ...extra });
     } else {
-      client?.publish(topic(roomCode, 'in'), JSON.stringify({ type: 'intent', playerId: myId, action, ...extra }));
+      client?.publish(topic(roomCode, 'in'), JSON.stringify({ type: 'intent', playerId: myId, action, ...extra }), { qos: 1 });
     }
   };
 
@@ -157,7 +167,7 @@ export function createMqttNet(h: Handlers): Net {
     playAgain: () => intent('playAgain'),
     leave() {
       try {
-        if (engine) client?.publish(topic(roomCode, 'pub'), JSON.stringify({ type: 'hostGone' }), { retain: true });
+        if (engine) client?.publish(topic(roomCode, 'pub'), JSON.stringify({ type: 'hostGone' }), { retain: true, qos: 1 });
         client?.end(true);
       } catch { /* noop */ }
       engine = null; client = null;
