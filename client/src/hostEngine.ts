@@ -5,7 +5,8 @@
 // that player (PeerJS: their data channel. MQTT: their ECDH-encrypted topic).
 import {
   GameState, Player, createGame, assignRolesAndDice, publicState, privateState,
-  doSteal, doInspect, castVote, resolveVotes,
+  doSteal, doInspect, castVote, resolveVotes, canSteal, thiefOf,
+  autoInspectIdle, applyDefaultVotes,
   chooseFollower, autoResolveFollowerChoice, recruitCount, followers, recordHour,
   MIN_PLAYERS, MAX_PLAYERS, HOUR_MS, RECRUIT_MS, DISCUSSION_MS, VOTE_MS,
 } from '../../shared/logic';
@@ -48,8 +49,10 @@ export class HostEngine {
     const s = this.state; s.phase = 'night';
     const step = (h: number) => {
       if (s.phase !== 'night') return;
-      // The previous hour just ended: if the thief never picked between
-      // witnesses (5p), the choice is made for them so the game can't stall.
+      // The previous hour just ended: defaults for anything a player forgot —
+      // a lone waker who never peeked gets a random peek, and if the thief
+      // never picked between witnesses (5p), the choice is made for them.
+      autoInspectIdle(s);
       autoResolveFollowerChoice(s);
       if (h > 6) {
         if (recruitCount(s) > 0) this.startRecruit();
@@ -59,6 +62,10 @@ export class HostEngine {
       s.currentHour = h; s.hourEndsAt = Date.now() + HOUR_MS;
       recordHour(s);
       s.players.forEach(p => { p.hasActedThisHour = false; });
+      // The Cheese Mouse ALWAYS takes the cheese when their hour comes —
+      // stealing is automatic, never a button the player can forget.
+      const thief = thiefOf(s);
+      if (thief && canSteal(s, thief)) doSteal(s, thief);
       this.broadcast(); this.later(HOUR_MS, () => step(h + 1));
     };
     step(1);
@@ -82,7 +89,7 @@ export class HostEngine {
     s.phase = 'voting'; s.voteEndsAt = Date.now() + VOTE_MS; this.broadcast();
     this.later(VOTE_MS, () => { if (s.phase === 'voting') this.finishVoting(); });
   }
-  finishVoting() { this.clear(); resolveVotes(this.state); this.broadcast(); }
+  finishVoting() { this.clear(); applyDefaultVotes(this.state); resolveVotes(this.state); this.broadcast(); }
   handle(player: Player, msg: any) {
     const s = this.state;
     switch (msg.action) {

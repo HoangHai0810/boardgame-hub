@@ -38,6 +38,157 @@ function useNow(step = 250) {
 }
 const secsLeft = (endsAt: number | null, now: number) => endsAt ? Math.max(0, Math.ceil((endsAt - now) / 1000)) : null;
 
+const BTN = 'px-5 py-3 rounded-2xl font-bold shadow-lg transition active:scale-95 disabled:opacity-40 disabled:active:scale-100';
+const CARD = 'bg-white/95 rounded-3xl shadow-2xl p-5 sm:p-7';
+
+function HelpModal({ d, onClose }: { d: any; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className={`${CARD} max-w-lg w-full max-h-[85vh] overflow-auto`} onClick={e => e.stopPropagation()}>
+        <h2 className="text-2xl font-extrabold mb-3">🧀 {d.how}</h2>
+        <ol className="space-y-2 text-left text-[15px] leading-snug">
+          {d.tutorial.map((s: string, i: number) => <li key={i}>{s}</li>)}
+        </ol>
+        <button className={`${BTN} bg-amber-400 w-full mt-4`} onClick={onClose}>OK 👍</button>
+      </div>
+    </div>
+  );
+}
+
+function TopBar({ d, lang, muted, onToggleMuted, onHelp, onToggleLang }: { d: any; lang: Lang; muted: boolean; onToggleMuted: () => void; onHelp: () => void; onToggleLang: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-2 mb-3">
+      <div className="font-extrabold text-white drop-shadow text-lg">🧀 {d.title}</div>
+      <div className="flex gap-2">
+        <button aria-label="sound" className="bg-white/20 text-white rounded-full px-3 py-1" onClick={onToggleMuted}>{muted ? '🔇' : '🔊'}</button>
+        <button className="bg-white/20 text-white rounded-full px-3 py-1 font-bold" onClick={onHelp}>❓ {d.help}</button>
+        <button className="bg-white/20 text-white rounded-full px-3 py-1 font-bold" onClick={onToggleLang}>{lang === 'en' ? '🇻🇳 VI' : '🇬🇧 EN'}</button>
+      </div>
+    </div>
+  );
+}
+
+// Quick reactions + preset phrases: one-tap chat. Phrases travel as QC
+// tokens and render localized in the VIEWER's language.
+const REACTIONS = ['👀', '🧀', '😱', '🤔', '👍', '👎', '😂', '❓'];
+const QC_KEYS = ['qc1', 'qc2', 'qc3', 'qc4'] as const;
+
+function renderChatText(d: any, text: string) {
+  if ((REACTIONS as string[]).includes(text)) return <span className="text-4xl leading-tight">{text}</span>;
+  const qc = /^QC([1-4])$/.exec(text);
+  if (qc) return <span>{d['qc' + qc[1]]}</span>;
+  return <span>{text}</span>;
+}
+
+// Module-level ON PURPOSE: this panel owns the draft text and the scroll
+// box. When it lived inside App, every state broadcast remounted it — the
+// draft vanished mid-typing, focus was lost, old messages re-animated and
+// scrollIntoView dragged the whole page up and down. Auto-scroll now only
+// moves THIS box, and only while the reader is already near the bottom
+// (or the newest message is their own).
+function ChatPanel({ chat, myId, d, height = 'h-48', onChat }: { chat: any[]; myId?: string; d: any; height?: string; onChat: (text: string) => void }) {
+  const [text, setText] = useState('');
+  const boxRef = useRef<HTMLDivElement>(null);
+  const stickRef = useRef(true);
+  const send = () => { if (text.trim()) { onChat(text); setText(''); } };
+  useEffect(() => {
+    const el = boxRef.current; if (!el) return;
+    const lastMine = chat.length > 0 && chat[chat.length - 1].fromId === myId;
+    if (stickRef.current || lastMine) el.scrollTop = el.scrollHeight;
+  }, [chat.length, myId]);
+  return (
+    <div className="text-left">
+      <div ref={boxRef}
+        onScroll={e => { const el = e.currentTarget; stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}
+        className={`bg-gradient-to-b from-amber-50 to-orange-50 rounded-2xl p-3 ${height} overflow-y-auto space-y-2`}>
+        {chat.length === 0 && <p className="text-center text-gray-400 font-bold py-4">{d.chatEmpty}</p>}
+        {chat.map((m: any, i: number) => {
+          const mine = m.fromId === myId;
+          return (
+            <div key={`${m.ts}-${m.fromId}-${i}`} className={`flex ${mine ? 'justify-end' : 'justify-start'} anim-slide-up`}>
+              <div className={`max-w-[80%] rounded-2xl px-3 py-2 shadow ${mine ? 'bg-amber-400 rounded-br-md' : 'bg-white rounded-bl-md'}`}>
+                <div className="text-xs font-extrabold opacity-70">{mouseFor(m.fromId)} {m.fromName}
+                  <span className="font-normal ml-2">{new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
+                <div className="leading-snug">{renderChatText(d, m.text)}</div>
+              </div>
+            </div>);
+        })}
+      </div>
+      <div className="flex gap-1.5 mt-2 overflow-x-auto pb-1" aria-label="quick reactions">
+        {REACTIONS.map(e => (
+          <button key={e} className="text-2xl bg-white rounded-full w-10 h-10 shrink-0 shadow active:scale-90 transition"
+            onClick={() => onChat(e)}>{e}</button>
+        ))}
+        {QC_KEYS.map((k, i) => (
+          <button key={k} className="text-xs font-bold bg-indigo-100 text-indigo-800 rounded-full px-3 h-10 shrink-0 shadow active:scale-95 transition whitespace-nowrap"
+            onClick={() => onChat('QC' + (i + 1))}>{d[k]}</button>
+        ))}
+      </div>
+      <div className="flex gap-2 mt-2">
+        <input className="flex-1 border-2 border-amber-300 rounded-2xl px-4 py-2.5" placeholder={d.chatPh} maxLength={300}
+          value={text} onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') send(); }} />
+        <button className={`${BTN} bg-amber-400 !py-2`} onClick={send}>{d.send}</button>
+      </div>
+    </div>
+  );
+}
+
+// Module-level for the same reason as ChatPanel: a click landing while App
+// re-rendered used to hit a freshly remounted chip and die — voting felt
+// like it needed 2–3 clicks. Stable identity = one click, one vote.
+function PlayerChips({ players, myId, phase, d, roleLabel, onPick, pickable, onKick, markThiefId, markFollowerIds, iAmFollower }: {
+  players: any[]; myId?: string; phase?: string; d: any;
+  roleLabel: (role?: string | null, isFollower?: boolean) => string;
+  onPick?: (id: string) => void; pickable?: (p: any) => boolean; onKick?: (id: string) => void;
+  markThiefId?: string | null; markFollowerIds?: string[]; iAmFollower?: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-3">
+      {players.map(p => (
+        <button key={p.id} disabled={onPick ? (pickable ? !pickable(p) : false) : !onKick}
+          onClick={() => onPick?.(p.id)}
+          className={`relative rounded-2xl p-3 text-center shadow ${p.id === markThiefId ? 'bg-red-100 ring-4 ring-red-400' : markFollowerIds?.includes(p.id) ? 'bg-emerald-50 ring-4 ring-emerald-400' : p.id === myId ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'} ${onPick ? 'hover:scale-105 transition cursor-pointer' : 'cursor-default'} disabled:opacity-50 disabled:hover:scale-100`}>
+          {p.id === markThiefId && <span className="absolute -top-2 -left-2 text-2xl anim-pop" title={d.thief}>😈</span>}
+          {(markFollowerIds?.includes(p.id) || (p.id === myId && iAmFollower)) && <span className="absolute -top-2 -left-2 text-2xl anim-pop">🤝</span>}
+          <div className={`text-4xl anim-bob w-16 h-16 mx-auto rounded-full flex items-center justify-center ${avatarBg(p.id)} shadow-inner`}>{mouseFor(p.id)}</div>
+          <div className="font-bold truncate">{p.name} {p.id === myId && <span className="text-amber-600">({d.you})</span>}</div>
+          <div className="text-xs">{p.isHost && <span className="bg-purple-500 text-white rounded-full px-2 py-0.5">👑 {d.host}</span>} {!p.connected && <span className="text-red-500">• {d.offline}</span>}</div>
+          {(p.wins ?? 0) > 0 && <div className="text-xs mt-1 font-extrabold text-amber-600">🏆 ×{p.wins}</div>}
+          {onKick && p.id !== myId && (
+            <div className="mt-1">
+              <span role="button" title={d.kick}
+                onClick={(e) => { e.stopPropagation(); onKick(p.id); }}
+                className="inline-block text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-0.5 cursor-pointer hover:bg-red-200">✖ {d.kick}</span>
+            </div>)}
+          {(phase === 'results') && <div className="text-sm mt-1 flex items-center justify-center gap-2">{roleLabel(p.role, p.isFollower)}<DiceFace value={p.dice ?? 1} size={26} /></div>}
+          {phase === 'voting' && <div className="text-xs mt-1">{p.hasVoted ? '✅ voted' : '🤔 …'}</div>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// The cheese flies from the table to the thief's avatar the moment the
+// steal happens — everyone awake at that hour sees it.
+function FlyCheese({ x0, y0, dx, dy, onDone }: { x0: number; y0: number; dx: number; dy: number; onDone: () => void }) {
+  const [moved, setMoved] = useState(false);
+  const doneRef = useRef(onDone); doneRef.current = onDone;
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => requestAnimationFrame(() => setMoved(true)));
+    const t = setTimeout(() => doneRef.current(), 1250);
+    return () => { cancelAnimationFrame(raf); clearTimeout(t); };
+  }, []);
+  return (
+    <div className="pointer-events-none absolute z-40 text-4xl" style={{
+      left: x0, top: y0,
+      transform: moved ? `translate(${dx}px, ${dy}px) scale(0.55) rotate(24deg)` : 'translate(0px, 0px) scale(1)',
+      transition: 'transform 0.95s cubic-bezier(0.3, 0.7, 0.4, 1)',
+      filter: 'drop-shadow(0 6px 8px rgba(0,0,0,0.45))',
+    }}>🧀</div>
+  );
+}
+
 export default function App() {
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('ct_lang') as Lang) || 'vi');
   const d = t(lang);
@@ -56,7 +207,7 @@ export default function App() {
     };
     return map[m] ?? m;
   };
-  const [name, setName] = useState(() => localStorage.getItem('ct_name') || '');
+  const [name, setName] = useState(() => sessionStorage.getItem('ct_name') || '');
   const [code, setCode] = useState(() => new URLSearchParams(location.search).get('room') || '');
   const [joined, setJoined] = useState<{ code: string; playerId: string; isHost: boolean } | null>(null);
   const [pub, setPub] = useState<Pub | null>(null);
@@ -64,7 +215,6 @@ export default function App() {
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [showHelp, setShowHelp] = useState(false);
-  const [chatText, setChatText] = useState('');
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
   const [muted, setMuted] = useState(() => localStorage.getItem('ct_muted') === '1');
@@ -73,7 +223,6 @@ export default function App() {
   // Personal session record (Cycle 8): my wins/losses, split by dealt role.
   const [myRecord, setMyRecord] = useState<{ w: number; l: number; roles: Record<string, { w: number; g: number }> }>({ w: 0, l: 0, roles: {} });
   const recordedRounds = useRef<Set<string>>(new Set());
-  const chatEndRef = useRef<HTMLDivElement>(null);
   const now = useNow();
 
   const getNet = () => {
@@ -105,7 +254,6 @@ export default function App() {
     return netRef.current;
   };
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [pub?.chat?.length]);
 
   // Sound (Cycle 2): unlock the AudioContext on the first user gesture —
   // browsers refuse audio before any interaction with the page.
@@ -160,103 +308,27 @@ export default function App() {
   const isHost = joined?.isHost || me?.isHost;
   const phase = pub?.phase;
 
+  // Fly-to-avatar steal effect: measured against the live DOM (table cheese
+  // -> the thief's night card), replayed at most once per steal.
+  const nightBoxRef = useRef<HTMLDivElement>(null);
+  const [fly, setFly] = useState<{ key: string; x0: number; y0: number; dx: number; dy: number } | null>(null);
+  const flyKeyRef = useRef('');
+  useEffect(() => {
+    const target = priv?.stealById;
+    if (phase !== 'night' || !target || !pub || !joined) return;
+    const key = `${pub.round}-${pub.currentHour}-${target}`;
+    if (flyKeyRef.current === key) return;
+    const box = nightBoxRef.current;
+    const from = document.getElementById('table-cheese');
+    const to = document.getElementById('pcard-' + target);
+    if (!box || !from || !to) return;
+    flyKeyRef.current = key;
+    const b = box.getBoundingClientRect(), f = from.getBoundingClientRect(), t = to.getBoundingClientRect();
+    setFly({ key, x0: f.left - b.left + f.width / 2 - 18, y0: f.top - b.top + f.height / 2 - 18, dx: (t.left + t.width / 2) - (f.left + f.width / 2), dy: (t.top + t.height / 2) - (f.top + f.height / 2) });
+  }, [priv?.stealById, pub?.currentHour, pub?.round, phase]);
+
   const btn = 'px-5 py-3 rounded-2xl font-bold shadow-lg transition active:scale-95 disabled:opacity-40 disabled:active:scale-100';
   const card = 'bg-white/95 rounded-3xl shadow-2xl p-5 sm:p-7';
-
-  const HelpModal = () => !showHelp ? null : (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowHelp(false)}>
-      <div className={`${card} max-w-lg w-full max-h-[85vh] overflow-auto`} onClick={e => e.stopPropagation()}>
-        <h2 className="text-2xl font-extrabold mb-3">🧀 {d.how}</h2>
-        <ol className="space-y-2 text-left text-[15px] leading-snug">
-          {d.tutorial.map((s, i) => <li key={i}>{s}</li>)}
-        </ol>
-        <button className={`${btn} bg-amber-400 w-full mt-4`} onClick={() => setShowHelp(false)}>OK 👍</button>
-      </div>
-    </div>
-  );
-
-  const TopBar = () => (
-    <div className="flex items-center justify-between gap-2 mb-3">
-      <div className="font-extrabold text-white drop-shadow text-lg">🧀 {d.title}</div>
-      <div className="flex gap-2">
-        <button aria-label="sound" className="bg-white/20 text-white rounded-full px-3 py-1" onClick={toggleMuted}>{muted ? '🔇' : '🔊'}</button>
-        <button className="bg-white/20 text-white rounded-full px-3 py-1 font-bold" onClick={() => setShowHelp(true)}>❓ {d.help}</button>
-        <button className="bg-white/20 text-white rounded-full px-3 py-1 font-bold" onClick={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })}>{lang === 'en' ? '🇻🇳 VI' : '🇬🇧 EN'}</button>
-      </div>
-    </div>
-  );
-
-  // Quick reactions + preset phrases (Cycle 3): one-tap chat. Phrases travel
-  // as QC tokens and render localized in the VIEWER's language.
-  const REACTIONS = ['👀', '🧀', '😱', '🤔', '👍', '👎', '😂', '❓'];
-  const QC_KEYS = ['qc1', 'qc2', 'qc3', 'qc4'] as const;
-  const renderChatText = (text: string) => {
-    if ((REACTIONS as string[]).includes(text)) return <span className="text-4xl leading-tight">{text}</span>;
-    const qc = /^QC([1-4])$/.exec(text);
-    if (qc) return <span>{(d as any)['qc' + qc[1]]}</span>;
-    return <span>{text}</span>;
-  };
-
-  // Shared chat panel — used in the lobby, the day discussion and the
-  // results screen (the only phases where chat is open).
-  const ChatPanel = ({ height = 'h-56' }: { height?: string }) => (
-    <div className="text-left">
-      <div className={`bg-gradient-to-b from-amber-50 to-orange-50 rounded-2xl p-3 ${height} overflow-y-auto space-y-2`}>
-        {pub!.chat.length === 0 && <p className="text-center text-gray-400 font-bold py-4">💬 {d.chatPh}</p>}
-        {pub!.chat.map((m, i) => {
-          const mine = m.fromId === joined?.playerId;
-          return (
-            <div key={i} className={`flex ${mine ? 'justify-end' : 'justify-start'} anim-slide-up`}>
-              <div className={`max-w-[80%] rounded-2xl px-3 py-2 shadow ${mine ? 'bg-amber-400 rounded-br-md' : 'bg-white rounded-bl-md'}`}>
-                <div className="text-xs font-extrabold opacity-70">{mouseFor(m.fromId)} {m.fromName}
-                  <span className="font-normal ml-2">{new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
-                <div className="leading-snug">{renderChatText(m.text)}</div>
-              </div>
-            </div>);
-        })}
-        <div ref={chatEndRef} />
-      </div>
-      <div className="flex gap-1.5 mt-3 overflow-x-auto pb-1" aria-label="quick reactions">
-        {REACTIONS.map(e => (
-          <button key={e} className="text-2xl bg-white rounded-full w-10 h-10 shrink-0 shadow active:scale-90 transition"
-            onClick={() => getNet().chat(e)}>{e}</button>
-        ))}
-        {QC_KEYS.map((k, i) => (
-          <button key={k} className="text-xs font-bold bg-indigo-100 text-indigo-800 rounded-full px-3 h-10 shrink-0 shadow active:scale-95 transition whitespace-nowrap"
-            onClick={() => getNet().chat('QC' + (i + 1))}>{(d as any)[k]}</button>
-        ))}
-      </div>
-      <div className="flex gap-2 mt-2">
-        <input className="flex-1 border-2 border-amber-300 rounded-2xl px-4 py-2.5" placeholder={d.chatPh} maxLength={300}
-          value={chatText} onChange={e => setChatText(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && chatText.trim()) { getNet().chat(chatText); setChatText(''); } }} />
-        <button className={`${btn} bg-amber-400 !py-2`} onClick={() => { if (chatText.trim()) { getNet().chat(chatText); setChatText(''); } }}>{d.send}</button>
-      </div>
-    </div>
-  );
-
-  const PlayerChips = ({ onPick, pickable, onKick }: { onPick?: (id: string) => void; pickable?: (p: any) => boolean; onKick?: (id: string) => void }) => (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
-      {pub!.players.map(p => (
-        <button key={p.id} disabled={onPick ? (pickable ? !pickable(p) : false) : !onKick}
-          onClick={() => onPick?.(p.id)}
-          className={`rounded-2xl p-3 text-center shadow ${p.id === joined?.playerId ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'} ${onPick ? 'hover:scale-105 transition cursor-pointer' : 'cursor-default'} disabled:opacity-50 disabled:hover:scale-100`}>
-          <div className={`text-4xl anim-bob w-16 h-16 mx-auto rounded-full flex items-center justify-center ${avatarBg(p.id)} shadow-inner`}>{mouseFor(p.id)}</div>
-          <div className="font-bold truncate">{p.name} {p.id === joined?.playerId && <span className="text-amber-600">({d.you})</span>}</div>
-          <div className="text-xs">{p.isHost && <span className="bg-purple-500 text-white rounded-full px-2 py-0.5">👑 {d.host}</span>} {!p.connected && <span className="text-red-500">• {d.offline}</span>}</div>
-          {((p as any).wins ?? 0) > 0 && <div className="text-xs mt-1 font-extrabold text-amber-600">🏆 ×{(p as any).wins}</div>}
-          {onKick && p.id !== joined?.playerId && (
-            <div className="mt-1">
-              <span role="button" title={d.kick}
-                onClick={(e) => { e.stopPropagation(); onKick(p.id); }}
-                className="inline-block text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-0.5 cursor-pointer hover:bg-red-200">✖ {d.kick}</span>
-            </div>)}
-          {(phase === 'results') && <div className="text-sm mt-1 flex items-center justify-center gap-2">{roleLabel((p as any).role, (p as any).isFollower)}<DiceFace value={(p as any).dice ?? 1} size={26} /></div>}
-          {phase === 'voting' && <div className="text-xs mt-1">{p.hasVoted ? '✅ voted' : '🤔 …'}</div>}
-        </button>
-      ))}
-    </div>
-  );
 
   // Shareable results summary (Cycle 9): copy a compact localized text of
   // the round to the clipboard, Wordle-style, for the group's chat app.
@@ -318,7 +390,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-amber-300 via-orange-200 to-yellow-100 p-4">
         <div className="max-w-xl mx-auto pt-6">
-          <TopBar />
+          <TopBar d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })} />
           <div className={`${card} text-center anim-pop overflow-hidden`}>
             <div className="relative -mx-5 -mt-5 sm:-mx-7 sm:-mt-7 mb-4 py-6 bg-gradient-to-b from-indigo-950 via-purple-900 to-indigo-800">
               <div className="stars" style={{ position: 'absolute' }} />
@@ -339,7 +411,7 @@ export default function App() {
               <span className="bg-purple-100 text-purple-800 font-bold rounded-full px-3 py-1 text-sm">🌐 EN / VI</span>
             </div>
             <input className="w-full border-2 border-amber-300 rounded-2xl px-4 py-3 mt-3 text-lg" placeholder={d.name}
-              value={name} maxLength={20} onChange={e => { setName(e.target.value); localStorage.setItem('ct_name', e.target.value); }} />
+              value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
             <button className={`${btn} bg-amber-400 hover:bg-amber-500 w-full mt-3 text-xl`}
               disabled={!name.trim()} onClick={() => { setError(''); getNet().createRoom(name); }}>{d.create} 🏠</button>
             <div className="flex gap-2 mt-3">
@@ -354,7 +426,7 @@ export default function App() {
           </div>
           <p className="text-center text-amber-800/70 mt-4 text-sm">4–8 players · ~5–15 min · free, no install 🎉</p>
         </div>
-        <HelpModal />
+        {showHelp && <HelpModal d={d} onClose={() => setShowHelp(false)} />}
       </div>
     );
   }
@@ -371,7 +443,7 @@ export default function App() {
   return (
     <div className={`min-h-screen ${bg} p-4 transition-colors duration-1000`}>
       <div className="max-w-3xl mx-auto">
-        <TopBar />
+        <TopBar d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })} />
         {error && <div className="bg-red-100 border border-red-400 text-red-700 rounded-2xl px-4 py-2 mb-3 font-bold">{localizeMsg(error)}
           <button className="float-right" onClick={() => setError('')}>✕</button></div>}
 
@@ -383,6 +455,7 @@ export default function App() {
             <span className="inline-flex items-center gap-1.5"><DiceFace value={priv.dice ?? 1} size={22} /><span>🎲 {priv.dice ?? '?'} · ⏰ {priv.dice ? d.wakeAt(priv.dice) : ''}</span></span>
             {phase === 'night' && <span>{priv.awake ? '👀 ' + d.youAwake : '💤 ' + d.sleeping}</span>}
             {priv.knownThiefId && <span className="text-red-300">{d.knowsThief(nameOf(priv.knownThiefId))}</span>}
+            {priv.witnessedThiefId && <span className="text-red-300">{d.sawThief(nameOf(priv.witnessedThiefId))}</span>}
             {priv.role === 'thief' && priv.knownFollowerIds.length > 0 && <span className="text-emerald-300">{d.yourFollowers(priv.knownFollowerIds.map(nameOf).join(', '))}</span>}
             {priv.isFollower && priv.knownFollowerIds.length > 0 && <span className="text-emerald-300">{d.knowsFollower(priv.knownFollowerIds.map(nameOf).join(', '))}</span>}
           </div>
@@ -400,7 +473,7 @@ export default function App() {
               }}>{copied ? '✅ ' + d.copied : '🔗 ' + d.copyLink}</button>
               <span className="font-bold">{d.players}: {pub.players.length}/8</span>
             </div>
-            <PlayerChips onKick={isHost ? (id) => getNet().kick(id) : undefined} />
+            <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} onKick={isHost ? (id) => getNet().kick(id) : undefined} />
             <div className="flex items-center justify-center gap-2 mt-1 flex-wrap">
               <span className="font-bold text-gray-500">💬 {d.discussionTime}:</span>
               {isHost
@@ -421,7 +494,7 @@ export default function App() {
                 {pub.players.length < 4 && <p className="text-center text-red-500 font-bold mt-2">{d.need4}</p>}
               </>
             ) : <p className="text-center font-bold text-gray-500">{d.waiting}</p>}
-            <div className="mt-4"><ChatPanel height="h-44" /></div>
+            <div className="mt-3"><ChatPanel chat={pub.chat} myId={joined.playerId} d={d} onChat={t => getNet().chat(t)} height="h-40" /></div>
             <button className="mt-4 underline text-gray-500" onClick={() => { getNet().leave(); location.href = location.pathname; }}>{d.leave}</button>
           </div>
         )}
@@ -451,8 +524,9 @@ export default function App() {
 
         {/* ---------- NIGHT ---------- */}
         {phase === 'night' && priv && (
-          <div className="text-center relative">
+          <div ref={nightBoxRef} className="text-center relative">
             <div className="stars" /><div className="stars2" />
+            {fly && <FlyCheese key={fly.key} x0={fly.x0} y0={fly.y0} dx={fly.dx} dy={fly.dy} onDone={() => setFly(null)} />}
             <h2 className="text-3xl font-extrabold text-indigo-200">🌙 {d.night} — {d.hour} {pub.currentHour}/6
               <span className="ml-3 text-xl bg-white/10 rounded-full px-3 py-1">⏱ {secsLeft(pub.hourEndsAt, now)}s</span></h2>
             <div className="flex justify-center gap-1 my-3">
@@ -467,7 +541,7 @@ export default function App() {
                 have their eyes closed and must NOT be told the cheese is
                 "on the table" when it may already be stolen. */}
             <div className="wood-table max-w-md mx-auto px-4 pt-4 pb-3 my-3 relative z-10">
-              <div className="text-7xl leading-none drop-shadow-[0_6px_8px_rgba(0,0,0,0.4)]">
+              <div id="table-cheese" className="text-7xl leading-none drop-shadow-[0_6px_8px_rgba(0,0,0,0.4)]">
                 {priv.awake
                   ? (priv.cheesePresentWhenAwake === false ? '🍽️' : <span className="anim-wiggle inline-block">🧀</span>)
                   : <span className="opacity-40">🧀</span>}
@@ -481,14 +555,21 @@ export default function App() {
               </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
-              {pub.players.map(p => (
-                <div key={p.id} className={`rounded-2xl p-3 relative z-10 ${p.id === joined.playerId && priv.awake ? 'bg-amber-300 text-black ring-4 ring-amber-100 awake-glow' : 'bg-white/10 text-indigo-100'}`}>
+              {pub.players.map(p => {
+                const isMe = p.id === joined.playerId;
+                const awakeNow = isMe ? !!priv.awake : priv.fellowWakers.includes(p.id);
+                return (
+                <div key={p.id} id={`pcard-${p.id}`} className={`rounded-2xl p-3 relative z-10 ${isMe && priv.awake ? 'bg-amber-300 text-black ring-4 ring-amber-100 awake-glow' : awakeNow ? 'bg-sky-300 text-black ring-4 ring-sky-100 awake-glow' : 'bg-white/10 text-indigo-100'}`}>
                   <div className={`text-4xl relative inline-block w-14 h-14 rounded-full ${avatarBg(p.id)} items-center justify-center inline-flex`}>{mouseFor(p.id)}
-                    {!(p.id === joined.playerId && priv.awake) && <span className="zzz absolute -top-2 -right-3 text-lg text-sky-300 font-bold">z</span>}
+                    {awakeNow
+                      ? <span className="absolute -top-2 -right-3 text-lg">👀</span>
+                      : <span className="zzz absolute -top-2 -right-3 text-lg text-sky-300 font-bold">z</span>}
                   </div>
                   <div className="font-bold truncate text-sm">{p.name}</div>
-                </div>
-              ))}
+                  {priv.stealById === p.id && <span className="absolute -top-2 -left-2 text-2xl anim-pop">🧀</span>}
+                  {(priv.knownThiefId === p.id || priv.witnessedThiefId === p.id) && <span className="absolute -bottom-2 -right-2 text-2xl anim-pop">😈</span>}
+                </div>);
+              })}
             </div>
             {priv.awake ? (
               <div className={`${card} anim-pop max-w-xl mx-auto`}>
@@ -496,8 +577,6 @@ export default function App() {
                 {priv.cheesePresentWhenAwake === false && <p className="font-bold text-red-500 mt-1">{d.cheeseGoneWake}</p>}
                 {priv.cheesePresentWhenAwake === true && <p className="text-gray-500 mt-1">{d.cheeseHere}</p>}
                 {priv.fellowWakers.length > 0 && <p className="mt-1 font-bold text-purple-600">👀👀 {d.fellow} ({priv.fellowWakers.map(id => pub.players.find(p => p.id === id)?.name).join(', ')})</p>}
-                {priv.canSteal && !priv.hasActedThisHour && (
-                  <button className={`${btn} bg-red-500 hover:bg-red-600 text-white w-full mt-3 text-xl`} onClick={() => getNet().nightAction('steal')}>{d.stealBtn}</button>)}
                 {priv.role === 'thief' && priv.hasActedThisHour && <p className="mt-3 font-bold text-green-600">{d.stolenOk}</p>}
                 {priv.followerCandidates && (
                   <div className="mt-3">
@@ -508,10 +587,7 @@ export default function App() {
                     </div>
                   </div>)}
                 {priv.isFollower && (
-                  <div className="mt-3 bg-emerald-50 ring-2 ring-emerald-300 rounded-2xl px-4 py-3">
-                    <p className="font-extrabold text-emerald-700">{d.becameFollower}</p>
-                    {priv.knownThiefId && <p className="font-bold text-red-500">{d.knowsThief(nameOf(priv.knownThiefId))}</p>}
-                  </div>)}
+                  <p className="mt-3 bg-emerald-50 ring-2 ring-emerald-300 rounded-2xl px-4 py-2 font-extrabold text-emerald-700">🤝 {d.becameFollower}</p>)}
                 {!priv.isFollower && priv.role !== 'thief' && priv.knownFollowerIds.length > 0 && (
                   <p className="mt-3 font-bold text-purple-600">{d.witnessKnows(priv.knownFollowerIds.map(nameOf).join(', '))}</p>)}
                 {priv.canInspect && (
@@ -565,18 +641,11 @@ export default function App() {
             <h2 className="text-2xl font-extrabold text-center">{d.day}</h2>
             <p className="text-center font-bold text-gray-600">{d.discuss} <span className="bg-amber-100 rounded-full px-3 py-0.5">⏱ {secsLeft(pub.discussionEndsAt, now)}s</span></p>
             {priv?.isFollower && (
-              <div className="bg-emerald-50 ring-2 ring-emerald-300 rounded-2xl px-4 py-3 mt-3 text-center anim-pop">
-                <p className="font-extrabold text-emerald-700">{d.becameFollower}</p>
-                <p className="font-bold text-gray-600">{d.dayFollowerNote}</p>
-                {priv.knownThiefId
-                  ? <p className="font-bold text-red-500">{d.knowsThief(nameOf(priv.knownThiefId))}</p>
-                  : <p className="font-bold text-gray-500">{d.followerBlind}</p>}
-                {priv.knownFollowerIds.length > 0 && <p className="font-bold text-emerald-600">{d.knowsFollower(priv.knownFollowerIds.map(nameOf).join(', '))}</p>}
-              </div>)}
-            {priv && !priv.isFollower && priv.role !== 'thief' && priv.knownFollowerIds.length > 0 && (
-              <p className="text-center font-bold text-purple-600 mt-3">{d.witnessKnows(priv.knownFollowerIds.map(nameOf).join(', '))}</p>)}
-            <PlayerChips />
-            <ChatPanel />
+              <p className="bg-emerald-50 ring-2 ring-emerald-300 rounded-2xl px-4 py-2 mt-3 text-center font-extrabold text-emerald-700 anim-pop">🤝 {d.becameFollower}</p>)}
+            {priv?.witnessedThiefId && (
+              <p className="text-center font-extrabold text-red-500 mt-3">{d.sawThief(nameOf(priv.witnessedThiefId))}</p>)}
+            <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} markThiefId={priv?.knownThiefId || priv?.witnessedThiefId || null} markFollowerIds={priv?.knownFollowerIds} iAmFollower={priv?.isFollower} />
+            <ChatPanel chat={pub.chat} myId={joined.playerId} d={d} onChat={t => getNet().chat(t)} />
             <div className="mt-3 text-center">
               {pub.dayReady?.includes(joined.playerId)
                 ? <p className="font-extrabold text-green-600">{d.readyVoteDone}</p>
@@ -595,7 +664,7 @@ export default function App() {
             <p className="font-bold mt-1">{pub.players.filter(p => p.hasVoted).length}/{pub.players.length} voted</p>
             {priv?.myVote
               ? <p className="mt-4 font-extrabold text-green-600 text-lg">{d.votedFor(pub.players.find(p => p.id === priv.myVote)?.name || '?')}</p>
-              : <PlayerChips onPick={(id) => getNet().vote(id)} pickable={(p) => p.id !== joined.playerId} />}
+              : <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} markThiefId={priv?.knownThiefId || priv?.witnessedThiefId || null} markFollowerIds={priv?.knownFollowerIds} iAmFollower={priv?.isFollower} onPick={(id) => getNet().vote(id)} pickable={(p) => p.id !== joined.playerId} />}
           </div>
         )}
 
@@ -608,7 +677,7 @@ export default function App() {
             <p className="font-bold text-lg mt-1">{d.thiefWas(pub.players.find(p => p.id === pub.thiefId)?.name || '?')} {mouseFor(pub.thiefId || '')}</p>
             {pub.players.some(p => (p as any).role === 'fallmouse') && (
               <p className="font-bold text-lg text-violet-600">{d.fallWas(pub.players.find(p => (p as any).role === 'fallmouse')?.name || '?')} {mouseFor(pub.players.find(p => (p as any).role === 'fallmouse')?.id || '')}</p>)}
-            <PlayerChips />
+            <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} />
             <div className="text-left max-w-sm mx-auto bg-amber-50 rounded-2xl p-3">
               {pub.voteCounts?.map(v => (
                 <div key={v.id} className="flex justify-between font-bold">
@@ -649,14 +718,14 @@ export default function App() {
                       <div key={i} className="ml-4">{d.recapRecruit(nameOf(e.ids[0]))}</div>))}
                   </div>)}
               </div>)}
-            <div className="mt-4"><ChatPanel height="h-40" /></div>
+            <div className="mt-3"><ChatPanel chat={pub.chat} myId={joined.playerId} d={d} onChat={t => getNet().chat(t)} height="h-40" /></div>
             {isHost
               ? <button className={`${btn} bg-green-500 text-white w-full mt-4 text-xl`} onClick={() => getNet().playAgain()}>🔁 {d.playAgain} ({d.backLobby})</button>
               : <p className="mt-4 font-bold text-gray-500">{d.waiting}</p>}
           </div>
         )}
       </div>
-      <HelpModal />
+      {showHelp && <HelpModal d={d} onClose={() => setShowHelp(false)} />}
     </div>
   );
 }
