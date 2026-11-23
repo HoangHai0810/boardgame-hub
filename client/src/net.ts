@@ -19,7 +19,7 @@ export type Priv = ReturnType<typeof privateState>;
 export interface Net {
   createRoom(name: string): void;
   joinRoom(code: string, name: string): void;
-  startGame(): void; beginNight(): void;
+  startGame(): void; beginNight(): void; ready(): void; readyVote(): void;
   nightAction(kind: 'steal' | 'inspect', targetId?: string): void;
   chat(text: string): void; toVoting(): void;
   vote(targetId: string): void; playAgain(): void; leave(): void;
@@ -65,14 +65,16 @@ class HostEngine {
   }
   startRound() {
     this.clear(); assignRolesAndDice(this.state); this.state.phase = 'roleReveal'; this.broadcast();
-    this.later(6000, () => { if (this.state.phase === 'roleReveal') this.startNight(); });
+    // Night starts when EVERY player pressed "I'm ready" (see 'ready' action);
+    // 45s is only a fallback, host can also force it with beginNight.
+    this.later(45000, () => { if (this.state.phase === 'roleReveal') this.startNight(); });
   }
   startNight() {
     const s = this.state; s.phase = 'night';
     const step = (h: number) => {
       if (s.phase !== 'night') return;
       if (h > 6) {
-        s.phase = 'day'; s.discussionEndsAt = Date.now() + DISCUSSION_MS; this.broadcast();
+        s.phase = 'day'; s.dayReady = []; s.discussionEndsAt = Date.now() + DISCUSSION_MS; this.broadcast();
         this.later(DISCUSSION_MS, () => { if (s.phase === 'day') this.startVoting(); });
         return;
       }
@@ -99,6 +101,20 @@ class HostEngine {
         this.startRound(); break;
       }
       case 'beginNight': if (player.isHost && s.phase === 'roleReveal') { this.clear(); this.startNight(); } break;
+      case 'ready': {
+        if (s.phase !== 'roleReveal') break;
+        if (!s.revealReady.includes(player.id)) s.revealReady.push(player.id);
+        if (s.players.filter(p => p.connected).every(p => s.revealReady.includes(p.id))) { this.clear(); this.startNight(); }
+        else this.broadcast();
+        break;
+      }
+      case 'readyVote': {
+        if (s.phase !== 'day') break;
+        if (!s.dayReady.includes(player.id)) s.dayReady.push(player.id);
+        if (s.players.filter(p => p.connected).every(p => s.dayReady.includes(p.id))) this.startVoting();
+        else this.broadcast();
+        break;
+      }
       case 'steal': doSteal(s, player); this.broadcast(); break;
       case 'inspect': if (msg.targetId) doInspect(s, player, msg.targetId); this.broadcast(); break;
       case 'chat': {
@@ -236,6 +252,8 @@ export function createPeerNet(h: Handlers): Net {
     },
     startGame: () => intent('startGame'),
     beginNight: () => intent('beginNight'),
+    ready: () => intent('ready'),
+    readyVote: () => intent('readyVote'),
     nightAction: (kind, targetId) => intent(kind, { targetId }),
     chat: (text) => intent('chat', { text }),
     toVoting: () => intent('toVoting'),
@@ -268,6 +286,8 @@ export function createSocketNet(serverUrl: string, h: Handlers): Net {
     },
     startGame: () => socket.emit('startGame'),
     beginNight: () => socket.emit('beginNight'),
+    ready: () => socket.emit('ready'),
+    readyVote: () => socket.emit('readyVote'),
     nightAction: (kind, targetId) => socket.emit('nightAction', { kind, targetId }),
     chat: (text) => socket.emit('chat', { text }),
     toVoting: () => socket.emit('toVoting'),

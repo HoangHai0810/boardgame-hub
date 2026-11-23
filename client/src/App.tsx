@@ -138,6 +138,16 @@ export default function App() {
         {error && <div className="bg-red-100 border border-red-400 text-red-700 rounded-2xl px-4 py-2 mb-3 font-bold">{error}
           <button className="float-right" onClick={() => setError('')}>✕</button></div>}
 
+        {/* Persistent secret info — your role & dice stay visible all game */}
+        {priv?.role && (phase === 'night' || phase === 'day' || phase === 'voting') && (
+          <div className="bg-black/70 text-white rounded-2xl px-4 py-2 mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 font-bold backdrop-blur">
+            <span>🤫 {d.yourInfo}:</span>
+            <span>{priv.role === 'thief' ? '😈 ' + d.thief : '🐭 ' + d.sleepy}</span>
+            <span>🎲 {priv.dice ?? '?'} · ⏰ {priv.dice ? d.wakeAt(priv.dice) : ''}</span>
+            {phase === 'night' && <span>{priv.awake ? '👀 ' + d.youAwake : '💤 ' + d.sleeping}</span>}
+          </div>
+        )}
+
         {/* ---------- LOBBY ---------- */}
         {phase === 'lobby' && (
           <div className={`${card} anim-pop`}>
@@ -176,9 +186,11 @@ export default function App() {
               <div className="text-6xl font-extrabold">🎲 {priv.dice}</div>
             </div>
             <div>
-              {isHost
-                ? <button className={`${btn} bg-indigo-500 text-white mt-5`} onClick={() => getNet().beginNight()}>🌙 {d.continueBtn}</button>
-                : <p className="mt-5 font-bold text-gray-400">{d.waiting}</p>}
+              {pub.revealReady?.includes(joined.playerId)
+                ? <p className="mt-5 font-extrabold text-green-600">✅ {d.readyOf(pub.revealReady.length, pub.players.filter(p => p.connected).length)}</p>
+                : <button className={`${btn} bg-green-500 hover:bg-green-600 text-white mt-5 text-lg`} onClick={() => getNet().ready()}>{d.imReady}</button>}
+              <p className="mt-2 font-bold text-gray-400">{d.readyOf(pub.revealReady?.length ?? 0, pub.players.filter(p => p.connected).length)}</p>
+              {isHost && <button className="mt-2 underline text-indigo-500 font-bold" onClick={() => getNet().beginNight()}>🌙 {d.forceNight}</button>}
             </div>
           </div>
         )}
@@ -248,6 +260,12 @@ export default function App() {
                 value={chatText} onChange={e => setChatText(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && chatText.trim()) { getNet().chat(chatText); setChatText(''); } }} />
               <button className={`${btn} bg-amber-400 !py-2`} onClick={() => { if (chatText.trim()) { getNet().chat(chatText); setChatText(''); } }}>{d.send}</button>
+            </div>
+            <div className="mt-3 text-center">
+              {pub.dayReady?.includes(joined.playerId)
+                ? <p className="font-extrabold text-green-600">{d.readyVoteDone}</p>
+                : <button className={`${btn} bg-green-500 hover:bg-green-600 text-white`} onClick={() => getNet().readyVote()}>{d.readyVoteBtn}</button>}
+              <p className="font-bold text-gray-500 mt-1">{d.readyVoteOf(pub.dayReady?.length ?? 0, pub.players.filter(p => p.connected).length)}</p>
             </div>
             {isHost && <button className={`${btn} bg-purple-500 text-white w-full mt-3`} onClick={() => getNet().toVoting()}>🗳️ {d.toVote}</button>}
           </div>
