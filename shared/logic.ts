@@ -43,6 +43,7 @@ export interface GameState {
   cheeseStolenAtHour: number | null;
   chat: ChatMsg[];
   discussionEndsAt: number | null;
+  discussionMs: number; // room option set by the host in the lobby (Cycle 6)
   voteEndsAt: number | null;
   hourEndsAt: number | null;
   winner: 'sleepyheads' | 'thief' | 'fallmouse' | null;
@@ -75,7 +76,7 @@ export function createGame(roomCode: string): GameState {
   return {
     roomCode, phase: 'lobby', players: [], currentHour: 0,
     cheeseStolen: false, cheeseStolenAtHour: null, chat: [],
-    discussionEndsAt: null, voteEndsAt: null, hourEndsAt: null, recruitEndsAt: null,
+    discussionEndsAt: null, discussionMs: DISCUSSION_MS, voteEndsAt: null, hourEndsAt: null, recruitEndsAt: null,
     winner: null, thiefId: null, round: 1, revealReady: [], dayReady: [],
     stolenWitnessIds: [], pendingFollowerChoice: null, recap: [],
   };
@@ -316,6 +317,7 @@ export function publicState(state: GameState, forPlayerId?: string) {
     // (see privateState). Publicly we reveal it from day phase onward.
     cheeseStolen: state.phase === 'night' ? false : state.cheeseStolen,
     discussionEndsAt: state.discussionEndsAt,
+    discussionMs: state.discussionMs,
     voteEndsAt: state.voteEndsAt,
     hourEndsAt: state.hourEndsAt,
     recruitEndsAt: state.recruitEndsAt,
