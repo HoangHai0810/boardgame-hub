@@ -24,6 +24,16 @@ export interface Player {
 
 export interface ChatMsg { fromId: string; fromName: string; text: string; ts: number; }
 
+/** One entry of the post-game night recap (revealed ONLY at results). */
+export interface RecapEvent {
+  hour: number;
+  kind: 'wake' | 'steal' | 'inspect' | 'witness' | 'recruit';
+  ids: string[];
+  targetId?: string; // inspect: who was peeked at
+  seen?: number; // inspect: the dice value seen
+  afterNight?: boolean; // recruit: happened in the post-night recruit phase
+}
+
 export interface GameState {
   roomCode: string;
   phase: Phase;
@@ -44,6 +54,7 @@ export interface GameState {
   stolenWitnessIds: string[]; // sleepyheads awake at the hour the cheese was stolen
   pendingFollowerChoice: string[] | null; // 5p: witness ids the thief must pick one from, this hour
   recruitEndsAt: number | null;
+  recap: RecapEvent[]; // night timeline — exposed publicly ONLY at results
 }
 
 export const MIN_PLAYERS = 4;
@@ -66,7 +77,7 @@ export function createGame(roomCode: string): GameState {
     cheeseStolen: false, cheeseStolenAtHour: null, chat: [],
     discussionEndsAt: null, voteEndsAt: null, hourEndsAt: null, recruitEndsAt: null,
     winner: null, thiefId: null, round: 1, revealReady: [], dayReady: [],
-    stolenWitnessIds: [], pendingFollowerChoice: null,
+    stolenWitnessIds: [], pendingFollowerChoice: null, recap: [],
   };
 }
 
@@ -99,6 +110,13 @@ export function assignRolesAndDice(state: GameState, rng: () => number = Math.ra
   state.stolenWitnessIds = [];
   state.pendingFollowerChoice = null;
   state.recruitEndsAt = null;
+  state.recap = [];
+}
+
+/** Record the start of a night hour (who is awake) for the recap.
+ *  Engines call this right after setting currentHour for each hour. */
+export function recordHour(state: GameState): void {
+  state.recap.push({ hour: state.currentHour, kind: 'wake', ids: wakers(state).map(p => p.id) });
 }
 
 /** Followers the thief recruits AFTER hour 6 (official rules): 6p → 1, 7–8p → 2.
@@ -122,11 +140,13 @@ export function chooseFollower(state: GameState, thief: Player, targetId: string
     if (!state.pendingFollowerChoice.includes(targetId)) return false;
     target.isFollower = true;
     state.pendingFollowerChoice = null;
+    state.recap.push({ hour: state.currentHour, kind: 'recruit', ids: [targetId] });
     return true;
   }
   if (state.phase === 'recruit') {
     if (followers(state).length >= recruitCount(state)) return false;
     target.isFollower = true;
+    state.recap.push({ hour: state.currentHour, kind: 'recruit', ids: [targetId], afterNight: true });
     return true;
   }
   return false;
@@ -198,14 +218,19 @@ export function doSteal(state: GameState, player: Player): boolean {
   state.cheeseStolen = true;
   state.cheeseStolenAtHour = state.currentHour;
   player.hasActedThisHour = true;
+  state.recap.push({ hour: state.currentHour, kind: 'steal', ids: [player.id] });
   // 5-player witness rule: sleepyheads awake at this hour SEE the theft.
   // Exactly one witness → they become a Follower on the spot. More than one →
   // the thief must choose one of them before the hour ends.
   state.stolenWitnessIds = wakers(state).filter(p => isVillager(p)).map(p => p.id);
+  if (state.stolenWitnessIds.length) {
+    state.recap.push({ hour: state.currentHour, kind: 'witness', ids: [...state.stolenWitnessIds] });
+  }
   if (state.players.length === 5 && followers(state).length === 0) {
     if (state.stolenWitnessIds.length === 1) {
       const w = state.players.find(p => p.id === state.stolenWitnessIds[0])!;
       w.isFollower = true;
+      state.recap.push({ hour: state.currentHour, kind: 'recruit', ids: [w.id] });
     } else if (state.stolenWitnessIds.length > 1) {
       state.pendingFollowerChoice = [...state.stolenWitnessIds];
     }
@@ -229,6 +254,7 @@ export function doInspect(state: GameState, player: Player, targetId: string): n
   if (!target || target.id === player.id) return null;
   player.hasActedThisHour = true;
   player.inspectedDice = { targetId, dice: target.dice! };
+  state.recap.push({ hour: state.currentHour, kind: 'inspect', ids: [player.id], targetId, seen: target.dice! });
   return target.dice!;
 }
 
@@ -302,6 +328,8 @@ export function publicState(state: GameState, forPlayerId?: string) {
       ...(inResults ? { role: p.role, dice: p.dice, vote: p.vote, isFollower: !!p.isFollower } : {}),
     })),
     chat: state.chat.slice(-100),
+    // The night recap contains dice values and who-did-what — results ONLY.
+    recap: inResults ? state.recap : undefined,
     voteCounts: inResults
       ? state.players.map(p => ({ id: p.id, count: state.players.filter(v => v.vote === p.id).length }))
       : undefined,
