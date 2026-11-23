@@ -415,6 +415,16 @@ export default function App() {
   };
   // Leaving the room (or being kicked / host gone) tears the mesh down.
   useEffect(() => { if (!joined) leaveVoice(); }, [joined]);
+
+  // Host safety net: in the public build the host's tab IS the server, so
+  // an accidental F5 ends the room for everyone. Make the browser ask
+  // first. (The structural fix is the dedicated-server mode — see report.)
+  useEffect(() => {
+    if (!joined?.isHost) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [joined?.isHost]);
   // Optimistic feedback: a tapped action shows its result IMMEDIATELY and
   // locks, instead of looking dead while the intent travels (the #1 live
   // complaint on a flaky connection). Authoritative state replaces it when

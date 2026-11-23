@@ -7,6 +7,10 @@
 // The host's browser runs the authoritative HostEngine, exactly as in the
 // PeerJS transport; if the host leaves, its MQTT last-will closes the room.
 //
+// Broker selection is deterministic PER ROOM (see brokers.ts, v27):
+// the old parallel race could split one room across two brokers —
+// separate MQTT universes — which hung joins on "connecting…" forever.
+//
 // Resilience (v25, from live-play reports):
 // - If the chosen broker dies for THIS browser/network (1 of the PO's 4
 //   browsers had exactly that: buttons silently dead), mqtt.js would loop
@@ -24,68 +28,11 @@ import { generateKeys, deriveAesKey, encryptJson, decryptJson, KeySet } from './
 import { makeRoomCode, MAX_PLAYERS } from '../../shared/logic';
 import type { Net, Handlers } from './net';
 import { getClientId } from './util';
+import { brokerOrder, connectMqttSequential } from './brokers';
 
-// Public brokers are tried IN PARALLEL and the first successful connection
-// wins (v11): the old sequential chain wasted 9s on a dead broker before
-// ever reaching a live one, and a single blocked port killed the whole
-// attempt. EMQX is listed first among equals; HiveMQ and EMQX-CN add
-// independent networks. (The retired Eclipse broker was removed from the
-// list in the Cycle 10 cleanup — it no longer answers at all.)
-const BROKERS = [
-  'wss://broker.emqx.io:8084/mqtt',
-  'wss://broker.hivemq.com:8884/mqtt',
-  'wss://broker-cn.emqx.io:8084/mqtt',
-  'wss://test.mosquitto.org:8081',
-];
 const topic = (code: string, part: string) => `ct1/${code}/${part}`;
 const cleanName = (n: string) => n.replace(/[<>]/g, '').trim().slice(0, 20) || 'Mouse';
 const nonce = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
-
-let cachedCustomBroker: string | null = null;
-function brokerList(): string[] {
-  try {
-    // Cache the ?broker= override on first read: the app rewrites the URL
-    // (room param) during play, and a rejoin must keep the same broker.
-    if (cachedCustomBroker === null) {
-      cachedCustomBroker = new URLSearchParams(location.search).get('broker') ?? '';
-    }
-    if (cachedCustomBroker) return [cachedCustomBroker];
-  } catch { /* non-browser test env */ }
-  return BROKERS;
-}
-
-function connect(extra: mqtt.IClientOptions): Promise<MqttClient> {
-  const brokers = brokerList();
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const clients: MqttClient[] = [];
-    const kill = (c: MqttClient) => { try { c.end(true); } catch { /* noop */ } };
-    const overall = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      clients.forEach(kill);
-      reject(new Error('bus unreachable'));
-    }, 15000);
-    // Race every broker at once: the first one that connects wins and the
-    // losers are closed immediately, so one dead/blocked broker can no
-    // longer stall or sink the attempt.
-    brokers.forEach((url) => {
-      let c: MqttClient;
-      try { c = mqtt.connect(url, { connectTimeout: 12000, reconnectPeriod: 2000, ...extra }); }
-      catch { return; }
-      clients.push(c);
-      c.on('connect', () => {
-        if (settled) { kill(c); return; }
-        settled = true;
-        clearTimeout(overall);
-        clients.forEach(o => { if (o !== c) kill(o); });
-        resolve(c);
-      });
-      c.on('error', () => { /* the race / overall timeout decides */ });
-    });
-    if (!clients.length) { settled = true; clearTimeout(overall); reject(new Error('bus unreachable')); }
-  });
-}
 
 export function createMqttNet(h: Handlers): Net {
   let client: MqttClient | null = null;
@@ -104,6 +51,8 @@ export function createMqttNet(h: Handlers): Net {
   let makeExtra: (() => mqtt.IClientOptions) | null = null;
   let bindCurrent: (() => void) | null = null;
   let joinTimer: ReturnType<typeof setTimeout> | null = null;
+  let order: string[] = [];
+  let brokerIdx = 0;
   let failoverTimer: ReturnType<typeof setTimeout> | null = null;
   let failoverBusy = false;
   let left = false;
@@ -137,7 +86,8 @@ export function createMqttNet(h: Handlers): Net {
     try {
       const old = client;
       try { old?.end(true); } catch { /* noop */ }
-      client = await connect(makeExtra());
+      const r = await connectMqttSequential(order, (brokerIdx + 1) % order.length, makeExtra());
+      client = r.client; brokerIdx = r.idx;
       watchLifecycle(client);
       bindCurrent();
     } catch {
@@ -212,7 +162,9 @@ export function createMqttNet(h: Handlers): Net {
     makeExtra = () => ({ clientId: 'ct-h-' + myId + '-' + Math.random().toString(36).slice(2, 7),
       will: { topic: topic(roomCode, 'pub'), payload: JSON.stringify({ type: 'hostGone' }), retain: true, qos: 1 } as any });
     bindCurrent = () => { if (client) bindHost(client); };
-    client = await connect(makeExtra());
+    order = brokerOrder(roomCode);
+    const rh = await connectMqttSequential(order, 0, makeExtra());
+    client = rh.client; brokerIdx = rh.idx;
     watchLifecycle(client);
     bindCurrent();
     engine.addPlayer(myId, cleanName(name), true);
@@ -263,14 +215,16 @@ export function createMqttNet(h: Handlers): Net {
     myKeys = await generateKeys();
     joinTimer = setTimeout(() => {
       if (!joinedFired) h.onError('HOST_UNREACHABLE');
-    }, 25000);
+    }, 45000);
     makeExtra = () => {
       willConn = nonce();
       return { clientId: 'ct-c-' + myId + '-' + Math.random().toString(36).slice(2, 7),
         will: { topic: topic(roomCode, 'in'), payload: JSON.stringify({ type: 'intent', playerId: myId, action: '__gone', conn: willConn }), qos: 1 } as any };
     };
     bindCurrent = () => { if (client) bindGuest(client); };
-    client = await connect(makeExtra());
+    order = brokerOrder(roomCode);
+    const rc = await connectMqttSequential(order, 0, makeExtra());
+    client = rc.client; brokerIdx = rc.idx;
     watchLifecycle(client);
     bindCurrent();
   }

@@ -16,56 +16,10 @@
 // - The mic is acquired BEFORE presence is published, so every peer
 //   connection is born with the local track attached (no renegotiation).
 //   Muting is track.enabled — instant and renegotiation-free.
-import mqtt, { MqttClient } from 'mqtt';
+import type { MqttClient } from 'mqtt';
+import { brokerOrder, connectMqttSequential } from './brokers';
 
-const BROKERS = [
-  'wss://broker.emqx.io:8084/mqtt',
-  'wss://broker.hivemq.com:8884/mqtt',
-  'wss://broker-cn.emqx.io:8084/mqtt',
-  'wss://test.mosquitto.org:8081',
-];
 const vTopic = (code: string, part: string) => `ct1/${code}/${part}`;
-
-function brokerList(): string[] {
-  try {
-    const b = new URLSearchParams(location.search).get('broker');
-    if (b) return [b];
-  } catch { /* non-browser */ }
-  return BROKERS;
-}
-
-function connectVoiceBus(clientId: string, willTopic: string): Promise<MqttClient> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const clients: MqttClient[] = [];
-    const kill = (c: MqttClient) => { try { c.end(true); } catch { /* noop */ } };
-    const overall = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      clients.forEach(kill);
-      reject(new Error('voice bus unreachable'));
-    }, 15000);
-    brokerList().forEach((url) => {
-      let c: MqttClient;
-      try {
-        c = mqtt.connect(url, {
-          connectTimeout: 12000, reconnectPeriod: 2000, clientId,
-          will: { topic: willTopic, payload: '', retain: true, qos: 1 } as any,
-        });
-      } catch { return; }
-      clients.push(c);
-      c.on('connect', () => {
-        if (settled) { kill(c); return; }
-        settled = true;
-        clearTimeout(overall);
-        clients.forEach(o => { if (o !== c) kill(o); });
-        resolve(c);
-      });
-      c.on('error', () => { /* race decides */ });
-    });
-    if (!clients.length) { settled = true; clearTimeout(overall); reject(new Error('voice bus unreachable')); }
-  });
-}
 
 export interface VoiceHandle {
   setMuted(muted: boolean): void;
@@ -95,8 +49,20 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
 
   const code = roomCode.toUpperCase();
   const presenceTopic = vTopic(code, 'v/' + myId);
-  const client = await connectVoiceBus('ct-v-' + myId + '-' + Math.random().toString(36).slice(2, 7), presenceTopic)
-    .catch((e) => { stream.getTracks().forEach(t => t.stop()); throw e; });
+  // Same deterministic per-room broker order as the game bus (brokers.ts):
+  // the whole voice mesh gathers on ONE broker, and a failover advances
+  // to the next broker in the same order for everyone.
+  const order = brokerOrder(code);
+  let busIdx = 0;
+  let bus: MqttClient | null = null;
+  const voiceClientId = 'ct-v-' + myId + '-' + Math.random().toString(36).slice(2, 7);
+  const busExtra = () => ({
+    clientId: voiceClientId,
+    will: { topic: presenceTopic, payload: '', retain: true, qos: 1 } as any,
+  });
+  const publish = (tpc: string, payload: string, opts?: object) => {
+    try { bus?.publish(tpc, payload, opts as any); } catch { /* bus swapping */ }
+  };
 
   const peers = new Map<string, Peer>();
   const peerIds = new Set<string>([myId]);
@@ -148,7 +114,7 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
 
     pc.onicecandidate = (ev) => {
       if (ev.candidate) {
-        client.publish(vTopic(code, 'vs/' + pid), JSON.stringify({ from: myId, kind: 'ice', candidate: ev.candidate.toJSON() }), { qos: 0 });
+        publish(vTopic(code, 'vs/' + pid), JSON.stringify({ from: myId, kind: 'ice', candidate: ev.candidate.toJSON() }), { qos: 0 });
       }
     };
     pc.ontrack = (ev) => {
@@ -171,13 +137,18 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
     try {
       const offer = await peer.pc.createOffer();
       await peer.pc.setLocalDescription(offer);
-      client.publish(vTopic(code, 'vs/' + pid), JSON.stringify({ from: myId, kind: 'offer', sdp: offer.sdp }), { qos: 1 });
+      publish(vTopic(code, 'vs/' + pid), JSON.stringify({ from: myId, kind: 'offer', sdp: offer.sdp }), { qos: 1 });
     } catch { /* pair will retry on next presence refresh */ }
   };
 
-  client.subscribe(vTopic(code, 'v/+'), { qos: 1 });
-  client.subscribe(vTopic(code, 'vs/' + myId), { qos: 1 });
-  client.on('message', async (topicName, payload) => {
+  let failoverTimer: ReturnType<typeof setTimeout> | null = null;
+  let failoverBusy = false;
+  const publishPresence = () => publish(presenceTopic, JSON.stringify({ id: myId, ts: Date.now() }), { retain: true, qos: 1 });
+
+  function attach(c: MqttClient) {
+    c.subscribe(vTopic(code, 'v/+'), { qos: 1 });
+    c.subscribe(vTopic(code, 'vs/' + myId), { qos: 1 });
+  c.on('message', async (topicName, payload) => {
     if (left) return;
     const text = payload.toString();
     if (topicName.startsWith(vTopic(code, 'v/'))) {
@@ -206,7 +177,7 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
         peer.iceBacklog.splice(0).forEach(c => peer.pc.addIceCandidate(c).catch(() => {}));
         const answer = await peer.pc.createAnswer();
         await peer.pc.setLocalDescription(answer);
-        client.publish(vTopic(code, 'vs/' + from), JSON.stringify({ from: myId, kind: 'answer', sdp: answer.sdp }), { qos: 1 });
+        publish(vTopic(code, 'vs/' + from), JSON.stringify({ from: myId, kind: 'answer', sdp: answer.sdp }), { qos: 1 });
       } else if (msg.kind === 'answer') {
         await peer.pc.setRemoteDescription({ type: 'answer', sdp: msg.sdp });
         peer.remoteSet = true;
@@ -217,11 +188,41 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
       }
     } catch { /* a failed pair degrades silently; the mesh lives on */ }
   });
-  client.on('connect', () => {
     // (Re)announce presence after any reconnect.
-    client.publish(presenceTopic, JSON.stringify({ id: myId, ts: Date.now() }), { retain: true, qos: 1 });
-  });
-  client.publish(presenceTopic, JSON.stringify({ id: myId, ts: Date.now() }), { retain: true, qos: 1 });
+    c.on('connect', publishPresence);
+    c.on('offline', () => {
+      if (failoverTimer || left) return;
+      failoverTimer = setTimeout(() => { failoverTimer = null; void failoverBus(); }, 9000);
+    });
+  }
+
+  async function failoverBus() {
+    if (failoverBusy || left) return;
+    failoverBusy = true;
+    try {
+      const old = bus;
+      try { old?.end(true); } catch { /* noop */ }
+      const r = await connectMqttSequential(order, (busIdx + 1) % order.length, busExtra());
+      bus = r.client; busIdx = r.idx;
+      attach(bus);
+      if (bus.connected) publishPresence();
+      // Rebuild pairs whose connections died with the old bus: presence
+      // re-delivery recreates missing peers; live PCs keep their tracks.
+      [...peerIds].forEach(pid => { if (pid !== myId && !peers.has(pid)) { ensurePeer(pid); if (myId < pid) void makeOffer(pid); } });
+    } catch {
+      if (!failoverTimer && !left) failoverTimer = setTimeout(() => { failoverTimer = null; void failoverBus(); }, 9000);
+    } finally { failoverBusy = false; }
+  }
+
+  try {
+    const r0 = await connectMqttSequential(order, 0, busExtra());
+    bus = r0.client; busIdx = r0.idx;
+  } catch (e) {
+    stream.getTracks().forEach(t => t.stop());
+    throw e;
+  }
+  attach(bus);
+  if (bus.connected) publishPresence();
   publishPeers();
 
   // Speaking detection: poll every analyser; report only on CHANGE.
@@ -247,11 +248,13 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
     leave() {
       left = true;
       clearInterval(poll);
-      try { client.publish(presenceTopic, '', { retain: true, qos: 1 }); } catch { /* noop */ }
+      try { publish(presenceTopic, '', { retain: true, qos: 1 }); } catch { /* noop */ }
       [...peers.keys()].forEach(closePeer);
       stream.getTracks().forEach(t => t.stop());
       audioCtx.close().catch(() => { /* noop */ });
-      setTimeout(() => { try { client.end(true); } catch { /* noop */ } }, 300);
+      if (failoverTimer) { clearTimeout(failoverTimer); failoverTimer = null; }
+      const b = bus; bus = null;
+      setTimeout(() => { try { b?.end(true); } catch { /* noop */ } }, 300);
     },
   };
 }
