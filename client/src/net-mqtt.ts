@@ -13,10 +13,18 @@ import { makeRoomCode, MAX_PLAYERS } from '../../shared/logic';
 import type { Net, Handlers } from './net';
 import { getClientId } from './util';
 
-// Order matters: the Eclipse broker serves WSS on port 443 (standard HTTPS
-// port) — many networks/proxies block WebSockets on non-standard ports like
-// 8084/8081, which is why those are only fallbacks.
-const BROKERS = ['wss://mqtt.eclipseprojects.io:443/mqtt', 'wss://broker.emqx.io:8084/mqtt', 'wss://test.mosquitto.org:8081'];
+// Public brokers are tried IN PARALLEL and the first successful connection
+// wins (v11): the old sequential chain wasted 9s on the retired Eclipse
+// broker (mqtt.eclipseprojects.io no longer answers) before ever reaching a
+// live one, and a single blocked port killed the whole attempt. EMQX is
+// listed first among equals; HiveMQ and EMQX-CN add independent networks.
+const BROKERS = [
+  'wss://broker.emqx.io:8084/mqtt',
+  'wss://broker.hivemq.com:8884/mqtt',
+  'wss://broker-cn.emqx.io:8084/mqtt',
+  'wss://mqtt.eclipseprojects.io:443/mqtt',
+  'wss://test.mosquitto.org:8081',
+];
 const topic = (code: string, part: string) => `ct1/${code}/${part}`;
 const cleanName = (n: string) => n.replace(/[<>]/g, '').trim().slice(0, 20) || 'Mouse';
 
@@ -32,14 +40,32 @@ function connect(extra: mqtt.IClientOptions): Promise<MqttClient> {
   const brokers = brokerList();
   return new Promise((resolve, reject) => {
     let settled = false;
-    const tryBroker = (i: number) => {
-      if (i >= brokers.length) { if (!settled) { settled = true; reject(new Error('bus unreachable')); } return; }
-      const c = mqtt.connect(brokers[i], { connectTimeout: 8000, reconnectPeriod: 2000, ...extra });
-      const to = setTimeout(() => { if (!settled) { c.end(true); tryBroker(i + 1); } }, 9000);
-      c.on('connect', () => { if (!settled) { settled = true; clearTimeout(to); resolve(c); } });
-      c.on('error', () => { /* retry handled by timeout / reconnectPeriod */ });
-    };
-    tryBroker(0);
+    const clients: MqttClient[] = [];
+    const kill = (c: MqttClient) => { try { c.end(true); } catch { /* noop */ } };
+    const overall = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      clients.forEach(kill);
+      reject(new Error('bus unreachable'));
+    }, 15000);
+    // Race every broker at once: the first one that connects wins and the
+    // losers are closed immediately, so one dead/blocked broker can no
+    // longer stall or sink the attempt.
+    brokers.forEach((url) => {
+      let c: MqttClient;
+      try { c = mqtt.connect(url, { connectTimeout: 12000, reconnectPeriod: 2000, ...extra }); }
+      catch { return; }
+      clients.push(c);
+      c.on('connect', () => {
+        if (settled) { kill(c); return; }
+        settled = true;
+        clearTimeout(overall);
+        clients.forEach(o => { if (o !== c) kill(o); });
+        resolve(c);
+      });
+      c.on('error', () => { /* the race / overall timeout decides */ });
+    });
+    if (!clients.length) { settled = true; clearTimeout(overall); reject(new Error('bus unreachable')); }
   });
 }
 
