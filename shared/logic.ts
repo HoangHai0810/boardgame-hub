@@ -17,6 +17,7 @@ export interface Player {
   isFollower?: boolean; // switched sides to the thief's team (5–8 player games)
   hasActedThisHour: boolean;
   inspectedDice?: { targetId: string; dice: number } | null; // private, never public
+  peeks?: { targetId: string; dice: number }[]; // every dice this player has peeked at this round
   vote?: string | null; // private until results
   hasVoted: boolean;
   wins: number; // session scoreboard: rounds won in this room (public, not a secret)
@@ -95,7 +96,7 @@ export function assignRolesAndDice(state: GameState, rng: () => number = Math.ra
     p.dice = 1 + Math.floor(rng() * 6);
     p.isFollower = false;
     p.hasActedThisHour = false;
-    p.inspectedDice = null;
+    p.inspectedDice = null; p.peeks = [];
     p.vote = null;
     p.hasVoted = false;
   });
@@ -255,6 +256,7 @@ export function doInspect(state: GameState, player: Player, targetId: string): n
   if (!target || target.id === player.id) return null;
   player.hasActedThisHour = true;
   player.inspectedDice = { targetId, dice: target.dice! };
+  player.peeks = [...(player.peeks ?? []).filter(x => x.targetId !== targetId), { targetId, dice: target.dice! }];
   state.recap.push({ hour: state.currentHour, kind: 'inspect', ids: [player.id], targetId, seen: target.dice! });
   return target.dice!;
 }
@@ -390,6 +392,7 @@ export function privateState(state: GameState, player: Player) {
     witnessedThiefId: thief && state.stolenWitnessIds.includes(player.id) ? thief.id : null,
     fellowWakers: awake ? wakers(state).filter(p => p.id !== player.id).map(p => p.id) : [],
     inspected: player.inspectedDice ?? null,
+    peeks: player.peeks ?? [],
     hasActedThisHour: player.hasActedThisHour,
     myVote: player.vote ?? null,
     // Follower info — strictly per the official information rules.
