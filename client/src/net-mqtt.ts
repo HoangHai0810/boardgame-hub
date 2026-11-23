@@ -29,10 +29,16 @@ import { makeRoomCode, MAX_PLAYERS } from '../../shared/logic';
 import type { Net, Handlers } from './net';
 import { getClientId } from './util';
 import { brokerOrder, connectMqttSequential } from './brokers';
+import type { EngineHooks } from './hostEngine';
 
 const topic = (code: string, part: string) => `ct1/${code}/${part}`;
 const cleanName = (n: string) => n.replace(/[<>]/g, '').trim().slice(0, 20) || 'Mouse';
 const nonce = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+const b64raw = (buf: Uint8Array) => btoa(String.fromCharCode(...buf));
+const unb64raw = (b: string) => Uint8Array.from(atob(b), c => c.charCodeAt(0));
+async function importRoomKey(b64: string): Promise<CryptoKey> {
+  return crypto.subtle.importKey('raw', unb64raw(b64) as BufferSource, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+}
 
 export function createMqttNet(h: Handlers): Net {
   let client: MqttClient | null = null;
@@ -54,6 +60,25 @@ export function createMqttNet(h: Handlers): Net {
   let order: string[] = [];
   let brokerIdx = 0;
   let failoverTimer: ReturnType<typeof setTimeout> | null = null;
+  // Host migration (v28): the host continuously publishes an AES-GCM
+  // encrypted snapshot of the whole engine state (key shared with every
+  // player inside their private channel). If the host dies, the
+  // longest-present guest restores it and takes over — the room survives
+  // a host F5 / crash / dead phone.
+  let roomKey: CryptoKey | null = null;
+  let roomKeyB64 = '';
+  let myEscrowKeyB64 = '';
+  const pubKeys = new Map<string, JsonWebKey>();
+  let lastPub: Pub | null = null;
+  let lastStateAt = 0;
+  let lastSnapAt = 0;
+  let lastSnapPhase = '';
+  let hostSince = 0;
+  let candidacy = false;
+  let claimTimer: ReturnType<typeof setTimeout> | null = null;
+  let latestSnap: any = null;
+  const claimsSeen = new Map<string, number>();
+  let migrating = false;
   let failoverBusy = false;
   let left = false;
 
@@ -98,14 +123,58 @@ export function createMqttNet(h: Handlers): Net {
     } finally { failoverBusy = false; }
   }
 
+  function makeHooks(): EngineHooks {
+    return {
+      sendPub: (pub) => {
+        h.onState(pub); // host's own UI
+        client?.publish(topic(roomCode, 'pub'), JSON.stringify({ type: 'state', data: pub }), { retain: true, qos: 1 });
+        void maybeSnapshot(pub);
+      },
+      sendPriv: (pid, priv) => {
+        // Every private snapshot carries the room escrow key: it is what
+        // lets any player restore the room if this host dies.
+        if (roomKeyB64) (priv as any).escrowKey = roomKeyB64;
+        if (pid === myId) { h.onPrivate(priv); return; }
+        const key = hostAes.get(pid);
+        if (!key || !client) return; // key arrives with the join message
+        encryptJson(key, { type: 'private', data: priv }).then(enc =>
+          client?.publish(topic(roomCode, 'p/' + pid), JSON.stringify(enc), { qos: 1 }));
+      },
+      sendError: (pid, msg) => {
+        if (pid === myId) { h.onError(msg); return; }
+        client?.publish(topic(roomCode, 'p/' + pid), JSON.stringify({ type: 'error', msg }), { qos: 1 });
+      },
+    };
+  }
+
+  async function maybeSnapshot(pub: Pub) {
+    if (!engine || !roomKey) return;
+    const now = Date.now();
+    if (now - lastSnapAt < 2500 && pub.phase === lastSnapPhase) return;
+    lastSnapAt = now; lastSnapPhase = pub.phase;
+    try {
+      const data = JSON.stringify({ v: 1, state: engine.state, pubKeys: Object.fromEntries(pubKeys), savedAt: now });
+      const enc = await encryptJson(roomKey, { type: 'snapshot', data });
+      client?.publish(topic(roomCode, 'snap'), JSON.stringify(enc), { retain: true, qos: 1 });
+    } catch { /* escrow is best-effort */ }
+  }
+
   /* ---------- HOST ---------- */
   function bindHost(c: MqttClient) {
     c.subscribe(topic(roomCode, 'in'), { qos: 1 });
+    c.subscribe(topic(roomCode, 'claim'), { qos: 1 });
     c.on('message', async (_t, payload) => {
       let msg: any; try { msg = JSON.parse(payload.toString()); } catch { return; }
+      if (_t === topic(roomCode, 'claim')) {
+        // A successor was elected while I was unreachable: stand down and
+        // rejoin my own room as a guest rather than fight over it.
+        if (msg.by && msg.by !== myId && (+msg.ts || 0) > hostSince && engine && !migrating) void standDown();
+        return;
+      }
       if (msg.type === 'join') {
         const pid = String(msg.clientId);
         playerConn.set(pid, String(msg.conn ?? ''));
+        if (msg.pubJwk) pubKeys.set(pid, msg.pubJwk);
         const verdict = engine!.canAcceptJoin(pid);
         if (verdict !== 'ok') {
           c.publish(topic(roomCode, 'p/' + pid),
@@ -142,23 +211,11 @@ export function createMqttNet(h: Handlers): Net {
     myName = name;
     h.onStatus('STATUS_CREATING');
     myKeys = await generateKeys();
-    engine = new HostEngine(roomCode, {
-      sendPub: (pub) => {
-        h.onState(pub); // host's own UI
-        client?.publish(topic(roomCode, 'pub'), JSON.stringify({ type: 'state', data: pub }), { retain: true, qos: 1 });
-      },
-      sendPriv: (pid, priv) => {
-        if (pid === myId) { h.onPrivate(priv); return; }
-        const key = hostAes.get(pid);
-        if (!key || !client) return; // key arrives with the join message
-        encryptJson(key, { type: 'private', data: priv }).then(enc =>
-          client?.publish(topic(roomCode, 'p/' + pid), JSON.stringify(enc), { qos: 1 }));
-      },
-      sendError: (pid, msg) => {
-        if (pid === myId) { h.onError(msg); return; }
-        client?.publish(topic(roomCode, 'p/' + pid), JSON.stringify({ type: 'error', msg }), { qos: 1 });
-      },
-    });
+    const rawKey = crypto.getRandomValues(new Uint8Array(32));
+    roomKeyB64 = b64raw(rawKey);
+    roomKey = await importRoomKey(roomKeyB64);
+    hostSince = Date.now();
+    engine = new HostEngine(roomCode, makeHooks());
     makeExtra = () => ({ clientId: 'ct-h-' + myId + '-' + Math.random().toString(36).slice(2, 7),
       will: { topic: topic(roomCode, 'pub'), payload: JSON.stringify({ type: 'hostGone' }), retain: true, qos: 1 } as any });
     bindCurrent = () => { if (client) bindHost(client); };
@@ -176,11 +233,35 @@ export function createMqttNet(h: Handlers): Net {
   function bindGuest(c: MqttClient) {
     c.subscribe(topic(roomCode, 'pub'), { qos: 1 });
     c.subscribe(topic(roomCode, 'p/' + myId), { qos: 1 });
-    c.on('message', async (t, payload) => {
+    // (Re)join on EVERY transport connect: if the broker fired our
+    // leave-will during a long drop, the host marked us gone — re-joining
+    // with the current connection's nonce restores us seamlessly.
+    const sendJoin = () => {
+      c.publish(topic(roomCode, 'in'), JSON.stringify({
+        type: 'join', clientId: myId, name: cleanName(myName), pubJwk: myKeys!.pubJwk, conn: willConn,
+      }), { qos: 1 });
+    };
+    c.on('message', async (t, payload, packet) => {
       let msg: any; try { msg = JSON.parse(payload.toString()); } catch { return; }
+      if (t === topic(roomCode, 'claim')) {
+        if (msg.by && msg.by !== myId) {
+          claimsSeen.set(String(msg.by), +msg.ts || 0);
+          // Someone else is taking over — cancel my own bid.
+          if (claimTimer) { clearTimeout(claimTimer); claimTimer = null; }
+        }
+        return;
+      }
+      if (t === topic(roomCode, 'snap')) { latestSnap = msg; return; }
       if (t === topic(roomCode, 'pub')) {
-        if (msg.type === 'state') h.onState(msg.data);
-        else if (msg.type === 'hostGone') h.onError('HOST_GONE');
+        if (msg.type === 'state') {
+          lastPub = msg.data; lastStateAt = Date.now();
+          candidacy = false; // a host is serving again
+          h.onState(msg.data);
+        } else if (msg.type === 'migrated') {
+          sendJoin(); // rekey my private channel against the successor host
+        } else if (msg.type === 'hostGone') {
+          onHostGone(packet);
+        }
         return;
       }
       // private topic
@@ -193,19 +274,113 @@ export function createMqttNet(h: Handlers): Net {
       }
       if (msg.type === 'error') { if (joinTimer) { clearTimeout(joinTimer); joinTimer = null; } h.onError(msg.msg); return; }
       if (msg.enc === 1 && aesKey) {
-        try { const dec: any = await decryptJson(aesKey, msg); if (dec?.type === 'private') h.onPrivate(dec.data); } catch { /* ignore */ }
+        try {
+          const dec: any = await decryptJson(aesKey, msg);
+          if (dec?.type === 'private') {
+            const ek = (dec.data as any)?.escrowKey;
+            if (typeof ek === 'string' && ek) myEscrowKeyB64 = ek;
+            h.onPrivate(dec.data);
+          }
+        } catch { /* ignore */ }
       }
     });
-    // (Re)join on EVERY transport connect: if the broker fired our
-    // leave-will during a long drop, the host marked us gone — re-joining
-    // with the current connection's nonce restores us seamlessly.
-    const sendJoin = () => {
-      c.publish(topic(roomCode, 'in'), JSON.stringify({
-        type: 'join', clientId: myId, name: cleanName(myName), pubJwk: myKeys!.pubJwk, conn: willConn,
-      }), { qos: 1 });
-    };
     c.on('connect', sendJoin);
     if (c.connected) sendJoin();
+  }
+
+  /* ---------- host migration (guest side) ---------- */
+  function onHostGone(packet: any) {
+    if (candidacy || migrating || engine || left) return;
+    // A RETAINED copy redelivered on resubscribe while a live host is
+    // serving is stale news, not a death.
+    if (packet?.retain && Date.now() - lastStateAt < 8000) return;
+    if (!lastPub || !myEscrowKeyB64) { h.onError('HOST_GONE'); return; }
+    beginCandidacy();
+  }
+
+  function beginCandidacy() {
+    if (candidacy || !client) return;
+    candidacy = true;
+    claimsSeen.clear();
+    latestSnap = null;
+    client.subscribe(topic(roomCode, 'claim'), { qos: 1 });
+    client.subscribe(topic(roomCode, 'snap'), { qos: 1 });
+    const cands = (lastPub?.players ?? []).filter(p => p.connected && !p.isHost);
+    const rank = Math.max(0, cands.findIndex(p => p.id === myId));
+    const myDelay = 5000 + rank * 2500;
+    claimTimer = setTimeout(() => { void tryPromote(); }, myDelay);
+    // Nobody could take over (e.g. the winner died too): surface the loss.
+    setTimeout(() => { if (candidacy && !engine && !migrating) { candidacy = false; h.onError('HOST_GONE'); } }, myDelay + 25000);
+  }
+
+  async function tryPromote() {
+    claimTimer = null;
+    if (!candidacy || engine || migrating || left) return;
+    const now = Date.now();
+    client?.publish(topic(roomCode, 'claim'), JSON.stringify({ by: myId, ts: now }), { retain: true, qos: 1 });
+    await new Promise(r => setTimeout(r, 700));
+    if (!candidacy || engine || migrating || left) return; // a host resumed meanwhile
+    const beaten = [...claimsSeen.values()].some(ts => ts <= now);
+    if (beaten) { candidacy = false; return; } // an earlier claim won; stay guest
+    if (!latestSnap || !myEscrowKeyB64) { candidacy = false; h.onError('HOST_GONE'); return; }
+    await promote(latestSnap);
+  }
+
+  async function promote(snapEnc: any) {
+    migrating = true;
+    try {
+      const key = await importRoomKey(myEscrowKeyB64);
+      const dec: any = await decryptJson(key, snapEnc);
+      const snap = JSON.parse(dec.data);
+      const state = snap.state;
+      const oldHostId = state.players.find((p: any) => p.isHost)?.id;
+      myKeys = await generateKeys();
+      roomKey = key; roomKeyB64 = myEscrowKeyB64;
+      const eng = new HostEngine(state.roomCode || roomCode, makeHooks());
+      eng.state = state;
+      eng.state.players.forEach((p: any) => {
+        if (p.id === myId) { p.isHost = true; p.connected = true; }
+        else if (p.id === oldHostId) { p.isHost = false; p.connected = false; }
+      });
+      engine = eng; isHost = true; hostSince = Date.now();
+      pubKeys.clear();
+      Object.entries(snap.pubKeys || {}).forEach(([pid, jwk]) => pubKeys.set(pid, jwk as JsonWebKey));
+      hostAes.clear();
+      for (const [pid, jwk] of pubKeys) {
+        if (pid === myId) continue;
+        try { hostAes.set(pid, await deriveAesKey(myKeys.pair.privateKey, jwk)); } catch { /* rekeyed on their re-join */ }
+      }
+      eng.resumeTimers();
+      // Swap transports: end the guest connection gracefully (its will is
+      // discarded), reconnect with a HOST will, and serve.
+      const old = client;
+      try { old?.end(true); } catch { /* noop */ }
+      makeExtra = () => ({ clientId: 'ct-h-' + myId + '-' + Math.random().toString(36).slice(2, 7),
+        will: { topic: topic(roomCode, 'pub'), payload: JSON.stringify({ type: 'hostGone' }), retain: true, qos: 1 } as any });
+      bindCurrent = () => { if (client) bindHost(client); };
+      const r = await connectMqttSequential(order, 0, makeExtra());
+      client = r.client; brokerIdx = r.idx;
+      watchLifecycle(client);
+      bindCurrent();
+      candidacy = false;
+      h.onPromoted?.();
+      engine.broadcast();
+      client.publish(topic(roomCode, 'pub'), JSON.stringify({ type: 'migrated', by: myId }), { qos: 1 });
+    } catch {
+      h.onError('HOST_GONE');
+    } finally { migrating = false; }
+  }
+
+  /** A returning old host steps aside: its room already has a successor. */
+  async function standDown() {
+    if (!engine || migrating) return;
+    try { engine.dispose(); } catch { /* noop */ }
+    engine = null; isHost = false; hostSince = 0;
+    pubKeys.clear(); hostAes.clear();
+    const old = client;
+    try { old?.end(true); } catch { /* noop */ }
+    client = null;
+    await startClient(roomCode, myName).catch(() => h.onError('NET_UNREACHABLE'));
   }
 
   async function startClient(code: string, name: string) {

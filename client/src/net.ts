@@ -29,6 +29,9 @@ export interface Handlers {
   onState(s: Pub): void; onPrivate(p: Priv): void;
   onJoined(code: string, playerId: string, isHost: boolean): void;
   onError(msg: string): void; onStatus(msg: string): void;
+  /** MQTT transport only: this guest was elected successor host after
+   *  the original host died (host migration, v28). */
+  onPromoted?(): void;
 }
 
 export { getClientId } from './util';

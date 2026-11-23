@@ -46,30 +46,57 @@ export class HostEngine {
     this.later(45000, () => { if (this.state.phase === 'roleReveal') this.startNight(); });
   }
   startNight() {
-    const s = this.state; s.phase = 'night';
-    const step = (h: number) => {
-      if (s.phase !== 'night') return;
-      // The previous hour just ended: defaults for anything a player forgot —
-      // a lone waker who never peeked gets a random peek, and if the thief
-      // never picked between witnesses (5p), the choice is made for them.
-      autoInspectIdle(s);
-      autoResolveFollowerChoice(s);
-      if (h > 6) {
-        if (recruitCount(s) > 0) this.startRecruit();
-        else this.startDay();
-        return;
-      }
-      s.currentHour = h; s.hourEndsAt = Date.now() + HOUR_MS;
-      recordHour(s);
-      s.players.forEach(p => { p.hasActedThisHour = false; });
-      // The Cheese Mouse ALWAYS takes the cheese when their hour comes —
-      // stealing is automatic, never a button the player can forget.
-      const thief = thiefOf(s);
-      if (thief && canSteal(s, thief)) doSteal(s, thief);
-      this.broadcast(); this.later(HOUR_MS, () => step(h + 1));
-    };
-    step(1);
+    this.state.phase = 'night';
+    this.nightStep(1);
   }
+  /** One hour boundary. Extracted as a method so resumeTimers() can
+   *  re-enter the chain after a host migration. */
+  nightStep(h: number) {
+    const s = this.state;
+    if (s.phase !== 'night') return;
+    // The previous hour just ended: defaults for anything a player forgot —
+    // a lone waker who never peeked gets a random peek, and if the thief
+    // never picked between witnesses (5p), the choice is made for them.
+    autoInspectIdle(s);
+    autoResolveFollowerChoice(s);
+    if (h > 6) {
+      if (recruitCount(s) > 0) this.startRecruit();
+      else this.startDay();
+      return;
+    }
+    s.currentHour = h; s.hourEndsAt = Date.now() + HOUR_MS;
+    recordHour(s);
+    s.players.forEach(p => { p.hasActedThisHour = false; });
+    // The Cheese Mouse ALWAYS takes the cheese when their hour comes —
+    // stealing is automatic, never a button the player can forget.
+    const thief = thiefOf(s);
+    if (thief && canSteal(s, thief)) doSteal(s, thief);
+    this.broadcast(); this.later(HOUR_MS, () => this.nightStep(h + 1));
+  }
+  /** Re-arm the phase timers of a RESTORED state (host migration): every
+   *  phase deadline lives in the state itself, so the successor engine
+   *  simply re-schedules whatever the dead host had pending. */
+  resumeTimers() {
+    const s = this.state;
+    const remain = (ts?: number | null) => Math.max(0, (ts ?? 0) - Date.now());
+    if (s.phase === 'roleReveal') {
+      this.later(45000, () => { if (this.state.phase === 'roleReveal') this.startNight(); });
+    } else if (s.phase === 'night') {
+      this.later(remain(s.hourEndsAt), () => this.nightStep(s.currentHour + 1));
+    } else if (s.phase === 'recruit') {
+      this.later(remain(s.recruitEndsAt), () => {
+        if (this.state.phase !== 'recruit') return;
+        autoResolveFollowerChoice(this.state);
+        this.startDay();
+      });
+    } else if (s.phase === 'day') {
+      this.later(remain(s.discussionEndsAt), () => { if (this.state.phase === 'day') this.startVoting(); });
+    } else if (s.phase === 'voting') {
+      this.later(remain(s.voteEndsAt), () => { if (this.state.phase === 'voting') this.finishVoting(); });
+    }
+  }
+  /** Stop a superseded engine (its room migrated to a successor host). */
+  dispose() { this.clear(); }
   startRecruit() {
     const s = this.state;
     s.phase = 'recruit'; s.recruitEndsAt = Date.now() + RECRUIT_MS; this.broadcast();

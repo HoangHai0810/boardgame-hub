@@ -294,6 +294,11 @@ export default function App() {
           if (m === 'NET_LOST') setConnLost(true);
           else if (m === 'NET_OK') setConnLost(false);
         },
+        onPromoted: () => {
+          // Host migration: I am the successor host now — host controls
+          // (and the F5 guard) key off joined.isHost.
+          setJoined(j => (j ? { ...j, isHost: true } : j));
+        },
       });
     }
     return netRef.current;
