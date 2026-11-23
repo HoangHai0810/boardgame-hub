@@ -102,6 +102,34 @@ export default function App() {
     </div>
   );
 
+  // Shared chat panel — used in the lobby, the day discussion and the
+  // results screen (the only phases where chat is open).
+  const ChatPanel = ({ height = 'h-56' }: { height?: string }) => (
+    <div className="text-left">
+      <div className={`bg-gradient-to-b from-amber-50 to-orange-50 rounded-2xl p-3 ${height} overflow-y-auto space-y-2`}>
+        {pub!.chat.length === 0 && <p className="text-center text-gray-400 font-bold py-4">💬 {d.chatPh}</p>}
+        {pub!.chat.map((m, i) => {
+          const mine = m.fromId === joined?.playerId;
+          return (
+            <div key={i} className={`flex ${mine ? 'justify-end' : 'justify-start'} anim-slide-up`}>
+              <div className={`max-w-[80%] rounded-2xl px-3 py-2 shadow ${mine ? 'bg-amber-400 rounded-br-md' : 'bg-white rounded-bl-md'}`}>
+                <div className="text-xs font-extrabold opacity-70">{mouseFor(m.fromId)} {m.fromName}
+                  <span className="font-normal ml-2">{new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
+                <div className="leading-snug">{m.text}</div>
+              </div>
+            </div>);
+        })}
+        <div ref={chatEndRef} />
+      </div>
+      <div className="flex gap-2 mt-3">
+        <input className="flex-1 border-2 border-amber-300 rounded-2xl px-4 py-2.5" placeholder={d.chatPh} maxLength={300}
+          value={chatText} onChange={e => setChatText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && chatText.trim()) { getNet().chat(chatText); setChatText(''); } }} />
+        <button className={`${btn} bg-amber-400 !py-2`} onClick={() => { if (chatText.trim()) { getNet().chat(chatText); setChatText(''); } }}>{d.send}</button>
+      </div>
+    </div>
+  );
+
   const PlayerChips = ({ onPick, pickable }: { onPick?: (id: string) => void; pickable?: (p: any) => boolean }) => (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
       {pub!.players.map(p => (
@@ -214,6 +242,7 @@ export default function App() {
                 {pub.players.length < 4 && <p className="text-center text-red-500 font-bold mt-2">{d.need4}</p>}
               </>
             ) : <p className="text-center font-bold text-gray-500">{d.waiting}</p>}
+            <div className="mt-4"><ChatPanel height="h-44" /></div>
             <button className="mt-4 underline text-gray-500" onClick={() => { getNet().leave(); location.href = location.pathname; }}>{d.leave}</button>
           </div>
         )}
@@ -368,26 +397,7 @@ export default function App() {
             {priv && !priv.isFollower && priv.role !== 'thief' && priv.knownFollowerIds.length > 0 && (
               <p className="text-center font-bold text-purple-600 mt-3">{d.witnessKnows(priv.knownFollowerIds.map(nameOf).join(', '))}</p>)}
             <PlayerChips />
-            <div className="bg-gradient-to-b from-amber-50 to-orange-50 rounded-2xl p-3 h-56 overflow-y-auto text-left space-y-2">
-              {pub.chat.map((m, i) => {
-                const mine = m.fromId === joined.playerId;
-                return (
-                  <div key={i} className={`flex ${mine ? 'justify-end' : 'justify-start'} anim-slide-up`}>
-                    <div className={`max-w-[80%] rounded-2xl px-3 py-2 shadow ${mine ? 'bg-amber-400 rounded-br-md' : 'bg-white rounded-bl-md'}`}>
-                      <div className="text-xs font-extrabold opacity-70">{mouseFor(m.fromId)} {m.fromName}
-                        <span className="font-normal ml-2">{new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
-                      <div className="leading-snug">{m.text}</div>
-                    </div>
-                  </div>);
-              })}
-              <div ref={chatEndRef} />
-            </div>
-            <div className="flex gap-2 mt-3">
-              <input className="flex-1 border-2 border-amber-300 rounded-2xl px-4 py-2.5" placeholder={d.chatPh} maxLength={300}
-                value={chatText} onChange={e => setChatText(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && chatText.trim()) { getNet().chat(chatText); setChatText(''); } }} />
-              <button className={`${btn} bg-amber-400 !py-2`} onClick={() => { if (chatText.trim()) { getNet().chat(chatText); setChatText(''); } }}>{d.send}</button>
-            </div>
+            <ChatPanel />
             <div className="mt-3 text-center">
               {pub.dayReady?.includes(joined.playerId)
                 ? <p className="font-extrabold text-green-600">{d.readyVoteDone}</p>
@@ -426,6 +436,7 @@ export default function App() {
                   <span>{mouseFor(v.id)} {pub.players.find(p => p.id === v.id)?.name}</span><span>{v.count} {d.votes}</span>
                 </div>))}
             </div>
+            <div className="mt-4"><ChatPanel height="h-40" /></div>
             {isHost
               ? <button className={`${btn} bg-green-500 text-white w-full mt-4 text-xl`} onClick={() => getNet().playAgain()}>🔁 {d.playAgain} ({d.backLobby})</button>
               : <p className="mt-4 font-bold text-gray-500">{d.waiting}</p>}

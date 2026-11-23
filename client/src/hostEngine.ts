@@ -114,7 +114,10 @@ export class HostEngine {
         break;
       case 'inspect': if (msg.targetId) doInspect(s, player, msg.targetId); this.broadcast(); break;
       case 'chat': {
-        if (s.phase !== 'day') return;
+        // Chat is open in the lobby (waiting for players), during the day
+        // discussion and on the results screen. It stays locked at night,
+        // during recruitment and while voting — eyes closed / secret ballot.
+        if (s.phase !== 'lobby' && s.phase !== 'day' && s.phase !== 'results') return;
         const now = Date.now();
         if (now - (this.lastChat.get(player.id) ?? 0) < 400) return;
         this.lastChat.set(player.id, now);
