@@ -149,6 +149,26 @@ io.on('connection', (socket: Socket) => {
 
   const guard = () => room !== null && player !== null;
 
+  socket.on('kick', ({ targetId }: { targetId: string }) => {
+    // Host-only, lobby-only (mirrors the browser host engine). Mid-game
+    // removal belongs to the vote.
+    if (!guard() || !player!.isHost) return;
+    const s = room!.state;
+    if (s.phase !== 'lobby' || !targetId || targetId === player!.id) return;
+    const target = s.players.find(p => p.id === targetId);
+    if (!target || target.isHost) return;
+    s.players = s.players.filter(p => p.id !== targetId);
+    const sid = room!.sockets.get(targetId); // playerId -> socketId
+    room!.sockets.delete(targetId);
+    if (sid) {
+      io.to(sid).emit('errorMsg', 'KICKED');
+      // Drop the kicked socket shortly after so its handlers can't act as a
+      // ghost player; the delay lets the KICKED message flush first.
+      setTimeout(() => io.sockets.sockets.get(sid)?.disconnect(true), 250);
+    }
+    broadcast(room!);
+  });
+
   socket.on('startGame', () => {
     if (!guard() || !player!.isHost) return;
     if (room!.state.phase !== 'lobby' && room!.state.phase !== 'results') return;
