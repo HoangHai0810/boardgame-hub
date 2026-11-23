@@ -259,6 +259,36 @@ export function doInspect(state: GameState, player: Player, targetId: string): n
   return target.dice!;
 }
 
+/** Default action when a player forgets: a lone waker who never inspected
+ *  gets a random peek as their hour ends, so the hour is never wasted. */
+export function autoInspectIdle(state: GameState, rng: () => number = Math.random): boolean {
+  if (state.phase !== 'night') return false;
+  const idle = state.players.find(p => canInspect(state, p));
+  if (!idle) return false;
+  const others = state.players.filter(p => p.id !== idle.id);
+  if (!others.length) return false;
+  const target = others[Math.floor(rng() * others.length)];
+  return doInspect(state, idle, target.id) !== null;
+}
+
+/** Default action when a player forgets to vote: as the vote timer expires,
+ *  every still-connected non-voter is assigned a random vote among the other
+ *  players — nobody silently abstains. Disconnected players are skipped. */
+export function applyDefaultVotes(state: GameState, rng: () => number = Math.random): number {
+  if (state.phase !== 'voting') return 0;
+  let applied = 0;
+  for (const p of state.players) {
+    if (!p.connected || p.hasVoted) continue;
+    const others = state.players.filter(o => o.id !== p.id);
+    if (!others.length) continue;
+    const target = others[Math.floor(rng() * others.length)];
+    p.vote = target.id;
+    p.hasVoted = true;
+    applied++;
+  }
+  return applied;
+}
+
 export function castVote(state: GameState, player: Player, targetId: string): boolean {
   if (state.phase !== 'voting' || player.hasVoted) return false;
   if (targetId === player.id) return false;
@@ -343,6 +373,7 @@ export function publicState(state: GameState, forPlayerId?: string) {
 export function privateState(state: GameState, player: Player) {
   const awake = state.phase === 'night' && player.dice === state.currentHour;
   const know = followerKnowledge(state, player);
+  const thief = thiefOf(state);
   return {
     role: player.role ?? null,
     dice: player.dice ?? null,
@@ -351,6 +382,12 @@ export function privateState(state: GameState, player: Player) {
     canInspect: canInspect(state, player),
     // A waker sees whether the cheese is already gone when they wake.
     cheesePresentWhenAwake: awake ? !state.cheeseStolen : null,
+    // The steal happens automatically the moment the thief's hour begins.
+    // Everyone awake at that hour SEES who takes the cheese (as at the real
+    // table): stealById drives the fly-to-avatar effect during that hour,
+    // witnessedThiefId is what a witness remembers for the rest of the round.
+    stealById: awake && state.cheeseStolenAtHour === state.currentHour && thief ? thief.id : null,
+    witnessedThiefId: thief && state.stolenWitnessIds.includes(player.id) ? thief.id : null,
     fellowWakers: awake ? wakers(state).filter(p => p.id !== player.id).map(p => p.id) : [],
     inspected: player.inspectedDice ?? null,
     hasActedThisHour: player.hasActedThisHour,
