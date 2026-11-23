@@ -7,7 +7,8 @@ import { createServer } from 'node:http';
 import { Server, Socket } from 'socket.io';
 import {
   GameState, Player, createGame, assignRolesAndDice, publicState, privateState,
-  doSteal, doInspect, castVote, resolveVotes, makeRoomCode,
+  doSteal, doInspect, castVote, resolveVotes, makeRoomCode, canSteal, thiefOf,
+  autoInspectIdle, applyDefaultVotes,
   chooseFollower, autoResolveFollowerChoice, recruitCount, followers, recordHour,
   MIN_PLAYERS, MAX_PLAYERS, HOUR_MS, RECRUIT_MS, DISCUSSION_MS, VOTE_MS,
 } from '../../shared/logic.js';
@@ -59,7 +60,9 @@ function startNight(room: Room) {
   s.phase = 'night';
   const stepHour = (h: number) => {
     if (s.phase !== 'night') return;
-    // Previous hour ended: resolve an unmade 5p witness choice for the thief.
+    // Previous hour ended: defaults for forgotten actions (random peek for an
+    // idle lone waker; resolve an unmade 5p witness choice for the thief).
+    autoInspectIdle(s);
     autoResolveFollowerChoice(s);
     if (h > 6) { // dawn — via the recruit phase first at 6–8 players
       if (recruitCount(s) > 0) startRecruit(room);
@@ -70,6 +73,10 @@ function startNight(room: Room) {
     s.hourEndsAt = Date.now() + HOUR;
     recordHour(s);
     s.players.forEach(p => { p.hasActedThisHour = false; });
+    // Stealing is automatic: the Cheese Mouse always takes the cheese when
+    // their hour comes — no button to forget.
+    const thief = thiefOf(s);
+    if (thief && canSteal(s, thief)) doSteal(s, thief);
     broadcast(room);
     later(room, HOUR, () => stepHour(h + 1));
   };
@@ -87,6 +94,8 @@ function startVoting(room: Room) {
 
 function finishVoting(room: Room) {
   clearTimers(room);
+  // Anyone who forgot to vote gets a default (random) vote — no silent abstains.
+  applyDefaultVotes(room.state);
   resolveVotes(room.state);
   broadcast(room);
 }
