@@ -28,10 +28,15 @@ const BROKERS = [
 const topic = (code: string, part: string) => `ct1/${code}/${part}`;
 const cleanName = (n: string) => n.replace(/[<>]/g, '').trim().slice(0, 20) || 'Mouse';
 
+let cachedCustomBroker: string | null = null;
 function brokerList(): string[] {
   try {
-    const custom = new URLSearchParams(location.search).get('broker');
-    if (custom) return [custom];
+    // Cache the ?broker= override on first read: the app rewrites the URL
+    // (room param) during play, and a rejoin must keep the same broker.
+    if (cachedCustomBroker === null) {
+      cachedCustomBroker = new URLSearchParams(location.search).get('broker') ?? '';
+    }
+    if (cachedCustomBroker) return [cachedCustomBroker];
   } catch { /* non-browser test env */ }
   return BROKERS;
 }
@@ -87,7 +92,7 @@ export function createMqttNet(h: Handlers): Net {
 
   /* ---------- HOST ---------- */
   async function startHost(name: string) {
-    roomCode = makeRoomCode(); isHost = true;
+    roomCode = makeRoomCode(); isHost = true; joinedFired = false;
     h.onStatus('Creating room…');
     myKeys = await generateKeys();
     client = await connect({ clientId: 'ct-h-' + myId + '-' + Math.random().toString(36).slice(2, 7),
@@ -103,6 +108,10 @@ export function createMqttNet(h: Handlers): Net {
         if (!key || !client) return; // key arrives with the join message
         encryptJson(key, { type: 'private', data: priv }).then(enc =>
           client?.publish(topic(roomCode, 'p/' + pid), JSON.stringify(enc), { qos: 1 }));
+      },
+      sendError: (pid, msg) => {
+        if (pid === myId) { h.onError(msg); return; }
+        client?.publish(topic(roomCode, 'p/' + pid), JSON.stringify({ type: 'error', msg }), { qos: 1 });
       },
     });
     client.subscribe(topic(roomCode, 'in'), { qos: 1 });
@@ -137,7 +146,7 @@ export function createMqttNet(h: Handlers): Net {
 
   /* ---------- CLIENT ---------- */
   async function startClient(code: string, name: string) {
-    roomCode = code.toUpperCase().trim(); isHost = false;
+    roomCode = code.toUpperCase().trim(); isHost = false; joinedFired = false;
     h.onStatus('Connecting to room ' + roomCode + '…');
     myKeys = await generateKeys();
     const joinTimer = setTimeout(() => {
@@ -191,6 +200,7 @@ export function createMqttNet(h: Handlers): Net {
     toVoting: () => intent('toVoting'),
     vote: (targetId) => intent('vote', { targetId }),
     playAgain: () => intent('playAgain'),
+    kick: (targetId) => intent('kick', { targetId }),
     leave() {
       try {
         if (engine) client?.publish(topic(roomCode, 'pub'), JSON.stringify({ type: 'hostGone' }), { retain: true, qos: 1 });

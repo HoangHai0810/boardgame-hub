@@ -64,9 +64,22 @@ export default function App() {
         onPrivate: (p) => setPriv(p),
         onJoined: (c, pid, isHost) => {
           setJoined({ code: c, playerId: pid, isHost });
-          history.replaceState(null, '', '?room=' + c);
+          // Keep any transport overrides (?broker= / ?server= / ?net=) in the
+          // URL — the net layer re-reads them on reconnect/rejoin.
+          const u = new URL(location.href); u.searchParams.set('room', c);
+          history.replaceState(null, '', u.pathname + u.search);
         },
-        onError: (m) => { setError(m); setStatus(''); },
+        onError: (m) => {
+          if (m === 'KICKED') {
+            // Host removed us from the lobby: leave cleanly, land on the
+            // home screen with a (localized at render) notice.
+            try { netRef.current?.leave(); } catch { /* noop */ }
+            setJoined(null); setPub(null); setPriv(null);
+            const u = new URL(location.href); u.searchParams.delete('room');
+            history.replaceState(null, '', u.pathname + u.search);
+          }
+          setError(m); setStatus('');
+        },
         onStatus: setStatus,
       });
     }
@@ -191,16 +204,22 @@ export default function App() {
     </div>
   );
 
-  const PlayerChips = ({ onPick, pickable }: { onPick?: (id: string) => void; pickable?: (p: any) => boolean }) => (
+  const PlayerChips = ({ onPick, pickable, onKick }: { onPick?: (id: string) => void; pickable?: (p: any) => boolean; onKick?: (id: string) => void }) => (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
       {pub!.players.map(p => (
-        <button key={p.id} disabled={!onPick || (pickable ? !pickable(p) : false)}
+        <button key={p.id} disabled={onPick ? (pickable ? !pickable(p) : false) : !onKick}
           onClick={() => onPick?.(p.id)}
           className={`rounded-2xl p-3 text-center shadow ${p.id === joined?.playerId ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'} ${onPick ? 'hover:scale-105 transition cursor-pointer' : 'cursor-default'} disabled:opacity-50 disabled:hover:scale-100`}>
           <div className={`text-4xl anim-bob w-16 h-16 mx-auto rounded-full flex items-center justify-center ${avatarBg(p.id)} shadow-inner`}>{mouseFor(p.id)}</div>
           <div className="font-bold truncate">{p.name} {p.id === joined?.playerId && <span className="text-amber-600">({d.you})</span>}</div>
           <div className="text-xs">{p.isHost && <span className="bg-purple-500 text-white rounded-full px-2 py-0.5">👑 {d.host}</span>} {!p.connected && <span className="text-red-500">• {d.offline}</span>}</div>
           {((p as any).wins ?? 0) > 0 && <div className="text-xs mt-1 font-extrabold text-amber-600">🏆 ×{(p as any).wins}</div>}
+          {onKick && p.id !== joined?.playerId && (
+            <div className="mt-1">
+              <span role="button" title={d.kick}
+                onClick={(e) => { e.stopPropagation(); onKick(p.id); }}
+                className="inline-block text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-0.5 cursor-pointer hover:bg-red-200">✖ {d.kick}</span>
+            </div>)}
           {(phase === 'results') && <div className="text-sm mt-1 flex items-center justify-center gap-2">{roleLabel((p as any).role, (p as any).isFollower)}<DiceFace value={(p as any).dice ?? 1} size={26} /></div>}
           {phase === 'voting' && <div className="text-xs mt-1">{p.hasVoted ? '✅ voted' : '🤔 …'}</div>}
         </button>
@@ -263,7 +282,7 @@ export default function App() {
             </div>
             <button className="mt-4 underline font-bold text-amber-700" onClick={() => setShowHelp(true)}>📖 {d.how} (1 min)</button>
             {status && <p className="mt-3 text-sky-700 font-bold">{status}</p>}
-            {error && <p className="mt-3 text-red-600 font-bold">{error}</p>}
+            {error && <p className="mt-3 text-red-600 font-bold">{error === 'KICKED' ? d.kickedMsg : error}</p>}
           </div>
           <p className="text-center text-amber-800/70 mt-4 text-sm">4–8 players · ~5–15 min · free, no install 🎉</p>
         </div>
@@ -285,7 +304,7 @@ export default function App() {
     <div className={`min-h-screen ${bg} p-4 transition-colors duration-1000`}>
       <div className="max-w-3xl mx-auto">
         <TopBar />
-        {error && <div className="bg-red-100 border border-red-400 text-red-700 rounded-2xl px-4 py-2 mb-3 font-bold">{error}
+        {error && <div className="bg-red-100 border border-red-400 text-red-700 rounded-2xl px-4 py-2 mb-3 font-bold">{error === 'KICKED' ? d.kickedMsg : error}
           <button className="float-right" onClick={() => setError('')}>✕</button></div>}
 
         {/* Persistent secret info — your role & dice stay visible all game */}
@@ -313,7 +332,7 @@ export default function App() {
               }}>{copied ? '✅ ' + d.copied : '🔗 ' + d.copyLink}</button>
               <span className="font-bold">{d.players}: {pub.players.length}/8</span>
             </div>
-            <PlayerChips />
+            <PlayerChips onKick={isHost ? (id) => getNet().kick(id) : undefined} />
             <Standings />
             {isHost ? (
               <>

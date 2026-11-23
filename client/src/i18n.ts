@@ -52,6 +52,8 @@ const dict = {
     recapWitness: (names: string) => `${names} witnessed it 👀`,
     recapInspect: (by: string, target: string, seen: number) => `${by} peeked at ${target}'s dice → ${seen} 🔍`,
     recapRecruit: (n: string) => `${n} became a Follower 🤝`, recapAfter: 'After the night',
+    kickedMsg: 'The host removed you from the room. You can join again with the code if they invite you back.',
+    kick: 'Kick',
     help: 'Help', round: 'Round', offline: 'offline',
     tutorial: [
       '🎲 Everyone secretly gets a role and a dice number (1–6). One player is the Cheese Mouse!',
@@ -116,6 +118,8 @@ const dict = {
     recapWitness: (names: string) => `${names} đã chứng kiến 👀`,
     recapInspect: (by: string, target: string, seen: number) => `${by} nhìn trộm xúc xắc của ${target} → ${seen} 🔍`,
     recapRecruit: (n: string) => `${n} trở thành Đồng minh 🤝`, recapAfter: 'Sau đêm',
+    kickedMsg: 'Chủ phòng đã mời bạn ra khỏi phòng. Bạn vẫn có thể vào lại bằng mã phòng nếu được mời.',
+    kick: 'Mời ra',
     help: 'Trợ giúp', round: 'Ván', offline: 'mất kết nối',
     tutorial: [
       '🎲 Mỗi người bí mật nhận một vai và một số xúc xắc (1–6). Một người là Chuột Phô Mai!',

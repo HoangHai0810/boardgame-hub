@@ -22,6 +22,7 @@ export interface Net {
   nightAction(kind: 'steal' | 'inspect' | 'chooseFollower', targetId?: string): void;
   chat(text: string): void; toVoting(): void;
   vote(targetId: string): void; playAgain(): void; leave(): void;
+  kick(targetId: string): void;
 }
 export interface Handlers {
   onState(s: Pub): void; onPrivate(p: Priv): void;
@@ -105,6 +106,10 @@ export function createPeerNet(h: Handlers): Net {
             if (pid === myId) { h.onPrivate(priv); return; }
             conns.get(pid)?.send({ type: 'private', data: priv });
           },
+          sendError: (pid, msg) => {
+            if (pid === myId) { h.onError(msg); return; }
+            conns.get(pid)?.send({ type: 'error', msg });
+          },
         });
         engine.addPlayer(myId, cleanName(name), true);
         h.onJoined(roomCode, myId, true);
@@ -143,6 +148,7 @@ export function createPeerNet(h: Handlers): Net {
     toVoting: () => intent('toVoting'),
     vote: (targetId) => intent('vote', { targetId }),
     playAgain: () => intent('playAgain'),
+    kick: (targetId) => intent('kick', { targetId }),
     leave() {
       if (engine) for (const c of conns.values()) { try { c.send({ type: 'hostGone' }); } catch { /* noop */ } }
       try { hostConn?.close(); peer?.destroy(); } catch { /* noop */ }
@@ -177,6 +183,7 @@ export function createSocketNet(serverUrl: string, h: Handlers): Net {
     toVoting: () => socket.emit('toVoting'),
     vote: (targetId) => socket.emit('vote', { targetId }),
     playAgain: () => socket.emit('playAgain'),
+    kick: (targetId) => socket.emit('kick', { targetId }),
     leave() { socket.disconnect(); },
   };
 }

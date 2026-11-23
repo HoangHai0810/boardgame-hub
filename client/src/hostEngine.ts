@@ -16,6 +16,8 @@ export type Priv = ReturnType<typeof privateState>;
 export interface EngineHooks {
   sendPub(pub: Pub): void;
   sendPriv(playerId: string, priv: Priv): void;
+  /** Out-of-band error signal to one player (e.g. 'KICKED'). Optional. */
+  sendError?(playerId: string, msg: string): void;
 }
 
 const cleanName = (n: string) => n.replace(/[<>]/g, '').trim().slice(0, 20) || 'Mouse';
@@ -133,6 +135,18 @@ export class HostEngine {
           if (s.players.every(p => !p.connected || p.hasVoted)) this.finishVoting();
         }
         break;
+      case 'kick': {
+        // Host-only, lobby-only: remove a player before the round starts.
+        // (Mid-game removal belongs to the vote — a host must not be able to
+        // rig a round.) The kicked client gets a KICKED signal and may rejoin.
+        if (!player.isHost || s.phase !== 'lobby' || !msg.targetId || msg.targetId === player.id) break;
+        const target = s.players.find(p => p.id === msg.targetId);
+        if (!target || target.isHost) break;
+        s.players = s.players.filter(p => p.id !== target.id);
+        this.hooks.sendError?.(target.id, 'KICKED');
+        this.broadcast();
+        break;
+      }
       case 'playAgain':
         if (player.isHost && s.phase === 'results') {
           s.round++; s.phase = 'lobby';
