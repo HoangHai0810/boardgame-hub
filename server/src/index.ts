@@ -39,6 +39,7 @@ function startNight(room: Room) {
     if (s.phase !== 'night') return;
     if (h > 6) { // dawn
       s.phase = 'day';
+      s.dayReady = [];
       s.discussionEndsAt = Date.now() + DISC;
       broadcast(room);
       later(room, DISC, () => { if (s.phase === 'day') startVoting(room); });
@@ -74,7 +75,9 @@ function startRound(room: Room) {
   assignRolesAndDice(s);
   s.phase = 'roleReveal';
   broadcast(room);
-  later(room, Number(process.env.CT_REVEAL_MS || 6000), () => { if (s.phase === 'roleReveal') startNight(room); });
+  // Night normally starts when EVERY player pressed "I'm ready" on their role
+  // card (or host forces beginNight); this is only a long fallback.
+  later(room, Number(process.env.CT_REVEAL_MS || 45000), () => { if (s.phase === 'roleReveal') startNight(room); });
 }
 
 const lastChat = new Map<string, number>();
@@ -138,6 +141,25 @@ io.on('connection', (socket: Socket) => {
   socket.on('beginNight', () => { // host may skip the reveal wait
     if (!guard() || !player!.isHost) return;
     if (room!.state.phase === 'roleReveal') { clearTimers(room!); startNight(room!); }
+  });
+
+  socket.on('ready', () => { // player confirmed their role card
+    if (!guard()) return;
+    const s = room!.state;
+    if (s.phase !== 'roleReveal') return;
+    if (!s.revealReady.includes(player!.id)) s.revealReady.push(player!.id);
+    if (s.players.filter(p => p.connected).every(p => s.revealReady.includes(p.id))) {
+      clearTimers(room!); startNight(room!);
+    } else broadcast(room!);
+  });
+
+  socket.on('readyVote', () => { // player votes to end discussion now
+    if (!guard()) return;
+    const s = room!.state;
+    if (s.phase !== 'day') return;
+    if (!s.dayReady.includes(player!.id)) s.dayReady.push(player!.id);
+    if (s.players.filter(p => p.connected).every(p => s.dayReady.includes(p.id))) startVoting(room!);
+    else broadcast(room!);
   });
 
   socket.on('nightAction', ({ kind, targetId }: { kind: string; targetId?: string }) => {
