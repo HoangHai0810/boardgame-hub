@@ -11,3 +11,4 @@
 | 07 | v20 | All network error/status messages localized via language-neutral codes (15 new dict keys EN+VI) | 32 / 23 / 33 / 14 / 9 + hostgone 2/2 | index-Cl0C0Vmf.js |
 | 08 | v21 | Personal session record (my W/L split by dealt role) on results + lobby | 32 / 23 / 33 / 14 / 9 + full 12/12 | index-aOFTf1-6.js |
 | 09 | v22 | Shareable results summary (Wordle-style copy-to-clipboard, localized) | 32 / 23 / 33 / 14 / 9 + full 13/13 | index-Cw6vSN2M.js |
+| 10 | v23 | Release hardening: dead Eclipse broker removed from the race; README refreshed to the shipped feature set + current test tallies | 32 / 23 / 33 / 14 / 9 + full 13/13 + kick 6/6 + options 3/3 + hostgone 2/2 | index-CToLKBqm.js |
