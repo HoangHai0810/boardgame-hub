@@ -67,9 +67,10 @@ t('public state has no roles/dice during reveal', all.every(c => !JSON.stringify
 const thief = thieves[0];
 const thiefDice = thief.priv.dice;
 
-// Night: host skips reveal
-host.s.emit('beginNight');
-await until(() => all.every(c => c.state?.phase === 'night'), 8000, 'night');
+// Night starts only when EVERY player pressed ready on the role card
+all.forEach(c => c.s.emit('ready'));
+await until(() => all.every(c => c.state?.phase === 'night'), 8000, 'night via all-ready');
+t('night starts when all players ready (no host skip, no timer)', true);
 // Play through hours: act whenever awake
 const acted = new Set();
 const nightWatcher = setInterval(() => {
@@ -97,9 +98,13 @@ host.s.emit('chat', { text: 'I think it was Mouse2!' });
 await until(() => joiners[0].state?.chat?.some(m => m.text.includes('Mouse2')), 5000, 'chat sync');
 t('chat syncs in real time to other players', true);
 
-// Voting: everyone votes for the real thief (host forces voting)
-host.s.emit('toVoting');
-await until(() => all.every(c => c.state?.phase === 'voting'), 8000, 'voting');
+// Discussion skip: voting starts only when ALL players press ready-to-vote
+host.s.emit('readyVote');
+await wait(500);
+t('discussion NOT skipped while only host ready', host.state.phase === 'day');
+joiners.forEach(c => c.s.emit('readyVote'));
+await until(() => all.every(c => c.state?.phase === 'voting'), 8000, 'voting via all readyVote');
+t('discussion skipped when all players ready-to-vote', true);
 for (const c of all) {
   if (c === thief) c.s.emit('vote', { targetId: joiners[0].state.players.find(p => p.id !== thief.clientId).id });
   else c.s.emit('vote', { targetId: thief.clientId });
