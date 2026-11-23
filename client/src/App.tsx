@@ -4,6 +4,29 @@ import { t, Lang } from './i18n';
 
 const MICE = ['🐭', '🐹', '🐰', '🦊', '🐱', '🐶', '🐷', '🐨'];
 const mouseFor = (id: string) => MICE[[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % MICE.length];
+const AVATAR_BG = ['bg-rose-100', 'bg-sky-100', 'bg-lime-100', 'bg-violet-100', 'bg-amber-100', 'bg-teal-100', 'bg-pink-100', 'bg-indigo-100'];
+const avatarBg = (id: string) => AVATAR_BG[[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_BG.length];
+
+const PIPS: Record<number, number[]> = { 1: [5], 2: [1, 9], 3: [1, 5, 9], 4: [1, 3, 7, 9], 5: [1, 3, 5, 7, 9], 6: [1, 3, 4, 6, 7, 9] };
+export function DiceFace({ value, size = 96 }: { value: number; size?: number }) {
+  const pips = PIPS[value] || [];
+  return (
+    <div className="dice-face" style={{ width: size, height: size }} aria-label={`dice ${value}`}>
+      {Array.from({ length: 9 }, (_, i) => pips.includes(i + 1)
+        ? <div key={i} className="dice-pip" />
+        : <div key={i} />)}
+    </div>
+  );
+}
+
+const CONFETTI = ['🧀', '🎉', '🐭', '⭐', '🧀', '🎊', '✨', '🧀'];
+export function Confetti() {
+  return <>{CONFETTI.map((e, i) => (
+    <span key={i} className="confetti-piece" style={{
+      left: `${6 + i * 12}%`, fontSize: 22 + (i % 3) * 8,
+      animationDuration: `${2.6 + (i % 4) * 0.7}s`, animationDelay: `${i * 0.22}s`,
+    }}>{e}</span>))}</>;
+}
 
 function useNow(step = 250) {
   const [now, setNow] = useState(Date.now());
@@ -83,10 +106,10 @@ export default function App() {
         <button key={p.id} disabled={!onPick || (pickable ? !pickable(p) : false)}
           onClick={() => onPick?.(p.id)}
           className={`rounded-2xl p-3 text-center shadow ${p.id === joined?.playerId ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'} ${onPick ? 'hover:scale-105 transition cursor-pointer' : 'cursor-default'} disabled:opacity-50 disabled:hover:scale-100`}>
-          <div className="text-4xl anim-bob">{mouseFor(p.id)}</div>
+          <div className={`text-4xl anim-bob w-16 h-16 mx-auto rounded-full flex items-center justify-center ${avatarBg(p.id)} shadow-inner`}>{mouseFor(p.id)}</div>
           <div className="font-bold truncate">{p.name} {p.id === joined?.playerId && <span className="text-amber-600">({d.you})</span>}</div>
           <div className="text-xs">{p.isHost && <span className="bg-purple-500 text-white rounded-full px-2 py-0.5">👑 {d.host}</span>} {!p.connected && <span className="text-red-500">• {d.offline}</span>}</div>
-          {(phase === 'results') && <div className="text-sm mt-1">{(p as any).role === 'thief' ? '😈 ' + d.thief : '💤 ' + d.sleepy} · 🎲 {(p as any).dice}</div>}
+          {(phase === 'results') && <div className="text-sm mt-1 flex items-center justify-center gap-2">{(p as any).role === 'thief' ? '😈 ' + d.thief : '💤 ' + d.sleepy}<DiceFace value={(p as any).dice ?? 1} size={26} /></div>}
           {phase === 'voting' && <div className="text-xs mt-1">{p.hasVoted ? '✅ voted' : '🤔 …'}</div>}
         </button>
       ))}
@@ -99,11 +122,25 @@ export default function App() {
       <div className="min-h-screen bg-gradient-to-b from-amber-300 via-orange-200 to-yellow-100 p-4">
         <div className="max-w-xl mx-auto pt-6">
           <TopBar />
-          <div className={`${card} text-center anim-pop`}>
-            <div className="text-7xl anim-wiggle inline-block">🧀</div>
-            <h1 className="text-4xl font-extrabold text-amber-600">{d.title}</h1>
+          <div className={`${card} text-center anim-pop overflow-hidden`}>
+            <div className="relative -mx-5 -mt-5 sm:-mx-7 sm:-mt-7 mb-4 py-6 bg-gradient-to-b from-indigo-950 via-purple-900 to-indigo-800">
+              <div className="stars" style={{ position: 'absolute' }} />
+              <div className="text-8xl anim-floaty inline-block drop-shadow-[0_10px_16px_rgba(0,0,0,0.45)]">🧀</div>
+              <div className="flex justify-center gap-3 text-4xl mt-1">
+                <span className="anim-bob">🐭</span><span className="anim-bob" style={{ animationDelay: '.3s' }}>🐹</span>
+                <span className="anim-bob" style={{ animationDelay: '.6s' }}>😈</span>
+                <span className="anim-bob" style={{ animationDelay: '.9s' }}>🐭</span>
+              </div>
+              <div className="wood-table mx-10 h-3 mt-2 opacity-90" />
+            </div>
+            <h1 className="text-4xl font-extrabold bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 bg-clip-text text-transparent">{d.title}</h1>
             <p className="text-gray-600 mt-1">{d.subtitle}</p>
-            <div className="text-4xl my-2">🐭💤 🐭💤 😈🐭</div>
+            <div className="flex flex-wrap justify-center gap-2 mt-3">
+              <span className="bg-amber-100 text-amber-800 font-bold rounded-full px-3 py-1 text-sm">👥 4–8 players</span>
+              <span className="bg-sky-100 text-sky-800 font-bold rounded-full px-3 py-1 text-sm">⏱️ 5–15 min</span>
+              <span className="bg-green-100 text-green-800 font-bold rounded-full px-3 py-1 text-sm">📱 No install</span>
+              <span className="bg-purple-100 text-purple-800 font-bold rounded-full px-3 py-1 text-sm">🌐 EN / VI</span>
+            </div>
             <input className="w-full border-2 border-amber-300 rounded-2xl px-4 py-3 mt-3 text-lg" placeholder={d.name}
               value={name} maxLength={20} onChange={e => { setName(e.target.value); localStorage.setItem('ct_name', e.target.value); }} />
             <button className={`${btn} bg-amber-400 hover:bg-amber-500 w-full mt-3 text-xl`}
@@ -181,9 +218,10 @@ export default function App() {
             <div className={`text-3xl font-extrabold ${priv.role === 'thief' ? 'text-red-500' : 'text-sky-600'}`}>
               {priv.role === 'thief' ? d.thief : d.sleepy}</div>
             <p className="mt-2 text-gray-600">{priv.role === 'thief' ? d.thiefDesc : d.sleepyDesc}</p>
-            <div className="mt-4 inline-block bg-indigo-100 rounded-3xl px-8 py-4">
-              <div className="text-sm font-bold text-gray-500">{d.yourDice}</div>
-              <div className="text-6xl font-extrabold">🎲 {priv.dice}</div>
+            <div className={`mt-4 inline-block rounded-3xl px-8 py-4 ${priv.role === 'thief' ? 'bg-red-50 ring-2 ring-red-200' : 'bg-indigo-50 ring-2 ring-indigo-200'}`}>
+              <div className="text-sm font-bold text-gray-500 mb-2">{d.yourDice}</div>
+              <div className="flex justify-center"><DiceFace value={priv.dice ?? 1} size={104} /></div>
+              <div className="text-2xl font-extrabold mt-2">{priv.dice}</div>
             </div>
             <div>
               {pub.revealReady?.includes(joined.playerId)
@@ -197,7 +235,8 @@ export default function App() {
 
         {/* ---------- NIGHT ---------- */}
         {phase === 'night' && priv && (
-          <div className="text-center">
+          <div className="text-center relative">
+            <div className="stars" /><div className="stars2" />
             <h2 className="text-3xl font-extrabold text-indigo-200">🌙 {d.night} — {d.hour} {pub.currentHour}/6
               <span className="ml-3 text-xl bg-white/10 rounded-full px-3 py-1">⏱ {secsLeft(pub.hourEndsAt, now)}s</span></h2>
             <div className="flex justify-center gap-1 my-3">
@@ -207,17 +246,24 @@ export default function App() {
                 wakers see the real table (cheese present or gone); sleepers
                 have their eyes closed and must NOT be told the cheese is
                 "on the table" when it may already be stolen. */}
-            <div className="text-6xl my-2">
-              {priv.awake
-                ? (priv.cheesePresentWhenAwake === false
-                    ? <>🍽️<span className="text-2xl align-top text-red-300 font-bold"> 💨 {d.tableGone}</span></>
-                    : <>🧀<span className="text-2xl align-top"> ✨ on the table</span></>)
-                : <><span className="opacity-40">🧀</span><span className="text-2xl align-top opacity-60"> 💤 {d.eyesClosed}</span></>}
+            <div className="wood-table max-w-md mx-auto px-4 pt-4 pb-3 my-3 relative z-10">
+              <div className="text-7xl leading-none drop-shadow-[0_6px_8px_rgba(0,0,0,0.4)]">
+                {priv.awake
+                  ? (priv.cheesePresentWhenAwake === false ? '🍽️' : <span className="anim-wiggle inline-block">🧀</span>)
+                  : <span className="opacity-40">🧀</span>}
+              </div>
+              <div className="text-lg font-bold text-amber-100 drop-shadow mt-1">
+                {priv.awake
+                  ? (priv.cheesePresentWhenAwake === false
+                      ? <span className="text-red-300">💨 {d.tableGone}</span>
+                      : <>✨ on the table</>)
+                  : <span className="opacity-70">💤 {d.eyesClosed}</span>}
+              </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
               {pub.players.map(p => (
-                <div key={p.id} className={`rounded-2xl p-3 ${p.id === joined.playerId && priv.awake ? 'bg-amber-300 text-black ring-4 ring-amber-100' : 'bg-white/10 text-indigo-100'}`}>
-                  <div className="text-4xl relative inline-block">{mouseFor(p.id)}
+                <div key={p.id} className={`rounded-2xl p-3 relative z-10 ${p.id === joined.playerId && priv.awake ? 'bg-amber-300 text-black ring-4 ring-amber-100 awake-glow' : 'bg-white/10 text-indigo-100'}`}>
+                  <div className={`text-4xl relative inline-block w-14 h-14 rounded-full ${avatarBg(p.id)} items-center justify-center inline-flex`}>{mouseFor(p.id)}
                     {!(p.id === joined.playerId && priv.awake) && <span className="zzz absolute -top-2 -right-3 text-lg text-sky-300 font-bold">z</span>}
                   </div>
                   <div className="font-bold truncate text-sm">{p.name}</div>
@@ -256,13 +302,18 @@ export default function App() {
             <h2 className="text-2xl font-extrabold text-center">{d.day}</h2>
             <p className="text-center font-bold text-gray-600">{d.discuss} <span className="bg-amber-100 rounded-full px-3 py-0.5">⏱ {secsLeft(pub.discussionEndsAt, now)}s</span></p>
             <PlayerChips />
-            <div className="bg-amber-50 rounded-2xl p-3 h-56 overflow-y-auto text-left">
-              {pub.chat.map((m, i) => (
-                <div key={i} className="mb-1.5">
-                  <span className="font-extrabold">{mouseFor(m.fromId)} {m.fromName}</span>
-                  <span className="text-gray-400 text-xs ml-2">{new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                  <span className="ml-2">{m.text}</span>
-                </div>))}
+            <div className="bg-gradient-to-b from-amber-50 to-orange-50 rounded-2xl p-3 h-56 overflow-y-auto text-left space-y-2">
+              {pub.chat.map((m, i) => {
+                const mine = m.fromId === joined.playerId;
+                return (
+                  <div key={i} className={`flex ${mine ? 'justify-end' : 'justify-start'} anim-slide-up`}>
+                    <div className={`max-w-[80%] rounded-2xl px-3 py-2 shadow ${mine ? 'bg-amber-400 rounded-br-md' : 'bg-white rounded-bl-md'}`}>
+                      <div className="text-xs font-extrabold opacity-70">{mouseFor(m.fromId)} {m.fromName}
+                        <span className="font-normal ml-2">{new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
+                      <div className="leading-snug">{m.text}</div>
+                    </div>
+                  </div>);
+              })}
               <div ref={chatEndRef} />
             </div>
             <div className="flex gap-2 mt-3">
@@ -296,7 +347,8 @@ export default function App() {
         {/* ---------- RESULTS ---------- */}
         {phase === 'results' && (
           <div className={`${card} anim-pop text-center`}>
-            <div className="text-7xl">{pub.winner === 'sleepyheads' ? '🎉' : '😈'}</div>
+            <Confetti />
+            <div className="text-7xl anim-bob inline-block">{pub.winner === 'sleepyheads' ? '🎉' : '😈'}</div>
             <h2 className="text-3xl font-extrabold">{pub.winner === 'sleepyheads' ? d.sleepyWin : d.thiefWin}</h2>
             <p className="font-bold text-lg mt-1">{d.thiefWas(pub.players.find(p => p.id === pub.thiefId)?.name || '?')} {mouseFor(pub.thiefId || '')}</p>
             <PlayerChips />
