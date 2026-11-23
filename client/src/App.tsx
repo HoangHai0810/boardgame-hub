@@ -3,6 +3,7 @@ import { createNet, Net, Pub, Priv } from './net';
 import { t, Lang } from './i18n';
 import { HOUR_MS } from '../../shared/logic';
 import { sfx, ensureCtx } from './sound';
+import { joinVoice, VoiceHandle } from './voice';
 
 const MICE = ['🐭', '🐹', '🐰', '🦊', '🐱', '🐶', '🐷', '🐨'];
 const mouseFor = (id: string) => MICE[[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % MICE.length];
@@ -55,11 +56,19 @@ function HelpModal({ d, onClose }: { d: any; onClose: () => void }) {
   );
 }
 
-function TopBar({ d, lang, muted, onToggleMuted, onHelp, onToggleLang }: { d: any; lang: Lang; muted: boolean; onToggleMuted: () => void; onHelp: () => void; onToggleLang: () => void }) {
+function TopBar({ d, lang, muted, onToggleMuted, onHelp, onToggleLang, voice }: { d: any; lang: Lang; muted: boolean; onToggleMuted: () => void; onHelp: () => void; onToggleLang: () => void; voice?: { state: 'off' | 'busy' | 'on'; muted: boolean; onToggle: () => void; onLeave: () => void } }) {
   return (
     <div className="flex items-center justify-between gap-2 mb-2">
       <div className="font-extrabold text-white drop-shadow text-lg">🧀 {d.title}</div>
       <div className="flex gap-2">
+        {voice && (voice.state === 'off'
+          ? <button title={d.voiceJoin} className="bg-white/20 text-white rounded-full px-3 py-1" onClick={voice.onToggle}>🎤</button>
+          : voice.state === 'busy'
+            ? <button title={d.voiceJoin} className="bg-amber-400 text-white rounded-full px-3 py-1 anim-pulse-soft">🎤</button>
+            : <>
+              <button title={voice.muted ? d.voiceUnmute : d.voiceMute} className={`${voice.muted ? 'bg-red-500' : 'bg-green-500'} text-white rounded-full px-3 py-1`} onClick={voice.onToggle}>{voice.muted ? '🔇' : '🎤'}</button>
+              <button title={d.voiceLeave} className="bg-white/20 text-white rounded-full px-3 py-1" onClick={voice.onLeave}>✕</button>
+            </>)}
         <button aria-label="sound" className="bg-white/20 text-white rounded-full px-3 py-1" onClick={onToggleMuted}>{muted ? '🔇' : '🔊'}</button>
         <button className="bg-white/20 text-white rounded-full px-3 py-1 font-bold" onClick={onHelp}>❓ {d.help}</button>
         <button className="bg-white/20 text-white rounded-full px-3 py-1 font-bold" onClick={onToggleLang}>{lang === 'en' ? '🇻🇳 VI' : '🇬🇧 EN'}</button>
@@ -137,11 +146,12 @@ function ChatPanel({ chat, myId, d, height = 'h-48', onChat }: { chat: any[]; my
 // Module-level for the same reason as ChatPanel: a click landing while App
 // re-rendered used to hit a freshly remounted chip and die — voting felt
 // like it needed 2–3 clicks. Stable identity = one click, one vote.
-function PlayerChips({ players, myId, phase, d, roleLabel, onPick, pickable, onKick, markThiefId, markFollowerIds, iAmFollower, peeks }: {
+function PlayerChips({ players, myId, phase, d, roleLabel, onPick, pickable, onKick, markThiefId, markFollowerIds, iAmFollower, peeks, speakingIds }: {
   players: any[]; myId?: string; phase?: string; d: any;
   roleLabel: (role?: string | null, isFollower?: boolean) => string;
   onPick?: (id: string) => void; pickable?: (p: any) => boolean; onKick?: (id: string) => void;
   markThiefId?: string | null; markFollowerIds?: string[]; iAmFollower?: boolean; peeks?: { targetId: string; dice: number }[];
+  speakingIds?: Set<string>;
 }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-3">
@@ -152,6 +162,7 @@ function PlayerChips({ players, myId, phase, d, roleLabel, onPick, pickable, onK
           {p.id === markThiefId && <span className="absolute -top-2 -left-2 text-2xl anim-pop" title={d.thief}>😈</span>}
           {(markFollowerIds?.includes(p.id) || (p.id === myId && iAmFollower)) && <span className="absolute -top-2 -left-2 text-2xl anim-pop">🤝</span>}
           {peeks?.some(x => x.targetId === p.id) && <span className="absolute -top-2 -right-2 bg-sky-500 text-white text-xs font-extrabold rounded-full px-2 py-0.5 shadow">🎲{peeks!.find(x => x.targetId === p.id)!.dice}</span>}
+          {speakingIds?.has(p.id) && <span className="absolute -bottom-2 -left-2 bg-green-500 text-white text-xs rounded-full px-1.5 py-0.5 shadow anim-pulse-soft">🎙️</span>}
           <div className={`text-3xl anim-bob w-12 h-12 mx-auto rounded-full flex items-center justify-center ${avatarBg(p.id)} shadow-inner`}>{mouseFor(p.id)}</div>
           <div className="font-bold truncate">{p.name} {p.id === myId && <span className="text-amber-600">({d.you})</span>}</div>
           <div className="text-xs">{p.isHost && <span className="bg-purple-500 text-white rounded-full px-2 py-0.5">👑 {d.host}</span>} {!p.connected && <span className="text-red-500">• {d.offline}</span>}</div>
@@ -223,7 +234,7 @@ export default function App() {
       HOST_GONE: d.errHostGone, ROOM_FULL: d.errRoomFull, GAME_STARTED: d.errGameStarted,
       ROOM_NOT_FOUND: d.errRoomNotFound, HOST_UNREACHABLE: d.errHostUnreachable,
       NET_UNREACHABLE: d.errNetUnreachable, SERVER_UNREACHABLE: d.errServerUnreachable,
-      HOST_DISCONNECTED: d.errHostDisconnected, PEER_BLOCKED: d.errPeerBlocked,
+      HOST_DISCONNECTED: d.errHostDisconnected, PEER_BLOCKED: d.errPeerBlocked, VOICE_MIC: d.errVoiceMic,
       NEED_MORE_PLAYERS: d.errNeedMore, FAILED: d.errFailed, STATUS_CREATING: d.statusCreating,
     };
     return map[m] ?? m;
@@ -368,6 +379,42 @@ export default function App() {
   const flyKeyRef = useRef('');
   const [chatSheet, setChatSheet] = useState(false);
   const [connLost, setConnLost] = useState(false);
+  // Voice chat (v26): off -> busy (mic prompt + mesh join) -> on; the mic
+  // button then toggles mute, ✕ leaves the mesh. Speaking ids drive the
+  // 🎙️ badges on player cards.
+  const [voiceState, setVoiceState] = useState<'off' | 'busy' | 'on'>('off');
+  const [voiceMuted, setVoiceMuted] = useState(false);
+  const [speakingIds, setSpeakingIds] = useState<Set<string>>(new Set());
+  const voiceRef = useRef<VoiceHandle | null>(null);
+  const leaveVoice = () => {
+    try { voiceRef.current?.leave(); } catch { /* noop */ }
+    voiceRef.current = null;
+    setVoiceState('off'); setVoiceMuted(false); setSpeakingIds(new Set());
+  };
+  const toggleVoice = async () => {
+    if (voiceState === 'busy') return;
+    if (voiceState === 'on') {
+      const m = !voiceMuted;
+      setVoiceMuted(m);
+      voiceRef.current?.setMuted(m);
+      return;
+    }
+    if (!joined) return;
+    setVoiceState('busy');
+    try {
+      voiceRef.current = await joinVoice(joined.code, joined.playerId, {
+        onSpeaking: (ids) => setSpeakingIds(prev => (prev.size === ids.size && [...ids].every(x => prev.has(x)) ? prev : ids)),
+        onPeers: () => { /* presence is implicit in the speaking badges */ },
+      });
+      setVoiceMuted(false);
+      setVoiceState('on');
+    } catch {
+      setVoiceState('off');
+      setError('VOICE_MIC');
+    }
+  };
+  // Leaving the room (or being kicked / host gone) tears the mesh down.
+  useEffect(() => { if (!joined) leaveVoice(); }, [joined]);
   // Optimistic feedback: a tapped action shows its result IMMEDIATELY and
   // locks, instead of looking dead while the intent travels (the #1 live
   // complaint on a flaky connection). Authoritative state replaces it when
@@ -513,7 +560,7 @@ export default function App() {
   return (
     <div className={`h-dvh ${bg} p-3 sm:p-4 transition-colors duration-1000 flex flex-col overflow-hidden relative`}>
       <div className="max-w-3xl w-full mx-auto flex flex-col flex-1 min-h-0">
-        <TopBar d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })} />
+        <TopBar d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })}  voice={{ state: voiceState, muted: voiceMuted, onToggle: toggleVoice, onLeave: leaveVoice }}/>
         {connLost && joined && <div className="bg-red-500 text-white text-center font-bold text-sm rounded-full px-4 py-1 mb-2 anim-pulse-soft shadow">📡 {d.connLost}</div>}
         {error && <div className="bg-red-100 border border-red-400 text-red-700 rounded-2xl px-4 py-2 mb-3 font-bold">{localizeMsg(error)}
           <button className="float-right" onClick={() => setError('')}>✕</button></div>}
@@ -544,7 +591,7 @@ export default function App() {
               }}>{copied ? '✅ ' + d.copied : '🔗 ' + d.copyLink}</button>
               <span className="font-bold">{d.players}: {pub.players.length}/8</span>
             </div>
-            <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} onKick={isHost ? (id) => getNet().kick(id) : undefined} />
+            <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} onKick={isHost ? (id) => getNet().kick(id) : undefined} speakingIds={speakingIds} />
             <div className="flex items-center justify-center gap-2 mt-1 flex-wrap">
               <span className="font-bold text-gray-500">💬 {d.discussionTime}:</span>
               {isHost
@@ -640,6 +687,7 @@ export default function App() {
                   {priv.stealById === p.id && <span className="absolute -top-2 -left-2 text-2xl anim-pop">🧀</span>}
                   {(priv.knownThiefId === p.id || priv.witnessedThiefId === p.id) && <span className="absolute -bottom-2 -right-2 text-2xl anim-pop">😈</span>}
                   {priv.peeks?.some(x => x.targetId === p.id) && <span className="absolute -top-2 -right-2 bg-sky-500 text-white text-xs font-extrabold rounded-full px-2 py-0.5 shadow z-20">🎲{priv.peeks.find(x => x.targetId === p.id)!.dice}</span>}
+                  {speakingIds.has(p.id) && <span className="absolute -bottom-2 -left-2 bg-green-500 text-white text-xs rounded-full px-1.5 py-0.5 shadow z-20 anim-pulse-soft">🎙️</span>}
                 </div>);
               })}
             </div>
@@ -722,7 +770,7 @@ export default function App() {
               <p className="bg-emerald-50 ring-2 ring-emerald-300 rounded-2xl px-4 py-2 mt-3 text-center font-extrabold text-emerald-700 anim-pop">🤝 {d.becameFollower}</p>)}
             {priv?.witnessedThiefId && (
               <p className="text-center font-extrabold text-red-500 mt-3">{d.sawThief(nameOf(priv.witnessedThiefId))}</p>)}
-            <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} markThiefId={priv?.knownThiefId || priv?.witnessedThiefId || null} markFollowerIds={priv?.knownFollowerIds} iAmFollower={priv?.isFollower} peeks={priv?.peeks} />
+            <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} markThiefId={priv?.knownThiefId || priv?.witnessedThiefId || null} markFollowerIds={priv?.knownFollowerIds} iAmFollower={priv?.isFollower} peeks={priv?.peeks} speakingIds={speakingIds} />
             <ChatPanel chat={pub.chat} myId={joined.playerId} d={d} height="flex" onChat={t => getNet().chat(t)} />
             <div className="mt-3 text-center">
               {pub.dayReady?.includes(joined.playerId) || optReadyVote
@@ -742,7 +790,7 @@ export default function App() {
             <p className="font-bold mt-1">{pub.players.filter(p => p.hasVoted).length}/{pub.players.length} voted</p>
             {priv?.myVote || optVote
               ? <p className="mt-4 font-extrabold text-green-600 text-lg">{d.votedFor(pub.players.find(p => p.id === (priv?.myVote || optVote))?.name || '?')}</p>
-              : <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} markThiefId={priv?.knownThiefId || priv?.witnessedThiefId || null} markFollowerIds={priv?.knownFollowerIds} iAmFollower={priv?.isFollower} peeks={priv?.peeks} onPick={(id) => { setOptVote(id); getNet().vote(id); }} pickable={(p) => p.id !== joined.playerId} />}
+              : <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} markThiefId={priv?.knownThiefId || priv?.witnessedThiefId || null} markFollowerIds={priv?.knownFollowerIds} iAmFollower={priv?.isFollower} peeks={priv?.peeks} speakingIds={speakingIds} onPick={(id) => { setOptVote(id); getNet().vote(id); }} pickable={(p) => p.id !== joined.playerId} />}
           </div>
         )}
 
@@ -755,7 +803,7 @@ export default function App() {
             <p className="font-bold text-lg mt-1">{d.thiefWas(pub.players.find(p => p.id === pub.thiefId)?.name || '?')} {mouseFor(pub.thiefId || '')}</p>
             {pub.players.some(p => (p as any).role === 'fallmouse') && (
               <p className="font-bold text-lg text-violet-600">{d.fallWas(pub.players.find(p => (p as any).role === 'fallmouse')?.name || '?')} {mouseFor(pub.players.find(p => (p as any).role === 'fallmouse')?.id || '')}</p>)}
-            <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} />
+            <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} speakingIds={speakingIds} />
             <div className="text-left max-w-sm mx-auto bg-amber-50 rounded-2xl p-3">
               {pub.voteCounts?.map(v => (
                 <div key={v.id} className="flex justify-between font-bold">
