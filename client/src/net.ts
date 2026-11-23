@@ -37,6 +37,20 @@ export function getClientId(): string {
 }
 const cleanName = (n: string) => n.replace(/[<>]/g, '').trim().slice(0, 20) || 'Mouse';
 const PEER_PREFIX = 'cheesethief-v1-';
+// STUN alone fails on symmetric-NAT / restricted networks (the WebRTC data
+// channel never opens and joining hangs forever). Public TURN relays fix
+// most of those cases by relaying the data channel over the TURN server.
+const PEER_OPTS = {
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+    ],
+  },
+};
 
 /* ---------------- Authoritative engine (host peer) ---------------- */
 class HostEngine {
@@ -218,7 +232,7 @@ export function createPeerNet(h: Handlers): Net {
       myName = cleanName(name); isHost = true;
       roomCode = makeRoomCode();
       h.onStatus('Creating room…');
-      peer = new Peer(PEER_PREFIX + roomCode);
+      peer = new Peer(PEER_PREFIX + roomCode, PEER_OPTS);
       peer.on('open', () => {
         engine = new HostEngine(roomCode,
           (pid, _s, priv) => sendToPlayer(pid, { type: 'private', data: priv }),
@@ -238,10 +252,15 @@ export function createPeerNet(h: Handlers): Net {
       myName = cleanName(name); isHost = false;
       roomCode = code.toUpperCase().trim();
       h.onStatus('Connecting to room ' + roomCode + '…');
-      peer = new Peer();
+      peer = new Peer(PEER_OPTS);
+      // Never hang on "Connecting…" forever: if the data channel has not
+      // opened in 30s, surface a real error instead.
+      const joinTimer = setTimeout(() => {
+        if (!hostConn?.open) h.onError('Could not open a connection to the host (network blocked WebRTC). Check your network/VPN and try again.');
+      }, 30000);
       peer.on('open', () => {
         hostConn = peer!.connect(PEER_PREFIX + roomCode, { reliable: true });
-        hostConn.on('open', () => hostConn!.send({ type: 'join', clientId: myId, name: myName }));
+        hostConn.on('open', () => { clearTimeout(joinTimer); hostConn!.send({ type: 'join', clientId: myId, name: myName }); });
         hostConn.on('data', handleHostMsg);
         hostConn.on('close', () => h.onError('Disconnected from the host. Try rejoining with the same room code.'));
       });
