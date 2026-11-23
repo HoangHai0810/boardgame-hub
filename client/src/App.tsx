@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createNet, Net, Pub, Priv } from './net';
 import { t, Lang } from './i18n';
 import { HOUR_MS } from '../../shared/logic';
+import { sfx, ensureCtx } from './sound';
 
 const MICE = ['🐭', '🐹', '🐰', '🦊', '🐱', '🐶', '🐷', '🐨'];
 const mouseFor = (id: string) => MICE[[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % MICE.length];
@@ -50,7 +51,8 @@ export default function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [chatText, setChatText] = useState('');
   const [copied, setCopied] = useState(false);
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(() => localStorage.getItem('ct_muted') === '1');
+  const toggleMuted = () => setMuted(m => { localStorage.setItem('ct_muted', m ? '0' : '1'); return !m; });
   const netRef = useRef<Net | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const now = useNow();
@@ -72,6 +74,44 @@ export default function App() {
   };
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [pub?.chat?.length]);
+
+  // Sound (Cycle 2): unlock the AudioContext on the first user gesture —
+  // browsers refuse audio before any interaction with the page.
+  useEffect(() => {
+    const unlock = () => ensureCtx();
+    window.addEventListener('pointerdown', unlock);
+    return () => window.removeEventListener('pointerdown', unlock);
+  }, []);
+
+  // Event cues: watch state transitions and play the matching sound.
+  const sfxPrev = useRef<{ phase?: string; hour?: number; acted?: boolean; myVote?: string | null; chatLen?: number; init: boolean }>({ init: false });
+  useEffect(() => {
+    const prev = sfxPrev.current;
+    if (!pub) return;
+    if (!prev.init) { // first observed state: record, never play
+      sfxPrev.current = { phase: pub.phase, hour: pub.currentHour, acted: priv?.hasActedThisHour, myVote: priv?.myVote, chatLen: pub.chat.length, init: true };
+      return;
+    }
+    if (pub.phase === 'night' && (prev.phase !== 'night' || prev.hour !== pub.currentHour)) {
+      sfx('hour', muted);
+      if (priv?.awake) sfx('wake', muted);
+    }
+    if (priv?.hasActedThisHour && !prev.acted && priv.role === 'thief') sfx('steal', muted);
+    if (pub.phase === 'day' && prev.phase !== 'day') sfx('morning', muted);
+    if (pub.phase === 'voting' && priv?.myVote && !prev.myVote) sfx('vote', muted);
+    if (pub.phase === 'results' && prev.phase !== 'results') {
+      const w = pub.winner;
+      const iWon = w === 'fallmouse' ? priv?.role === 'fallmouse'
+        : w === 'thief' ? (priv?.role === 'thief' || !!priv?.isFollower)
+        : w === 'sleepyheads' ? (!!priv && priv.role !== 'thief' && !priv.isFollower) : false;
+      sfx(iWon ? 'win' : 'lose', muted);
+    }
+    if (pub.chat.length > (prev.chatLen ?? 0) && (pub.phase === 'lobby' || pub.phase === 'day' || pub.phase === 'results')) {
+      const last = pub.chat[pub.chat.length - 1];
+      if (last && last.fromId !== joined?.playerId) sfx('pop', muted);
+    }
+    sfxPrev.current = { phase: pub.phase, hour: pub.currentHour, acted: priv?.hasActedThisHour, myVote: priv?.myVote, chatLen: pub.chat.length, init: true };
+  }, [pub, priv, muted, joined]);
   const me = useMemo(() => pub?.players.find(p => p.id === joined?.playerId), [pub, joined]);
   const isHost = joined?.isHost || me?.isHost;
   const phase = pub?.phase;
@@ -95,7 +135,7 @@ export default function App() {
     <div className="flex items-center justify-between gap-2 mb-3">
       <div className="font-extrabold text-white drop-shadow text-lg">🧀 {d.title}</div>
       <div className="flex gap-2">
-        <button aria-label="sound" className="bg-white/20 text-white rounded-full px-3 py-1" onClick={() => setMuted(m => !m)}>{muted ? '🔇' : '🔊'}</button>
+        <button aria-label="sound" className="bg-white/20 text-white rounded-full px-3 py-1" onClick={toggleMuted}>{muted ? '🔇' : '🔊'}</button>
         <button className="bg-white/20 text-white rounded-full px-3 py-1 font-bold" onClick={() => setShowHelp(true)}>❓ {d.help}</button>
         <button className="bg-white/20 text-white rounded-full px-3 py-1 font-bold" onClick={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })}>{lang === 'en' ? '🇻🇳 VI' : '🇬🇧 EN'}</button>
       </div>
