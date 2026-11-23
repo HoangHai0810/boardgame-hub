@@ -91,7 +91,7 @@ export function createMqttNet(h: Handlers): Net {
     h.onStatus('Creating room…');
     myKeys = await generateKeys();
     client = await connect({ clientId: 'ct-h-' + myId + '-' + Math.random().toString(36).slice(2, 7),
-      will: { topic: topic(roomCode, 'pub'), payload: Buffer.from(JSON.stringify({ type: 'hostGone' })), retain: true, qos: 1 } as any });
+      will: { topic: topic(roomCode, 'pub'), payload: JSON.stringify({ type: 'hostGone' }), retain: true, qos: 1 } as any });
     engine = new HostEngine(roomCode, {
       sendPub: (pub) => {
         h.onState(pub); // host's own UI
@@ -144,7 +144,7 @@ export function createMqttNet(h: Handlers): Net {
       if (!joinedFired) h.onError('Could not reach the host. Check the room code and that the host is still online, then try again.');
     }, 25000);
     client = await connect({ clientId: 'ct-c-' + myId + '-' + Math.random().toString(36).slice(2, 7),
-      will: { topic: topic(roomCode, 'in'), payload: Buffer.from(JSON.stringify({ type: 'intent', playerId: myId, action: '__gone' })), qos: 1 } as any });
+      will: { topic: topic(roomCode, 'in'), payload: JSON.stringify({ type: 'intent', playerId: myId, action: '__gone' }), qos: 1 } as any });
     client.subscribe(topic(roomCode, 'pub'), { qos: 1 });
     client.subscribe(topic(roomCode, 'p/' + myId), { qos: 1 });
     client.on('message', async (t, payload) => {
