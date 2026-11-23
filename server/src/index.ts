@@ -8,7 +8,7 @@ import { Server, Socket } from 'socket.io';
 import {
   GameState, Player, createGame, assignRolesAndDice, publicState, privateState,
   doSteal, doInspect, castVote, resolveVotes, makeRoomCode,
-  chooseFollower, autoResolveFollowerChoice, recruitCount, followers,
+  chooseFollower, autoResolveFollowerChoice, recruitCount, followers, recordHour,
   MIN_PLAYERS, MAX_PLAYERS, HOUR_MS, RECRUIT_MS, DISCUSSION_MS, VOTE_MS,
 } from '../../shared/logic.js';
 
@@ -68,6 +68,7 @@ function startNight(room: Room) {
     }
     s.currentHour = h;
     s.hourEndsAt = Date.now() + HOUR;
+    recordHour(s);
     s.players.forEach(p => { p.hasActedThisHour = false; });
     broadcast(room);
     later(room, HOUR, () => stepHour(h + 1));
