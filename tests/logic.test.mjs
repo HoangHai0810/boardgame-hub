@@ -1,7 +1,7 @@
 // Logic tests run against the TypeScript source transpiled on the fly by esbuild (bundled with vite install) —
 // fallback: we compile with tsc in the test runner script. This file imports the compiled JS.
 import assert from 'node:assert';
-import { createGame, assignRolesAndDice, canInspect, doInspect, doSteal, castVote, resolveVotes, publicState, privateState, MIN_PLAYERS, MAX_PLAYERS, chooseFollower, followerKnowledge, recruitCount, followers } from '../shared/logic.mjs';
+import { createGame, assignRolesAndDice, canInspect, doInspect, doSteal, castVote, resolveVotes, publicState, privateState, MIN_PLAYERS, MAX_PLAYERS, chooseFollower, followerKnowledge, recruitCount, followers, recordHour } from '../shared/logic.mjs';
 
 let passed = 0;
 const t = (name, fn) => { fn(); passed++; console.log('PASS', name); };
@@ -300,6 +300,45 @@ t('scoreboard: publicState exposes wins', () => {
   const pub = publicState(g);
   assert.equal(pub.players[0].wins, 3);
   assert.equal(pub.players[1].wins, 0);
+});
+
+/* ---------------- Night recap (Cycle 4) ---------------- */
+
+t('recap: night events recorded in order, hidden until results', () => {
+  // thief p0 dice3, witness p1 dice3, inspector p2 dice5 (lone), p3 dice1, p4 dice2
+  const g = gameWith(5, [0.0, 0.4, 0.4, 0.7, 0.0, 0.2]);
+  const thief = g.players[0];
+  g.phase = 'night'; g.currentHour = 3; recordHour(g);
+  assert.equal(doSteal(g, thief), true);
+  g.currentHour = 5; recordHour(g);
+  assert.equal(doInspect(g, g.players[2], 'p3'), 1);
+  // hidden before results
+  const pubNight = publicState(g);
+  assert.equal(pubNight.recap, undefined);
+  assert.ok(!JSON.stringify(pubNight).includes('"seen"'));
+  // finish the round
+  g.phase = 'voting';
+  g.players.forEach(p => castVote(g, p, p === thief ? 'p1' : 'p0'));
+  resolveVotes(g);
+  const pubRes = publicState(g);
+  assert.ok(Array.isArray(pubRes.recap));
+  assert.deepEqual(pubRes.recap.map(e => e.kind), ['wake', 'steal', 'witness', 'recruit', 'wake', 'inspect']);
+  assert.deepEqual(pubRes.recap[0].ids, ['p0', 'p1']);
+  assert.equal(pubRes.recap[5].seen, 1);
+  assert.equal(pubRes.recap[5].targetId, 'p3');
+  // next round setup clears the recap
+  assignRolesAndDice(g, seq([0.0, 0.1, 0.3, 0.5, 0.9, 0.7]));
+  assert.deepEqual(g.recap, []);
+});
+
+t('recap: recruit-phase picks are marked afterNight', () => {
+  const g = gameWith(6, [0.0, 0.2, 0.0, 0.2, 0.4, 0.6, 0.8, 0.15]);
+  const thief = g.players.find(p => p.role === 'thief');
+  g.phase = 'recruit'; g.currentHour = 6;
+  const target = g.players.find(p => p.role === 'sleepyhead');
+  chooseFollower(g, thief, target.id);
+  const ev = g.recap.find(e => e.kind === 'recruit');
+  assert.ok(ev && ev.afterNight === true && ev.ids[0] === target.id);
 });
 
 console.log(`\n${passed} logic tests passed`);
