@@ -179,7 +179,9 @@ export function autoResolveFollowerChoice(state: GameState, rng: () => number = 
  *     the steal know who the follower is;
  *   - 6p: follower and thief know each other;
  *   - 7p: the 2 followers know EACH OTHER but NOT the thief;
- *   - 8p: thief and both followers all know each other. */
+ *   - 8p: HOUSE RULE (PO decision 2026-11-23, deviating from the official
+ *     book where all three know each other): same as 7p — the followers
+ *     know each other but NOT the thief. The thief still knows them. */
 export function followerKnowledge(state: GameState, player: Player): { knownThiefId: string | null; knownFollowerIds: string[] } {
   const n = state.players.length;
   const thief = thiefOf(state);
@@ -190,7 +192,7 @@ export function followerKnowledge(state: GameState, player: Player): { knownThie
   if (player.role === 'thief') {
     knownFollowerIds = fols.map(f => f.id);
   } else if (player.isFollower) {
-    if (n === 7) knownFollowerIds = fols.filter(f => f.id !== player.id).map(f => f.id);
+    if (n === 7 || n === 8) knownFollowerIds = fols.filter(f => f.id !== player.id).map(f => f.id);
     else { knownThiefId = thief.id; knownFollowerIds = fols.filter(f => f.id !== player.id).map(f => f.id); }
   } else if (n === 5 && state.stolenWitnessIds.includes(player.id)) {
     knownFollowerIds = fols.map(f => f.id);
