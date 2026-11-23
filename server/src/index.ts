@@ -116,7 +116,7 @@ io.on('connection', (socket: Socket) => {
     const state = createGame(code);
     room = { state, timers: [], sockets: new Map() };
     rooms.set(code, room);
-    player = { id: String(clientId), name: cleanName(name), isHost: true, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null };
+    player = { id: String(clientId), name: cleanName(name), isHost: true, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, wins: 0 };
     state.players.push(player);
     room.sockets.set(player.id, socket.id);
     socket.join(code);
@@ -138,7 +138,7 @@ io.on('connection', (socket: Socket) => {
     }
     if (r.state.phase !== 'lobby') return cb?.({ ok: false, error: 'Game already started' });
     if (r.state.players.length >= MAX_PLAYERS) return cb?.({ ok: false, error: 'Room is full (8)' });
-    player = { id: String(clientId), name: cleanName(name), isHost: false, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null };
+    player = { id: String(clientId), name: cleanName(name), isHost: false, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, wins: 0 };
     r.state.players.push(player);
     r.sockets.set(player.id, socket.id);
     socket.join(r.state.roomCode);
