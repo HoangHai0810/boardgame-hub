@@ -8,7 +8,8 @@ import { Server, Socket } from 'socket.io';
 import {
   GameState, Player, createGame, assignRolesAndDice, publicState, privateState,
   doSteal, doInspect, castVote, resolveVotes, makeRoomCode,
-  MIN_PLAYERS, MAX_PLAYERS, HOUR_MS, DISCUSSION_MS, VOTE_MS,
+  chooseFollower, autoResolveFollowerChoice, recruitCount, followers,
+  MIN_PLAYERS, MAX_PLAYERS, HOUR_MS, RECRUIT_MS, DISCUSSION_MS, VOTE_MS,
 } from '../../shared/logic.js';
 
 const app = express();
@@ -32,17 +33,37 @@ function broadcast(room: Room) {
   }
 }
 
+function startDay(room: Room) {
+  const s = room.state;
+  s.phase = 'day';
+  s.dayReady = [];
+  s.discussionEndsAt = Date.now() + DISC;
+  broadcast(room);
+  later(room, DISC, () => { if (s.phase === 'day') startVoting(room); });
+}
+
+function startRecruit(room: Room) {
+  const s = room.state;
+  s.phase = 'recruit';
+  s.recruitEndsAt = Date.now() + RECRUIT;
+  broadcast(room);
+  later(room, RECRUIT, () => {
+    if (s.phase !== 'recruit') return;
+    autoResolveFollowerChoice(s); // thief idled: random recruits
+    startDay(room);
+  });
+}
+
 function startNight(room: Room) {
   const s = room.state;
   s.phase = 'night';
   const stepHour = (h: number) => {
     if (s.phase !== 'night') return;
-    if (h > 6) { // dawn
-      s.phase = 'day';
-      s.dayReady = [];
-      s.discussionEndsAt = Date.now() + DISC;
-      broadcast(room);
-      later(room, DISC, () => { if (s.phase === 'day') startVoting(room); });
+    // Previous hour ended: resolve an unmade 5p witness choice for the thief.
+    autoResolveFollowerChoice(s);
+    if (h > 6) { // dawn — via the recruit phase first at 6–8 players
+      if (recruitCount(s) > 0) startRecruit(room);
+      else startDay(room);
       return;
     }
     s.currentHour = h;
@@ -166,6 +187,12 @@ io.on('connection', (socket: Socket) => {
     if (!guard()) return;
     if (kind === 'steal') doSteal(room!.state, player!);
     else if (kind === 'inspect' && targetId) doInspect(room!.state, player!, targetId);
+    else if (kind === 'chooseFollower' && targetId) {
+      const s = room!.state;
+      if (chooseFollower(s, player!, targetId) && s.phase === 'recruit' && followers(s).length >= recruitCount(s)) {
+        clearTimers(room!); startDay(room!); return;
+      }
+    }
     broadcast(room!); // public state contains no trace of who acted
   });
 
@@ -198,7 +225,7 @@ io.on('connection', (socket: Socket) => {
     if (room!.state.phase !== 'results') return;
     room!.state.round++;
     room!.state.phase = 'lobby';
-    room!.state.players.forEach(p => { p.role = undefined; p.dice = undefined; p.vote = null; p.hasVoted = false; p.inspectedDice = null; });
+    room!.state.players.forEach(p => { p.role = undefined; p.dice = undefined; p.isFollower = false; p.vote = null; p.hasVoted = false; p.inspectedDice = null; });
     broadcast(room!);
   });
 
@@ -229,6 +256,7 @@ setInterval(() => {
 
 // Test hooks: allow fast timers via env (production defaults come from shared/logic).
 const HOUR = Number(process.env.CT_HOUR_MS || HOUR_MS);
+const RECRUIT = Number(process.env.CT_RECRUIT_MS || RECRUIT_MS);
 const DISC = Number(process.env.CT_DISCUSSION_MS || DISCUSSION_MS);
 const VOTE = Number(process.env.CT_VOTE_MS || VOTE_MS);
 const PORT = Number(process.env.PORT || 3001);
