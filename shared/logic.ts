@@ -19,6 +19,7 @@ export interface Player {
   inspectedDice?: { targetId: string; dice: number } | null; // private, never public
   vote?: string | null; // private until results
   hasVoted: boolean;
+  wins: number; // session scoreboard: rounds won in this room (public, not a secret)
 }
 
 export interface ChatMsg { fromId: string; fromName: string; text: string; ts: number; }
@@ -249,6 +250,13 @@ export function resolveVotes(state: GameState): VoteTally {
   const max = Math.max(0, ...Object.values(counts));
   const topIds = Object.keys(counts).filter(id => counts[id] === max && max > 0);
   const thief = state.players.find(p => p.role === 'thief')!;
+  // Session scoreboard: score exactly once per round — a second call on an
+  // already-resolved state returns the tally without re-scoring.
+  const alreadyResolved = state.winner !== null;
+  const score = (winners: Player[]) => {
+    if (alreadyResolved) return;
+    winners.forEach(p => { p.wins = (p.wins ?? 0) + 1; });
+  };
   // Fall Mouse (official variant): if the Fall Mouse is among the top-voted,
   // they win ALONE — even as a Follower, even tied with the thief.
   const fall = state.players.find(p => p.role === 'fallmouse');
@@ -256,6 +264,7 @@ export function resolveVotes(state: GameState): VoteTally {
     state.winner = 'fallmouse';
     state.thiefId = thief.id;
     state.phase = 'results';
+    score([fall]);
     return { counts, topIds, caught: false };
   }
   // Tie rule (per task spec): tie involving the thief => thief caught.
@@ -263,6 +272,9 @@ export function resolveVotes(state: GameState): VoteTally {
   state.winner = caught ? 'sleepyheads' : 'thief';
   state.thiefId = thief.id;
   state.phase = 'results';
+  score(caught
+    ? state.players.filter(p => isVillager(p) && !p.isFollower)
+    : state.players.filter(p => p.role === 'thief' || !!p.isFollower));
   return { counts, topIds, caught };
 }
 
@@ -286,7 +298,7 @@ export function publicState(state: GameState, forPlayerId?: string) {
     dayReady: state.dayReady,
     players: state.players.map(p => ({
       id: p.id, name: p.name, isHost: p.isHost, connected: p.connected,
-      hasVoted: p.hasVoted,
+      hasVoted: p.hasVoted, wins: p.wins ?? 0,
       ...(inResults ? { role: p.role, dice: p.dice, vote: p.vote, isFollower: !!p.isFollower } : {}),
     })),
     chat: state.chat.slice(-100),
