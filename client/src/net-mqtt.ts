@@ -14,15 +14,15 @@ import type { Net, Handlers } from './net';
 import { getClientId } from './util';
 
 // Public brokers are tried IN PARALLEL and the first successful connection
-// wins (v11): the old sequential chain wasted 9s on the retired Eclipse
-// broker (mqtt.eclipseprojects.io no longer answers) before ever reaching a
-// live one, and a single blocked port killed the whole attempt. EMQX is
-// listed first among equals; HiveMQ and EMQX-CN add independent networks.
+// wins (v11): the old sequential chain wasted 9s on a dead broker before
+// ever reaching a live one, and a single blocked port killed the whole
+// attempt. EMQX is listed first among equals; HiveMQ and EMQX-CN add
+// independent networks. (The retired Eclipse broker was removed from the
+// list in the Cycle 10 cleanup — it no longer answers at all.)
 const BROKERS = [
   'wss://broker.emqx.io:8084/mqtt',
   'wss://broker.hivemq.com:8884/mqtt',
   'wss://broker-cn.emqx.io:8084/mqtt',
-  'wss://mqtt.eclipseprojects.io:443/mqtt',
   'wss://test.mosquitto.org:8081',
 ];
 const topic = (code: string, part: string) => `ct1/${code}/${part}`;
