@@ -197,7 +197,7 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('chat', ({ text }: { text: string }) => {
-    if (!guard() || room!.state.phase !== 'day') return;
+    if (!guard() || (room!.state.phase !== 'lobby' && room!.state.phase !== 'day' && room!.state.phase !== 'results')) return;
     const now = Date.now();
     if (now - (lastChat.get(player!.id) ?? 0) < 400) return; // spam guard
     lastChat.set(player!.id, now);
