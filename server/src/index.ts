@@ -128,7 +128,7 @@ io.on('connection', (socket: Socket) => {
 
   socket.on('joinRoom', ({ code, name, clientId }: { code: string; name: string; clientId: string }, cb: (r: unknown) => void) => {
     const r = rooms.get(String(code || '').toUpperCase().trim());
-    if (!r) return cb?.({ ok: false, error: 'Room not found' });
+    if (!r) return cb?.({ ok: false, error: 'ROOM_NOT_FOUND' });
     room = r;
     const existing = r.state.players.find(p => p.id === String(clientId));
     if (existing) { // reconnection / session recovery
@@ -138,8 +138,8 @@ io.on('connection', (socket: Socket) => {
       cb?.({ ok: true, code: r.state.roomCode, playerId: player.id, rejoined: true });
       broadcast(r); return;
     }
-    if (r.state.phase !== 'lobby') return cb?.({ ok: false, error: 'Game already started' });
-    if (r.state.players.length >= MAX_PLAYERS) return cb?.({ ok: false, error: 'Room is full (8)' });
+    if (r.state.phase !== 'lobby') return cb?.({ ok: false, error: 'GAME_STARTED' });
+    if (r.state.players.length >= MAX_PLAYERS) return cb?.({ ok: false, error: 'ROOM_FULL' });
     player = { id: String(clientId), name: cleanName(name), isHost: false, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, wins: 0 };
     r.state.players.push(player);
     r.sockets.set(player.id, socket.id);
@@ -183,7 +183,7 @@ io.on('connection', (socket: Socket) => {
     if (!guard() || !player!.isHost) return;
     if (room!.state.phase !== 'lobby' && room!.state.phase !== 'results') return;
     if (room!.state.players.filter(p => p.connected).length < MIN_PLAYERS) {
-      socket.emit('errorMsg', `Need at least ${MIN_PLAYERS} players`);
+      socket.emit('errorMsg', 'NEED_MORE_PLAYERS');
       return;
     }
     if (room!.state.phase === 'results') room!.state.round++;
