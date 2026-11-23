@@ -34,11 +34,13 @@ export interface GameState {
   winner: 'sleepyheads' | 'thief' | null;
   thiefId: string | null; // set only at results
   round: number;
+  revealReady: string[]; // playerIds who confirmed their role card
+  dayReady: string[]; // playerIds who voted to end discussion early
 }
 
 export const MIN_PLAYERS = 4;
 export const MAX_PLAYERS = 8;
-export const HOUR_MS = 9000;
+export const HOUR_MS = 12000;
 export const DISCUSSION_MS = 120000;
 export const VOTE_MS = 60000;
 
@@ -54,7 +56,7 @@ export function createGame(roomCode: string): GameState {
     roomCode, phase: 'lobby', players: [], currentHour: 0,
     cheeseStolen: false, cheeseStolenAtHour: null, chat: [],
     discussionEndsAt: null, voteEndsAt: null, hourEndsAt: null,
-    winner: null, thiefId: null, round: 1,
+    winner: null, thiefId: null, round: 1, revealReady: [], dayReady: [],
   };
 }
 
@@ -74,6 +76,8 @@ export function assignRolesAndDice(state: GameState, rng: () => number = Math.ra
   state.winner = null;
   state.thiefId = null;
   state.chat = [];
+  state.revealReady = [];
+  state.dayReady = [];
 }
 
 /** Players (any role) whose dice equals the current hour. */
@@ -151,6 +155,8 @@ export function publicState(state: GameState, forPlayerId?: string) {
     voteEndsAt: state.voteEndsAt,
     hourEndsAt: state.hourEndsAt,
     winner: state.winner,
+    revealReady: state.revealReady,
+    dayReady: state.dayReady,
     players: state.players.map(p => ({
       id: p.id, name: p.name, isHost: p.isHost, connected: p.connected,
       hasVoted: p.hasVoted,
