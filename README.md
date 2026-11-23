@@ -6,7 +6,7 @@ A real-time multiplayer social deduction game for **4–8 players**, inspired by
 
 ## How to play (1 minute)
 1. Everyone secretly gets a **role** and a **dice number (1–6)**. Exactly one player is the Thief.
-2. **Night:** hours 1–6 are called in order (9s each). Players whose dice matches wake up.
+2. **Night:** hours 1–6 are called in order (12s each). Players whose dice matches wake up.
    - The **Thief** steals the cheese on their hour.
    - A **Sleepyhead who wakes up alone** may peek at exactly one other player's dice. If several wake together, no peeking — but they see each other awake (and whether the cheese is already gone).
 3. **Day:** the cheese is gone! Discuss in the real-time chat (2 min, host can end early).
@@ -25,7 +25,7 @@ A real-time multiplayer social deduction game for **4–8 players**, inspired by
 ## Digital adaptation (deliberate, documented)
 The public site is hosted on static GitHub Pages, which cannot run a Socket.IO server. So in the default public mode the **host's browser runs the exact same authoritative engine** (`shared/logic.ts`) as a host-authoritative peer over WebRTC (PeerJS Cloud signalling): the host assigns roles/dice, validates every action, and sends each player's secrets **only over that player's own encrypted data channel** — clients cannot read each other's private state from any broadcast, because broadcasts only ever contain `publicState()`. Consequences: the host must stay online for the room's life (host disconnect closes the room, and the UI says so), and session recovery works by rejoining with the same browser session. For fully independent hosting, deploy `server/` anywhere Node runs and open the client with `?server=`.
 
-Other adaptations vs. the physical game: fixed timers instead of a narrator (night hour 9s, discussion 120s, voting 60s); the physical "followers" variant roles are not included in this MVP; wakers privately see whether the cheese is already gone when they wake (equivalent to opening your eyes at the table).
+Other adaptations vs. the physical game: fixed timers instead of a narrator (night hour 12s, discussion 120s, voting 60s); the physical "followers" variant roles are not included in this MVP; wakers privately see whether the cheese is already gone when they wake (equivalent to opening your eyes at the table).
 
 ## Tests
 - `tests/logic.test.mjs` — 13 rules tests (role/dice distribution, secret leakage, lone-waker inspection, multi-waker block, steal timing, vote integrity, all tie cases). Run: compile `shared/logic.ts` to `shared/logic.mjs` with tsc, then `node tests/logic.test.mjs`.
