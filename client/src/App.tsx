@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createNet, Net, Pub, Priv } from './net';
 import { t, Lang } from './i18n';
+import { HOUR_MS } from '../../shared/logic';
 
 const MICE = ['🐭', '🐹', '🐰', '🦊', '🐱', '🐶', '🐷', '🐨'];
 const mouseFor = (id: string) => MICE[[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % MICE.length];
@@ -12,9 +13,10 @@ export function DiceFace({ value, size = 96 }: { value: number; size?: number })
   const pips = PIPS[value] || [];
   return (
     <div className="dice-face" style={{ width: size, height: size }} aria-label={`dice ${value}`}>
-      {Array.from({ length: 9 }, (_, i) => pips.includes(i + 1)
-        ? <div key={i} className="dice-pip" />
-        : <div key={i} />)}
+      {pips.map(cell => {
+        const row = Math.ceil(cell / 3), col = ((cell - 1) % 3) + 1;
+        return <div key={cell} className="dice-pip" style={{ left: `${(col - 1) * 28 + 12}%`, top: `${(row - 1) * 28 + 12}%` }} />;
+      })}
     </div>
   );
 }
@@ -36,7 +38,7 @@ function useNow(step = 250) {
 const secsLeft = (endsAt: number | null, now: number) => endsAt ? Math.max(0, Math.ceil((endsAt - now) / 1000)) : null;
 
 export default function App() {
-  const [lang, setLang] = useState<Lang>('en');
+  const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('ct_lang') as Lang) || 'vi');
   const d = t(lang);
   const [name, setName] = useState(() => localStorage.getItem('ct_name') || '');
   const [code, setCode] = useState(() => new URLSearchParams(location.search).get('room') || '');
@@ -95,7 +97,7 @@ export default function App() {
       <div className="flex gap-2">
         <button aria-label="sound" className="bg-white/20 text-white rounded-full px-3 py-1" onClick={() => setMuted(m => !m)}>{muted ? '🔇' : '🔊'}</button>
         <button className="bg-white/20 text-white rounded-full px-3 py-1 font-bold" onClick={() => setShowHelp(true)}>❓ {d.help}</button>
-        <button className="bg-white/20 text-white rounded-full px-3 py-1 font-bold" onClick={() => setLang(l => l === 'en' ? 'vi' : 'en')}>{lang === 'en' ? '🇻🇳 VI' : '🇬🇧 EN'}</button>
+        <button className="bg-white/20 text-white rounded-full px-3 py-1 font-bold" onClick={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })}>{lang === 'en' ? '🇻🇳 VI' : '🇬🇧 EN'}</button>
       </div>
     </div>
   );
@@ -177,10 +179,10 @@ export default function App() {
 
         {/* Persistent secret info — your role & dice stay visible all game */}
         {priv?.role && (phase === 'night' || phase === 'day' || phase === 'voting') && (
-          <div className="bg-black/70 text-white rounded-2xl px-4 py-2 mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 font-bold backdrop-blur">
+          <div className="sticky top-0 z-30 bg-black/70 text-white rounded-2xl px-4 py-2 mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 font-bold backdrop-blur">
             <span>🤫 {d.yourInfo}:</span>
             <span>{priv.role === 'thief' ? '😈 ' + d.thief : '🐭 ' + d.sleepy}</span>
-            <span>🎲 {priv.dice ?? '?'} · ⏰ {priv.dice ? d.wakeAt(priv.dice) : ''}</span>
+            <span className="inline-flex items-center gap-1.5"><DiceFace value={priv.dice ?? 1} size={22} /><span>🎲 {priv.dice ?? '?'} · ⏰ {priv.dice ? d.wakeAt(priv.dice) : ''}</span></span>
             {phase === 'night' && <span>{priv.awake ? '👀 ' + d.youAwake : '💤 ' + d.sleeping}</span>}
           </div>
         )}
@@ -240,7 +242,11 @@ export default function App() {
             <h2 className="text-3xl font-extrabold text-indigo-200">🌙 {d.night} — {d.hour} {pub.currentHour}/6
               <span className="ml-3 text-xl bg-white/10 rounded-full px-3 py-1">⏱ {secsLeft(pub.hourEndsAt, now)}s</span></h2>
             <div className="flex justify-center gap-1 my-3">
-              {[1, 2, 3, 4, 5, 6].map(h => <div key={h} className={`w-9 h-9 rounded-full flex items-center justify-center font-extrabold ${h === pub.currentHour ? 'bg-amber-400 text-black scale-110' : h < pub.currentHour ? 'bg-indigo-700 text-white' : 'bg-white/10 text-indigo-300'}`}>{h}</div>)}
+              {[1, 2, 3, 4, 5, 6].map(h => <div key={h} className={`w-9 h-9 rounded-full flex items-center justify-center font-extrabold ${h === pub.currentHour ? 'bg-amber-400 text-black scale-110' : h < pub.currentHour ? 'bg-indigo-700 text-white' : 'bg-white/10 text-indigo-200'}`}>{h}</div>)}
+            </div>
+            {/* Thin progress bar for the current 12s hour */}
+            <div className="max-w-md mx-auto h-2 bg-white/15 rounded-full overflow-hidden relative z-10" aria-label="hour progress">
+              <div className="h-full bg-amber-400 rounded-full transition-[width] duration-300" style={{ width: `${pub.hourEndsAt ? Math.max(0, Math.min(100, ((pub.hourEndsAt - now) / HOUR_MS) * 100)) : 0}%` }} />
             </div>
             {/* Table indicator must reflect what THIS player can actually see:
                 wakers see the real table (cheese present or gone); sleepers
@@ -256,7 +262,7 @@ export default function App() {
                 {priv.awake
                   ? (priv.cheesePresentWhenAwake === false
                       ? <span className="text-red-300">💨 {d.tableGone}</span>
-                      : <>✨ on the table</>)
+                      : <span className="text-amber-100">✨ {d.onTheTable}</span>)
                   : <span className="opacity-70">💤 {d.eyesClosed}</span>}
               </div>
             </div>
@@ -267,7 +273,6 @@ export default function App() {
                     {!(p.id === joined.playerId && priv.awake) && <span className="zzz absolute -top-2 -right-3 text-lg text-sky-300 font-bold">z</span>}
                   </div>
                   <div className="font-bold truncate text-sm">{p.name}</div>
-                  {p.id === joined.playerId && <div className="text-xs font-bold">{priv.awake ? '👀 ' + d.youAwake : '💤'}</div>}
                 </div>
               ))}
             </div>
