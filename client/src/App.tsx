@@ -518,6 +518,35 @@ export default function App() {
                 </div>))}
             </div>
             <Standings />
+            {(pub as any).recap?.length > 0 && (
+              <div className="text-left max-w-md mx-auto bg-indigo-50 rounded-2xl p-3 mt-3">
+                <div className="font-extrabold text-center mb-1">{d.recapTitle}</div>
+                {[1, 2, 3, 4, 5, 6].map(h => {
+                  const evs = (pub as any).recap.filter((e: any) => e.hour === h && !e.afterNight);
+                  if (!evs.length) return null;
+                  const wake = evs.find((e: any) => e.kind === 'wake');
+                  return (
+                    <div key={h} className="mt-1">
+                      <span className="font-extrabold">🕐 {d.recapHour(h)}: </span>
+                      {wake && wake.ids.length
+                        ? <span>{d.recapWake(wake.ids.map(nameOf).join(', '))}</span>
+                        : <span className="text-gray-500">{d.recapNone}</span>}
+                      {evs.filter((e: any) => e.kind !== 'wake').map((e: any, i: number) => (
+                        <div key={i} className="ml-4">
+                          {e.kind === 'steal' && d.recapSteal(nameOf(e.ids[0]))}
+                          {e.kind === 'witness' && d.recapWitness(e.ids.map(nameOf).join(', '))}
+                          {e.kind === 'inspect' && d.recapInspect(nameOf(e.ids[0]), nameOf(e.targetId), e.seen)}
+                          {e.kind === 'recruit' && d.recapRecruit(nameOf(e.ids[0]))}
+                        </div>))}
+                    </div>);
+                })}
+                {(pub as any).recap.some((e: any) => e.afterNight) && (
+                  <div className="mt-1">
+                    <span className="font-extrabold">🌅 {d.recapAfter}: </span>
+                    {(pub as any).recap.filter((e: any) => e.afterNight).map((e: any, i: number) => (
+                      <div key={i} className="ml-4">{d.recapRecruit(nameOf(e.ids[0]))}</div>))}
+                  </div>)}
+              </div>)}
             <div className="mt-4"><ChatPanel height="h-40" /></div>
             {isHost
               ? <button className={`${btn} bg-green-500 text-white w-full mt-4 text-xl`} onClick={() => getNet().playAgain()}>🔁 {d.playAgain} ({d.backLobby})</button>
