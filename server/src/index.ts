@@ -37,9 +37,9 @@ function startDay(room: Room) {
   const s = room.state;
   s.phase = 'day';
   s.dayReady = [];
-  s.discussionEndsAt = Date.now() + DISC;
+  s.discussionEndsAt = Date.now() + s.discussionMs;
   broadcast(room);
-  later(room, DISC, () => { if (s.phase === 'day') startVoting(room); });
+  later(room, s.discussionMs, () => { if (s.phase === 'day') startVoting(room); });
 }
 
 function startRecruit(room: Room) {
@@ -115,6 +115,7 @@ io.on('connection', (socket: Socket) => {
     let code = makeRoomCode();
     while (rooms.has(code)) code = makeRoomCode();
     const state = createGame(code);
+    state.discussionMs = DISC; // env override (tests) seeds the room option
     room = { state, timers: [], sockets: new Map() };
     rooms.set(code, room);
     player = { id: String(clientId), name: cleanName(name), isHost: true, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, wins: 0 };
@@ -166,6 +167,15 @@ io.on('connection', (socket: Socket) => {
       // ghost player; the delay lets the KICKED message flush first.
       setTimeout(() => io.sockets.sockets.get(sid)?.disconnect(true), 250);
     }
+    broadcast(room!);
+  });
+
+  socket.on('setDiscussion', ({ ms }: { ms: number }) => {
+    // Room option (Cycle 6): host-only, lobby-only, fixed choices.
+    if (!guard() || !player!.isHost) return;
+    const s = room!.state;
+    if (s.phase !== 'lobby' || ![60000, 120000, 180000].includes(ms)) return;
+    s.discussionMs = ms;
     broadcast(room!);
   });
 
