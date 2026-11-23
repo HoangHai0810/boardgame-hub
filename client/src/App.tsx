@@ -203,7 +203,17 @@ export default function App() {
             <div className="flex justify-center gap-1 my-3">
               {[1, 2, 3, 4, 5, 6].map(h => <div key={h} className={`w-9 h-9 rounded-full flex items-center justify-center font-extrabold ${h === pub.currentHour ? 'bg-amber-400 text-black scale-110' : h < pub.currentHour ? 'bg-indigo-700 text-white' : 'bg-white/10 text-indigo-300'}`}>{h}</div>)}
             </div>
-            <div className="text-6xl my-2">{pub.currentHour >= 1 ? '🧀' : '🧀'}<span className="text-2xl align-top"> ✨ on the table</span></div>
+            {/* Table indicator must reflect what THIS player can actually see:
+                wakers see the real table (cheese present or gone); sleepers
+                have their eyes closed and must NOT be told the cheese is
+                "on the table" when it may already be stolen. */}
+            <div className="text-6xl my-2">
+              {priv.awake
+                ? (priv.cheesePresentWhenAwake === false
+                    ? <>🍽️<span className="text-2xl align-top text-red-300 font-bold"> 💨 {d.tableGone}</span></>
+                    : <>🧀<span className="text-2xl align-top"> ✨ on the table</span></>)
+                : <><span className="opacity-40">🧀</span><span className="text-2xl align-top opacity-60"> 💤 {d.eyesClosed}</span></>}
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
               {pub.players.map(p => (
                 <div key={p.id} className={`rounded-2xl p-3 ${p.id === joined.playerId && priv.awake ? 'bg-amber-300 text-black ring-4 ring-amber-100' : 'bg-white/10 text-indigo-100'}`}>
