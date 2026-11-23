@@ -7,3 +7,4 @@
 | 03 | v16 | Quick reactions (8 emoji, big render) + 4 preset quick-chat phrases sent as QC tokens, rendered localized per viewer | 30 / 23 / 26 / 14 / 9 + react OK | index-DSCOT0fP.js |
 | 04 | v17 | Post-game night recap timeline (wakes/steal/witness/inspect/recruit), exposed only at results | 32 / 23 / 26 / 14 / 9 + full 10/10 | index-DeXHKApO.js |
 | 05 | v18 | Host kick in the lobby (all 3 transports) + fixed rejoin-after-leave hang (joinedFired) and URL rewrites dropping transport overrides | 32 / 23 / 29 / 14 / 9 + kick 6/6 | index-DJFMS9mj.js |
+| 06 | v19 | Room option: host sets discussion length (60/120/180s) in the lobby, live for everyone | 32 / 23 / 33 / 14 / 9 + options 3/3 | index-w47DCenk.js |
