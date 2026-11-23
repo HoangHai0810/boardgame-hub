@@ -23,6 +23,7 @@ export interface Net {
   chat(text: string): void; toVoting(): void;
   vote(targetId: string): void; playAgain(): void; leave(): void;
   kick(targetId: string): void;
+  setDiscussion(ms: number): void;
 }
 export interface Handlers {
   onState(s: Pub): void; onPrivate(p: Priv): void;
@@ -149,6 +150,7 @@ export function createPeerNet(h: Handlers): Net {
     vote: (targetId) => intent('vote', { targetId }),
     playAgain: () => intent('playAgain'),
     kick: (targetId) => intent('kick', { targetId }),
+    setDiscussion: (ms) => intent('setDiscussion', { ms }),
     leave() {
       if (engine) for (const c of conns.values()) { try { c.send({ type: 'hostGone' }); } catch { /* noop */ } }
       try { hostConn?.close(); peer?.destroy(); } catch { /* noop */ }
@@ -184,6 +186,7 @@ export function createSocketNet(serverUrl: string, h: Handlers): Net {
     vote: (targetId) => socket.emit('vote', { targetId }),
     playAgain: () => socket.emit('playAgain'),
     kick: (targetId) => socket.emit('kick', { targetId }),
+    setDiscussion: (ms) => socket.emit('setDiscussion', { ms }),
     leave() { socket.disconnect(); },
   };
 }

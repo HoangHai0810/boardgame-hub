@@ -74,8 +74,8 @@ export class HostEngine {
   }
   startDay() {
     const s = this.state;
-    s.phase = 'day'; s.dayReady = []; s.discussionEndsAt = Date.now() + DISCUSSION_MS; this.broadcast();
-    this.later(DISCUSSION_MS, () => { if (s.phase === 'day') this.startVoting(); });
+    s.phase = 'day'; s.dayReady = []; s.discussionEndsAt = Date.now() + s.discussionMs; this.broadcast();
+    this.later(s.discussionMs, () => { if (s.phase === 'day') this.startVoting(); });
   }
   startVoting() {
     this.clear(); const s = this.state;
@@ -144,6 +144,14 @@ export class HostEngine {
         if (!target || target.isHost) break;
         s.players = s.players.filter(p => p.id !== target.id);
         this.hooks.sendError?.(target.id, 'KICKED');
+        this.broadcast();
+        break;
+      }
+      case 'setDiscussion': {
+        // Room option (Cycle 6): host-only, lobby-only, fixed choices.
+        if (!player.isHost || s.phase !== 'lobby') break;
+        if (![60000, 120000, 180000].includes(msg.ms)) break;
+        s.discussionMs = msg.ms;
         this.broadcast();
         break;
       }

@@ -333,6 +333,16 @@ export default function App() {
               <span className="font-bold">{d.players}: {pub.players.length}/8</span>
             </div>
             <PlayerChips onKick={isHost ? (id) => getNet().kick(id) : undefined} />
+            <div className="flex items-center justify-center gap-2 mt-1 flex-wrap">
+              <span className="font-bold text-gray-500">💬 {d.discussionTime}:</span>
+              {isHost
+                ? [60000, 120000, 180000].map(ms => (
+                  <button key={ms} onClick={() => getNet().setDiscussion(ms)}
+                    className={`rounded-full px-3 py-1 font-extrabold ${((pub as any).discussionMs ?? 120000) === ms ? 'bg-indigo-500 text-white' : 'bg-white text-gray-500'}`}>
+                    {ms / 60000}:00
+                  </button>))
+                : <span className="font-extrabold">{((pub as any).discussionMs ?? 120000) / 60000}:00</span>}
+            </div>
             <Standings />
             {isHost ? (
               <>

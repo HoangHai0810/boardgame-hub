@@ -201,6 +201,7 @@ export function createMqttNet(h: Handlers): Net {
     vote: (targetId) => intent('vote', { targetId }),
     playAgain: () => intent('playAgain'),
     kick: (targetId) => intent('kick', { targetId }),
+    setDiscussion: (ms) => intent('setDiscussion', { ms }),
     leave() {
       try {
         if (engine) client?.publish(topic(roomCode, 'pub'), JSON.stringify({ type: 'hostGone' }), { retain: true, qos: 1 });
