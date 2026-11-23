@@ -67,6 +67,8 @@ const dict = {
     statusCreating: 'Creating room…', statusConnecting: (code: string) => `Connecting to room ${code}…`,
     connecting: 'Connecting…',
     recordTitle: '📊 Your session record', recordLine: (w: number, l: number) => `${w} wins · ${l} losses`,
+    shareResults: 'Share result', shareCopied: 'Copied!',
+    shareHeader: (code: string, round: number) => `🧀 Cheese Mouse — Room ${code} · Round ${round}`,
     help: 'Help', round: 'Round', offline: 'offline',
     tutorial: [
       '🎲 Everyone secretly gets a role and a dice number (1–6). One player is the Cheese Mouse!',
@@ -146,6 +148,8 @@ const dict = {
     statusCreating: 'Đang tạo phòng…', statusConnecting: (code: string) => `Đang kết nối tới phòng ${code}…`,
     connecting: 'Đang kết nối…',
     recordTitle: '📊 Thành tích của bạn', recordLine: (w: number, l: number) => `Thắng ${w} · Thua ${l}`,
+    shareResults: 'Chia sẻ kết quả', shareCopied: 'Đã chép!',
+    shareHeader: (code: string, round: number) => `🧀 Chuột Phô Mai — Phòng ${code} · Ván ${round}`,
     help: 'Trợ giúp', round: 'Ván', offline: 'mất kết nối',
     tutorial: [
       '🎲 Mỗi người bí mật nhận một vai và một số xúc xắc (1–6). Một người là Chuột Phô Mai!',

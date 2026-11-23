@@ -66,6 +66,7 @@ export default function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [chatText, setChatText] = useState('');
   const [copied, setCopied] = useState(false);
+  const [shared, setShared] = useState(false);
   const [muted, setMuted] = useState(() => localStorage.getItem('ct_muted') === '1');
   const toggleMuted = () => setMuted(m => { localStorage.setItem('ct_muted', m ? '0' : '1'); return !m; });
   const netRef = useRef<Net | null>(null);
@@ -256,6 +257,23 @@ export default function App() {
       ))}
     </div>
   );
+
+  // Shareable results summary (Cycle 9): copy a compact localized text of
+  // the round to the clipboard, Wordle-style, for the group's chat app.
+  const shareResult = () => {
+    if (!pub) return;
+    const winnerText = pub.winner === 'sleepyheads' ? d.sleepyWin : pub.winner === 'fallmouse' ? d.fallWin : d.thiefWin;
+    const lines = [d.shareHeader(pub.roomCode, pub.round), winnerText, d.thiefWas(nameOf(pub.thiefId))];
+    const fall = pub.players.find(p => (p as any).role === 'fallmouse');
+    if (fall) lines.push(d.fallWas(fall.name));
+    const scored = pub.players.filter(p => ((p as any).wins ?? 0) > 0)
+      .sort((a, b) => ((b as any).wins ?? 0) - ((a as any).wins ?? 0));
+    if (scored.length) lines.push('🏆 ' + scored.map(p => `${p.name} ×${(p as any).wins}`).join(' · '));
+    if (myRecord.w + myRecord.l > 0) lines.push('📊 ' + d.recordLine(myRecord.w, myRecord.l));
+    lines.push(location.origin + location.pathname);
+    navigator.clipboard?.writeText(lines.join('\n'));
+    setShared(true); setTimeout(() => setShared(false), 1500);
+  };
 
   // Personal session record (Cycle 8): my own W/L split by dealt role.
   const MyRecord = () => {
@@ -599,6 +617,9 @@ export default function App() {
             </div>
             <Standings />
             <MyRecord />
+            <button className={`${btn} bg-sky-500 hover:bg-sky-600 text-white mt-3`} onClick={shareResult}>
+              {shared ? '✅ ' + d.shareCopied : '📋 ' + d.shareResults}
+            </button>
             {(pub as any).recap?.length > 0 && (
               <div className="text-left max-w-md mx-auto bg-indigo-50 rounded-2xl p-3 mt-3">
                 <div className="font-extrabold text-center mb-1">{d.recapTitle}</div>
