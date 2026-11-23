@@ -91,7 +91,8 @@ export function assignRolesAndDice(state: GameState, rng: () => number = Math.ra
   state.currentHour = 0;
   state.winner = null;
   state.thiefId = null;
-  state.chat = [];
+  // Chat is a room conversation: lobby chat is NOT wiped when the game
+  // starts (publicState caps it at the last 100 messages).
   state.revealReady = [];
   state.dayReady = [];
   state.stolenWitnessIds = [];
