@@ -39,7 +39,7 @@ function useNow(step = 250) {
 const secsLeft = (endsAt: number | null, now: number) => endsAt ? Math.max(0, Math.ceil((endsAt - now) / 1000)) : null;
 
 const BTN = 'px-5 py-3 rounded-2xl font-bold shadow-lg transition active:scale-95 disabled:opacity-40 disabled:active:scale-100';
-const CARD = 'bg-white/95 rounded-3xl shadow-2xl p-5 sm:p-7';
+const CARD = 'bg-white/95 rounded-3xl shadow-2xl p-4 sm:p-5';
 
 function HelpModal({ d, onClose }: { d: any; onClose: () => void }) {
   return (
@@ -57,7 +57,7 @@ function HelpModal({ d, onClose }: { d: any; onClose: () => void }) {
 
 function TopBar({ d, lang, muted, onToggleMuted, onHelp, onToggleLang }: { d: any; lang: Lang; muted: boolean; onToggleMuted: () => void; onHelp: () => void; onToggleLang: () => void }) {
   return (
-    <div className="flex items-center justify-between gap-2 mb-3">
+    <div className="flex items-center justify-between gap-2 mb-2">
       <div className="font-extrabold text-white drop-shadow text-lg">🧀 {d.title}</div>
       <div className="flex gap-2">
         <button aria-label="sound" className="bg-white/20 text-white rounded-full px-3 py-1" onClick={onToggleMuted}>{muted ? '🔇' : '🔊'}</button>
@@ -97,10 +97,10 @@ function ChatPanel({ chat, myId, d, height = 'h-48', onChat }: { chat: any[]; my
     if (stickRef.current || lastMine) el.scrollTop = el.scrollHeight;
   }, [chat.length, myId]);
   return (
-    <div className="text-left">
+    <div className={`text-left ${height === 'flex' ? 'flex flex-col flex-1 min-h-0' : ''}`}>
       <div ref={boxRef}
         onScroll={e => { const el = e.currentTarget; stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}
-        className={`bg-gradient-to-b from-amber-50 to-orange-50 rounded-2xl p-3 ${height} overflow-y-auto space-y-2`}>
+        className={`bg-gradient-to-b from-amber-50 to-orange-50 rounded-2xl p-3 ${height === 'flex' ? 'flex-1 min-h-0' : height} overflow-y-auto space-y-2`}>
         {chat.length === 0 && <p className="text-center text-gray-400 font-bold py-4">{d.chatEmpty}</p>}
         {chat.map((m: any, i: number) => {
           const mine = m.fromId === myId;
@@ -137,21 +137,22 @@ function ChatPanel({ chat, myId, d, height = 'h-48', onChat }: { chat: any[]; my
 // Module-level for the same reason as ChatPanel: a click landing while App
 // re-rendered used to hit a freshly remounted chip and die — voting felt
 // like it needed 2–3 clicks. Stable identity = one click, one vote.
-function PlayerChips({ players, myId, phase, d, roleLabel, onPick, pickable, onKick, markThiefId, markFollowerIds, iAmFollower }: {
+function PlayerChips({ players, myId, phase, d, roleLabel, onPick, pickable, onKick, markThiefId, markFollowerIds, iAmFollower, peeks }: {
   players: any[]; myId?: string; phase?: string; d: any;
   roleLabel: (role?: string | null, isFollower?: boolean) => string;
   onPick?: (id: string) => void; pickable?: (p: any) => boolean; onKick?: (id: string) => void;
-  markThiefId?: string | null; markFollowerIds?: string[]; iAmFollower?: boolean;
+  markThiefId?: string | null; markFollowerIds?: string[]; iAmFollower?: boolean; peeks?: { targetId: string; dice: number }[];
 }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-3">
       {players.map(p => (
         <button key={p.id} disabled={onPick ? (pickable ? !pickable(p) : false) : !onKick}
           onClick={() => onPick?.(p.id)}
-          className={`relative rounded-2xl p-3 text-center shadow ${p.id === markThiefId ? 'bg-red-100 ring-4 ring-red-400' : markFollowerIds?.includes(p.id) ? 'bg-emerald-50 ring-4 ring-emerald-400' : p.id === myId ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'} ${onPick ? 'hover:scale-105 transition cursor-pointer' : 'cursor-default'} disabled:opacity-50 disabled:hover:scale-100`}>
+          className={`relative rounded-2xl p-2.5 text-center shadow ${p.id === markThiefId ? 'bg-red-100 ring-4 ring-red-400' : markFollowerIds?.includes(p.id) ? 'bg-emerald-50 ring-4 ring-emerald-400' : p.id === myId ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'} ${onPick ? 'hover:scale-105 transition cursor-pointer' : 'cursor-default'} disabled:opacity-50 disabled:hover:scale-100`}>
           {p.id === markThiefId && <span className="absolute -top-2 -left-2 text-2xl anim-pop" title={d.thief}>😈</span>}
           {(markFollowerIds?.includes(p.id) || (p.id === myId && iAmFollower)) && <span className="absolute -top-2 -left-2 text-2xl anim-pop">🤝</span>}
-          <div className={`text-4xl anim-bob w-16 h-16 mx-auto rounded-full flex items-center justify-center ${avatarBg(p.id)} shadow-inner`}>{mouseFor(p.id)}</div>
+          {peeks?.some(x => x.targetId === p.id) && <span className="absolute -top-2 -right-2 bg-sky-500 text-white text-xs font-extrabold rounded-full px-2 py-0.5 shadow">🎲{peeks!.find(x => x.targetId === p.id)!.dice}</span>}
+          <div className={`text-3xl anim-bob w-12 h-12 mx-auto rounded-full flex items-center justify-center ${avatarBg(p.id)} shadow-inner`}>{mouseFor(p.id)}</div>
           <div className="font-bold truncate">{p.name} {p.id === myId && <span className="text-amber-600">({d.you})</span>}</div>
           <div className="text-xs">{p.isHost && <span className="bg-purple-500 text-white rounded-full px-2 py-0.5">👑 {d.host}</span>} {!p.connected && <span className="text-red-500">• {d.offline}</span>}</div>
           {(p.wins ?? 0) > 0 && <div className="text-xs mt-1 font-extrabold text-amber-600">🏆 ×{p.wins}</div>}
@@ -165,6 +166,26 @@ function PlayerChips({ players, myId, phase, d, roleLabel, onPick, pickable, onK
           {phase === 'voting' && <div className="text-xs mt-1">{p.hasVoted ? '✅ voted' : '🤔 …'}</div>}
         </button>
       ))}
+    </div>
+  );
+}
+
+// Slide-up chat sheet used at night / during recruitment: chat is open
+// while "sleeping" (players asked for it — the wait shouldn't be dead
+// time), but the night scene itself must stay one-screen, so the chat
+// lives in an overlay instead of pushing the layout down.
+function ChatSheet({ open, onClose, chat, myId, d, onChat }: { open: boolean; onClose: () => void; chat: any[]; myId?: string; d: any; onChat: (t: string) => void }) {
+  if (!open) return null;
+  return (
+    <div className="absolute inset-0 z-50 flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative w-full max-w-3xl mx-auto h-[62%] bg-gradient-to-b from-amber-50 to-orange-50 rounded-t-3xl p-3 flex flex-col anim-slide-up shadow-2xl">
+        <div className="flex items-center justify-between mb-1">
+          <span className="font-extrabold text-lg">💬 {d.chatTitle ?? 'Chat'}</span>
+          <button className="bg-white rounded-full w-9 h-9 shadow font-extrabold" onClick={onClose}>✕</button>
+        </div>
+        <ChatPanel chat={chat} myId={myId} d={d} height="flex" onChat={onChat} />
+      </div>
     </div>
   );
 }
@@ -228,17 +249,26 @@ export default function App() {
   const getNet = () => {
     if (!netRef.current) {
       netRef.current = createNet({
-        onState: (s) => { setPub(s); setStatus(''); },
+        onState: (s) => { setPub(s); setStatus(''); setConnLost(false); },
         onPrivate: (p) => setPriv(p),
         onJoined: (c, pid, isHost) => {
           setJoined({ code: c, playerId: pid, isHost });
+          // Guests: remember the session so an F5 drops straight back into
+          // the room. Hosts can't resume (their room lives in their tab),
+          // so a host session is never stored.
+          try {
+            if (!isHost) sessionStorage.setItem('ct_guest_session', JSON.stringify({ code: c, name: sessionStorage.getItem('ct_name') || '' }));
+            else sessionStorage.removeItem('ct_guest_session');
+          } catch { /* ignore */ }
           // Keep any transport overrides (?broker= / ?server= / ?net=) in the
           // URL — the net layer re-reads them on reconnect/rejoin.
           const u = new URL(location.href); u.searchParams.set('room', c);
           history.replaceState(null, '', u.pathname + u.search);
         },
         onError: (m) => {
+          if (m === 'HOST_GONE') { try { sessionStorage.removeItem('ct_guest_session'); } catch { /* ignore */ } }
           if (m === 'KICKED') {
+            try { sessionStorage.removeItem('ct_guest_session'); } catch { /* ignore */ }
             // Host removed us from the lobby: leave cleanly, land on the
             // home screen with a (localized at render) notice.
             try { netRef.current?.leave(); } catch { /* noop */ }
@@ -248,12 +278,35 @@ export default function App() {
           }
           setError(m); setStatus('');
         },
-        onStatus: setStatus,
+        onStatus: (m) => {
+          setStatus(m);
+          if (m === 'NET_LOST') setConnLost(true);
+          else if (m === 'NET_OK') setConnLost(false);
+        },
       });
     }
     return netRef.current;
   };
 
+
+  // Auto-rejoin after a refresh: a stored GUEST session goes straight
+  // back into its room instead of landing on the home screen. An invite
+  // link for a DIFFERENT room wins over the stored session.
+  const autoJoinTried = useRef(false);
+  useEffect(() => {
+    if (autoJoinTried.current) return;
+    autoJoinTried.current = true;
+    try {
+      const raw = sessionStorage.getItem('ct_guest_session');
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (!s?.code) return;
+      const urlRoom = new URLSearchParams(location.search).get('room');
+      if (urlRoom && urlRoom.toUpperCase() !== String(s.code).toUpperCase()) return;
+      getNet().joinRoom(String(s.code), String(s.name || ''));
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Sound (Cycle 2): unlock the AudioContext on the first user gesture —
   // browsers refuse audio before any interaction with the page.
@@ -298,7 +351,7 @@ export default function App() {
         });
       }
     }
-    if (pub.chat.length > (prev.chatLen ?? 0) && (pub.phase === 'lobby' || pub.phase === 'day' || pub.phase === 'results')) {
+    if (pub.chat.length > (prev.chatLen ?? 0) && pub.phase !== 'voting' && pub.phase !== 'roleReveal') {
       const last = pub.chat[pub.chat.length - 1];
       if (last && last.fromId !== joined?.playerId) sfx('pop', muted);
     }
@@ -313,6 +366,23 @@ export default function App() {
   const nightBoxRef = useRef<HTMLDivElement>(null);
   const [fly, setFly] = useState<{ key: string; x0: number; y0: number; dx: number; dy: number } | null>(null);
   const flyKeyRef = useRef('');
+  const [chatSheet, setChatSheet] = useState(false);
+  const [connLost, setConnLost] = useState(false);
+  // Optimistic feedback: a tapped action shows its result IMMEDIATELY and
+  // locks, instead of looking dead while the intent travels (the #1 live
+  // complaint on a flaky connection). Authoritative state replaces it when
+  // it lands; a timeout restores the control if it never does.
+  const [optVote, setOptVote] = useState<string | null>(null);
+  const [optReadyVote, setOptReadyVote] = useState(false);
+  const [optReady, setOptReady] = useState(false);
+  const [optPeek, setOptPeek] = useState(false);
+  useEffect(() => { if (!optVote) return; const t = setTimeout(() => setOptVote(null), 6000); return () => clearTimeout(t); }, [optVote]);
+  useEffect(() => { if (!optReadyVote) return; const t = setTimeout(() => setOptReadyVote(false), 6000); return () => clearTimeout(t); }, [optReadyVote]);
+  useEffect(() => { if (!optReady) return; const t = setTimeout(() => setOptReady(false), 6000); return () => clearTimeout(t); }, [optReady]);
+  const [chatSeen, setChatSeen] = useState(0);
+  useEffect(() => { setChatSheet(false); setOptVote(null); setOptReadyVote(false); setOptReady(false); setOptPeek(false); }, [phase]);
+  useEffect(() => { setOptPeek(false); }, [pub?.currentHour]);
+  useEffect(() => { if (chatSheet) setChatSeen(pub?.chat?.length ?? 0); }, [chatSheet, pub?.chat?.length]);
   useEffect(() => {
     const target = priv?.stealById;
     if (phase !== 'night' || !target || !pub || !joined) return;
@@ -328,7 +398,7 @@ export default function App() {
   }, [priv?.stealById, pub?.currentHour, pub?.round, phase]);
 
   const btn = 'px-5 py-3 rounded-2xl font-bold shadow-lg transition active:scale-95 disabled:opacity-40 disabled:active:scale-100';
-  const card = 'bg-white/95 rounded-3xl shadow-2xl p-5 sm:p-7';
+  const card = 'bg-white/95 rounded-3xl shadow-2xl p-4 sm:p-5';
 
   // Shareable results summary (Cycle 9): copy a compact localized text of
   // the round to the clipboard, Wordle-style, for the group's chat app.
@@ -441,15 +511,16 @@ export default function App() {
     (role === 'thief' ? '😈 ' + d.thief : role === 'fallmouse' ? '💀 ' + d.fall : '🐭 ' + d.sleepy) + (isFollower ? ' 🤝' : '');
 
   return (
-    <div className={`min-h-screen ${bg} p-4 transition-colors duration-1000`}>
-      <div className="max-w-3xl mx-auto">
+    <div className={`h-dvh ${bg} p-3 sm:p-4 transition-colors duration-1000 flex flex-col overflow-hidden relative`}>
+      <div className="max-w-3xl w-full mx-auto flex flex-col flex-1 min-h-0">
         <TopBar d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })} />
+        {connLost && joined && <div className="bg-red-500 text-white text-center font-bold text-sm rounded-full px-4 py-1 mb-2 anim-pulse-soft shadow">📡 {d.connLost}</div>}
         {error && <div className="bg-red-100 border border-red-400 text-red-700 rounded-2xl px-4 py-2 mb-3 font-bold">{localizeMsg(error)}
           <button className="float-right" onClick={() => setError('')}>✕</button></div>}
 
         {/* Persistent secret info — your role & dice stay visible all game */}
         {priv?.role && (phase === 'night' || phase === 'recruit' || phase === 'day' || phase === 'voting') && (
-          <div className="sticky top-0 z-30 bg-black/70 text-white rounded-2xl px-4 py-2 mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 font-bold backdrop-blur">
+          <div className="bg-black/70 text-white rounded-2xl px-4 py-1.5 mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 font-bold backdrop-blur">
             <span>🤫 {d.yourInfo}:</span>
             <span>{roleLabel(priv.role, priv.isFollower)}</span>
             <span className="inline-flex items-center gap-1.5"><DiceFace value={priv.dice ?? 1} size={22} /><span>🎲 {priv.dice ?? '?'} · ⏰ {priv.dice ? d.wakeAt(priv.dice) : ''}</span></span>
@@ -463,7 +534,7 @@ export default function App() {
 
         {/* ---------- LOBBY ---------- */}
         {phase === 'lobby' && (
-          <div className={`${card} anim-pop`}>
+          <div className={`${card} anim-pop flex flex-col flex-1 min-h-0`}>
             <h2 className="text-2xl font-extrabold">🏠 {d.lobby} · {d.round} {pub.round}</h2>
             <div className="flex flex-wrap items-center gap-2 mt-2">
               <span className="text-3xl font-extrabold tracking-widest bg-amber-100 rounded-2xl px-4 py-1">{pub.roomCode}</span>
@@ -494,14 +565,14 @@ export default function App() {
                 {pub.players.length < 4 && <p className="text-center text-red-500 font-bold mt-2">{d.need4}</p>}
               </>
             ) : <p className="text-center font-bold text-gray-500">{d.waiting}</p>}
-            <div className="mt-3"><ChatPanel chat={pub.chat} myId={joined.playerId} d={d} onChat={t => getNet().chat(t)} height="h-40" /></div>
-            <button className="mt-4 underline text-gray-500" onClick={() => { getNet().leave(); location.href = location.pathname; }}>{d.leave}</button>
+            <div className="mt-3 flex flex-col flex-1 min-h-0"><ChatPanel chat={pub.chat} myId={joined.playerId} d={d} height="flex" onChat={t => getNet().chat(t)} /></div>
+            <button className="mt-4 underline text-gray-500" onClick={() => { try { sessionStorage.removeItem('ct_guest_session'); } catch { /* ignore */ } getNet().leave(); location.href = location.pathname; }}>{d.leave}</button>
           </div>
         )}
 
         {/* ---------- ROLE REVEAL ---------- */}
         {phase === 'roleReveal' && priv && (
-          <div className={`${card} text-center anim-pop`}>
+          <div className={`${card} text-center anim-pop my-auto w-full`}>
             <h2 className="text-xl font-bold text-gray-500">{d.yourRole} 🤫</h2>
             <div className="text-8xl my-3">{priv.role === 'thief' ? '😈' : priv.role === 'fallmouse' ? '💀' : '🐭'}</div>
             <div className={`text-3xl font-extrabold ${priv.role === 'thief' ? 'text-red-500' : priv.role === 'fallmouse' ? 'text-violet-600' : 'text-sky-600'}`}>
@@ -513,9 +584,9 @@ export default function App() {
               <div className="text-2xl font-extrabold mt-2">{priv.dice}</div>
             </div>
             <div>
-              {pub.revealReady?.includes(joined.playerId)
-                ? <p className="mt-5 font-extrabold text-green-600">✅ {d.readyOf(pub.revealReady.length, pub.players.filter(p => p.connected).length)}</p>
-                : <button className={`${btn} bg-green-500 hover:bg-green-600 text-white mt-5 text-lg`} onClick={() => getNet().ready()}>{d.imReady}</button>}
+              {pub.revealReady?.includes(joined.playerId) || optReady
+                ? <p className="mt-5 font-extrabold text-green-600">✅ {d.readyOf(pub.revealReady?.length ?? 0, pub.players.filter(p => p.connected).length)}</p>
+                : <button className={`${btn} bg-green-500 hover:bg-green-600 text-white mt-5 text-lg`} onClick={() => { setOptReady(true); getNet().ready(); }}>{d.imReady}</button>}
               <p className="mt-2 font-bold text-gray-400">{d.readyOf(pub.revealReady?.length ?? 0, pub.players.filter(p => p.connected).length)}</p>
               {isHost && <button className="mt-2 underline text-indigo-500 font-bold" onClick={() => getNet().beginNight()}>🌙 {d.forceNight}</button>}
             </div>
@@ -524,13 +595,13 @@ export default function App() {
 
         {/* ---------- NIGHT ---------- */}
         {phase === 'night' && priv && (
-          <div ref={nightBoxRef} className="text-center relative">
+          <div ref={nightBoxRef} className="text-center relative flex-1 min-h-0 flex flex-col">
             <div className="stars" /><div className="stars2" />
             {fly && <FlyCheese key={fly.key} x0={fly.x0} y0={fly.y0} dx={fly.dx} dy={fly.dy} onDone={() => setFly(null)} />}
-            <h2 className="text-3xl font-extrabold text-indigo-200">🌙 {d.night} — {d.hour} {pub.currentHour}/6
-              <span className="ml-3 text-xl bg-white/10 rounded-full px-3 py-1">⏱ {secsLeft(pub.hourEndsAt, now)}s</span></h2>
-            <div className="flex justify-center gap-1 my-3">
-              {[1, 2, 3, 4, 5, 6].map(h => <div key={h} className={`w-9 h-9 rounded-full flex items-center justify-center font-extrabold ${h === pub.currentHour ? 'bg-amber-400 text-black scale-110' : h < pub.currentHour ? 'bg-indigo-700 text-white' : 'bg-white/10 text-indigo-200'}`}>{h}</div>)}
+            <h2 className="text-2xl font-extrabold text-indigo-200">🌙 {d.night} — {d.hour} {pub.currentHour}/6
+              <span className="ml-3 text-lg bg-white/10 rounded-full px-3 py-0.5">⏱ {secsLeft(pub.hourEndsAt, now)}s</span></h2>
+            <div className="flex justify-center gap-1 my-2">
+              {[1, 2, 3, 4, 5, 6].map(h => <div key={h} className={`w-8 h-8 rounded-full flex items-center justify-center font-extrabold ${h === pub.currentHour ? 'bg-amber-400 text-black scale-110' : h < pub.currentHour ? 'bg-indigo-700 text-white' : 'bg-white/10 text-indigo-200'}`}>{h}</div>)}
             </div>
             {/* Thin progress bar for the current 12s hour */}
             <div className="max-w-md mx-auto h-2 bg-white/15 rounded-full overflow-hidden relative z-10" aria-label="hour progress">
@@ -540,13 +611,13 @@ export default function App() {
                 wakers see the real table (cheese present or gone); sleepers
                 have their eyes closed and must NOT be told the cheese is
                 "on the table" when it may already be stolen. */}
-            <div className="wood-table max-w-md mx-auto px-4 pt-4 pb-3 my-3 relative z-10">
-              <div id="table-cheese" className="text-7xl leading-none drop-shadow-[0_6px_8px_rgba(0,0,0,0.4)]">
+            <div className="wood-table w-full max-w-sm mx-auto px-4 pt-3 pb-2 my-2 relative z-10">
+              <div id="table-cheese" className="text-5xl leading-none drop-shadow-[0_6px_8px_rgba(0,0,0,0.4)]">
                 {priv.awake
                   ? (priv.cheesePresentWhenAwake === false ? '🍽️' : <span className="anim-wiggle inline-block">🧀</span>)
                   : <span className="opacity-40">🧀</span>}
               </div>
-              <div className="text-lg font-bold text-amber-100 drop-shadow mt-1">
+              <div className="text-base font-bold text-amber-100 drop-shadow mt-1">
                 {priv.awake
                   ? (priv.cheesePresentWhenAwake === false
                       ? <span className="text-red-300">💨 {d.tableGone}</span>
@@ -554,13 +625,13 @@ export default function App() {
                   : <span className="opacity-70">💤 {d.eyesClosed}</span>}
               </div>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 my-2">
               {pub.players.map(p => {
                 const isMe = p.id === joined.playerId;
                 const awakeNow = isMe ? !!priv.awake : priv.fellowWakers.includes(p.id);
                 return (
-                <div key={p.id} id={`pcard-${p.id}`} className={`rounded-2xl p-3 relative z-10 ${isMe && priv.awake ? 'bg-amber-300 text-black ring-4 ring-amber-100 awake-glow' : awakeNow ? 'bg-sky-300 text-black ring-4 ring-sky-100 awake-glow' : 'bg-white/10 text-indigo-100'}`}>
-                  <div className={`text-4xl relative inline-block w-14 h-14 rounded-full ${avatarBg(p.id)} items-center justify-center inline-flex`}>{mouseFor(p.id)}
+                <div key={p.id} id={`pcard-${p.id}`} className={`rounded-2xl p-2 relative z-10 ${isMe && priv.awake ? 'bg-amber-300 text-black ring-4 ring-amber-100 awake-glow' : awakeNow ? 'bg-sky-300 text-black ring-4 ring-sky-100 awake-glow' : 'bg-white/10 text-indigo-100'}`}>
+                  <div className={`text-3xl relative inline-block w-11 h-11 rounded-full ${avatarBg(p.id)} items-center justify-center inline-flex`}>{mouseFor(p.id)}
                     {awakeNow
                       ? <span className="absolute -top-2 -right-3 text-lg">👀</span>
                       : <span className="zzz absolute -top-2 -right-3 text-lg text-sky-300 font-bold">z</span>}
@@ -568,12 +639,15 @@ export default function App() {
                   <div className="font-bold truncate text-sm">{p.name}</div>
                   {priv.stealById === p.id && <span className="absolute -top-2 -left-2 text-2xl anim-pop">🧀</span>}
                   {(priv.knownThiefId === p.id || priv.witnessedThiefId === p.id) && <span className="absolute -bottom-2 -right-2 text-2xl anim-pop">😈</span>}
+                  {priv.peeks?.some(x => x.targetId === p.id) && <span className="absolute -top-2 -right-2 bg-sky-500 text-white text-xs font-extrabold rounded-full px-2 py-0.5 shadow z-20">🎲{priv.peeks.find(x => x.targetId === p.id)!.dice}</span>}
                 </div>);
               })}
             </div>
+            <button className="absolute bottom-2 right-2 z-40 bg-white/15 hover:bg-white/25 text-white rounded-full px-4 py-2 font-extrabold backdrop-blur shadow-lg"
+              onClick={() => setChatSheet(true)}>💬 Chat{!chatSheet && (pub.chat.length > chatSeen) && <span className="ml-1 inline-block w-2.5 h-2.5 bg-red-400 rounded-full align-middle" />}</button>
             {priv.awake ? (
-              <div className={`${card} anim-pop max-w-xl mx-auto`}>
-                <div className="text-2xl font-extrabold">👀 {d.youAwake}</div>
+              <div className={`${card} anim-pop max-w-xl mx-auto w-full mt-auto`}>
+                <div className="text-xl font-extrabold">👀 {d.youAwake}</div>
                 {priv.cheesePresentWhenAwake === false && <p className="font-bold text-red-500 mt-1">{d.cheeseGoneWake}</p>}
                 {priv.cheesePresentWhenAwake === true && <p className="text-gray-500 mt-1">{d.cheeseHere}</p>}
                 {priv.fellowWakers.length > 0 && <p className="mt-1 font-bold text-purple-600">👀👀 {d.fellow} ({priv.fellowWakers.map(id => pub.players.find(p => p.id === id)?.name).join(', ')})</p>}
@@ -590,25 +664,27 @@ export default function App() {
                   <p className="mt-3 bg-emerald-50 ring-2 ring-emerald-300 rounded-2xl px-4 py-2 font-extrabold text-emerald-700">🤝 {d.becameFollower}</p>)}
                 {!priv.isFollower && priv.role !== 'thief' && priv.knownFollowerIds.length > 0 && (
                   <p className="mt-3 font-bold text-purple-600">{d.witnessKnows(priv.knownFollowerIds.map(nameOf).join(', '))}</p>)}
-                {priv.canInspect && (
+                {priv.canInspect && !optPeek && (
                   <div className="mt-3">
                     <div className="font-bold mb-2">{d.inspectTitle}</div>
                     <div className="flex flex-wrap gap-2 justify-center">
                       {pub.players.filter(p => p.id !== joined.playerId).map(p => (
-                        <button key={p.id} className={`${btn} bg-sky-400 text-white !py-2`} onClick={() => getNet().nightAction('inspect', p.id)}>{mouseFor(p.id)} {p.name}</button>))}
+                        <button key={p.id} className={`${btn} bg-sky-400 text-white !py-2`} onClick={() => { setOptPeek(true); getNet().nightAction('inspect', p.id); }}>{mouseFor(p.id)} {p.name}</button>))}
                     </div>
                   </div>)}
+                {priv.canInspect && optPeek && !priv.inspected && (
+                  <p className="mt-3 font-extrabold text-sky-700 text-lg">{d.looking}</p>)}
                 {priv.inspected && <p className="mt-3 font-extrabold text-sky-700 text-lg">🔎 {d.inspected(pub.players.find(p => p.id === priv.inspected!.targetId)?.name || '?', priv.inspected.dice)}</p>}
               </div>
             ) : (
-              <p className="text-indigo-200 font-bold text-xl">{d.sleeping}</p>
+              <p className="text-indigo-200 font-bold text-lg mt-auto pb-2">{d.sleeping}</p>
             )}
           </div>
         )}
 
         {/* ---------- RECRUIT (after hour 6, 6–8 players) ---------- */}
         {phase === 'recruit' && priv && (
-          <div className="text-center relative">
+          <div className="text-center relative my-auto w-full">
             <div className="stars" /><div className="stars2" />
             <h2 className="text-3xl font-extrabold text-indigo-200 relative z-10">🌙✨ {d.night} — 🤝
               <span className="ml-3 text-xl bg-white/10 rounded-full px-3 py-1">⏱ {secsLeft(pub.recruitEndsAt, now)}s</span></h2>
@@ -632,24 +708,26 @@ export default function App() {
             ) : (
               <p className="text-indigo-200 font-bold text-xl mt-6 relative z-10">{d.recruitWaiting}</p>
             )}
+            <button className="relative z-10 mt-4 bg-white/15 hover:bg-white/25 text-white rounded-full px-4 py-2 font-extrabold backdrop-blur shadow-lg"
+              onClick={() => setChatSheet(true)}>💬 Chat{!chatSheet && (pub.chat.length > chatSeen) && <span className="ml-1 inline-block w-2.5 h-2.5 bg-red-400 rounded-full align-middle" />}</button>
           </div>
         )}
 
         {/* ---------- DAY ---------- */}
         {phase === 'day' && (
-          <div className={`${card} anim-pop`}>
+          <div className={`${card} anim-pop flex flex-col flex-1 min-h-0`}>
             <h2 className="text-2xl font-extrabold text-center">{d.day}</h2>
             <p className="text-center font-bold text-gray-600">{d.discuss} <span className="bg-amber-100 rounded-full px-3 py-0.5">⏱ {secsLeft(pub.discussionEndsAt, now)}s</span></p>
             {priv?.isFollower && (
               <p className="bg-emerald-50 ring-2 ring-emerald-300 rounded-2xl px-4 py-2 mt-3 text-center font-extrabold text-emerald-700 anim-pop">🤝 {d.becameFollower}</p>)}
             {priv?.witnessedThiefId && (
               <p className="text-center font-extrabold text-red-500 mt-3">{d.sawThief(nameOf(priv.witnessedThiefId))}</p>)}
-            <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} markThiefId={priv?.knownThiefId || priv?.witnessedThiefId || null} markFollowerIds={priv?.knownFollowerIds} iAmFollower={priv?.isFollower} />
-            <ChatPanel chat={pub.chat} myId={joined.playerId} d={d} onChat={t => getNet().chat(t)} />
+            <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} markThiefId={priv?.knownThiefId || priv?.witnessedThiefId || null} markFollowerIds={priv?.knownFollowerIds} iAmFollower={priv?.isFollower} peeks={priv?.peeks} />
+            <ChatPanel chat={pub.chat} myId={joined.playerId} d={d} height="flex" onChat={t => getNet().chat(t)} />
             <div className="mt-3 text-center">
-              {pub.dayReady?.includes(joined.playerId)
+              {pub.dayReady?.includes(joined.playerId) || optReadyVote
                 ? <p className="font-extrabold text-green-600">{d.readyVoteDone}</p>
-                : <button className={`${btn} bg-green-500 hover:bg-green-600 text-white`} onClick={() => getNet().readyVote()}>{d.readyVoteBtn}</button>}
+                : <button className={`${btn} bg-green-500 hover:bg-green-600 text-white`} onClick={() => { setOptReadyVote(true); getNet().readyVote(); }}>{d.readyVoteBtn}</button>}
               <p className="font-bold text-gray-500 mt-1">{d.readyVoteOf(pub.dayReady?.length ?? 0, pub.players.filter(p => p.connected).length)}</p>
             </div>
             {isHost && <button className={`${btn} bg-purple-500 text-white w-full mt-3`} onClick={() => getNet().toVoting()}>🗳️ {d.toVote}</button>}
@@ -658,19 +736,19 @@ export default function App() {
 
         {/* ---------- VOTING ---------- */}
         {phase === 'voting' && (
-          <div className={`${card} anim-pop text-center`}>
+          <div className={`${card} anim-pop text-center flex flex-col flex-1 min-h-0`}>
             <h2 className="text-3xl font-extrabold">🗳️ {d.voting} <span className="text-xl bg-amber-100 rounded-full px-3 py-1">⏱ {secsLeft(pub.voteEndsAt, now)}s</span></h2>
             <p className="text-gray-500 font-bold">{d.voteHint}</p>
             <p className="font-bold mt-1">{pub.players.filter(p => p.hasVoted).length}/{pub.players.length} voted</p>
-            {priv?.myVote
-              ? <p className="mt-4 font-extrabold text-green-600 text-lg">{d.votedFor(pub.players.find(p => p.id === priv.myVote)?.name || '?')}</p>
-              : <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} markThiefId={priv?.knownThiefId || priv?.witnessedThiefId || null} markFollowerIds={priv?.knownFollowerIds} iAmFollower={priv?.isFollower} onPick={(id) => getNet().vote(id)} pickable={(p) => p.id !== joined.playerId} />}
+            {priv?.myVote || optVote
+              ? <p className="mt-4 font-extrabold text-green-600 text-lg">{d.votedFor(pub.players.find(p => p.id === (priv?.myVote || optVote))?.name || '?')}</p>
+              : <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} markThiefId={priv?.knownThiefId || priv?.witnessedThiefId || null} markFollowerIds={priv?.knownFollowerIds} iAmFollower={priv?.isFollower} peeks={priv?.peeks} onPick={(id) => { setOptVote(id); getNet().vote(id); }} pickable={(p) => p.id !== joined.playerId} />}
           </div>
         )}
 
         {/* ---------- RESULTS ---------- */}
         {phase === 'results' && (
-          <div className={`${card} anim-pop text-center`}>
+          <div className={`${card} anim-pop text-center flex-1 min-h-0 overflow-y-auto`}>
             <Confetti />
             <div className="text-7xl anim-bob inline-block">{pub.winner === 'sleepyheads' ? '🎉' : pub.winner === 'fallmouse' ? '💀' : '😈'}</div>
             <h2 className="text-3xl font-extrabold">{pub.winner === 'sleepyheads' ? d.sleepyWin : pub.winner === 'fallmouse' ? d.fallWin : d.thiefWin}</h2>
@@ -724,6 +802,7 @@ export default function App() {
               : <p className="mt-4 font-bold text-gray-500">{d.waiting}</p>}
           </div>
         )}
+        <ChatSheet open={chatSheet} onClose={() => setChatSheet(false)} chat={pub.chat} myId={joined.playerId} d={d} onChat={t => getNet().chat(t)} />
       </div>
       {showHelp && <HelpModal d={d} onClose={() => setShowHelp(false)} />}
     </div>

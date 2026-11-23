@@ -38,7 +38,7 @@ export class HostEngine {
   addPlayer(id: string, name: string, isHost: boolean): Player {
     let p = this.state.players.find(x => x.id === id);
     if (p) { p.connected = true; return p; }
-    p = { id, name: cleanName(name), isHost, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, wins: 0 };
+    p = { id, name: cleanName(name), isHost, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, peeks: [], wins: 0 };
     this.state.players.push(p); return p;
   }
   startRound() {
@@ -124,10 +124,10 @@ export class HostEngine {
         break;
       case 'inspect': if (msg.targetId) doInspect(s, player, msg.targetId); this.broadcast(); break;
       case 'chat': {
-        // Chat is open in the lobby (waiting for players), during the day
-        // discussion and on the results screen. It stays locked at night,
-        // during recruitment and while voting — eyes closed / secret ballot.
-        if (s.phase !== 'lobby' && s.phase !== 'day' && s.phase !== 'results') return;
+        // Chat is open almost everywhere — lobby, NIGHT (players asked to
+        // chat while "sleeping" so the wait isn't dead time), recruit, day
+        // and results. Only the secret ballot (voting) stays locked.
+        if (s.phase === 'voting' || s.phase === 'roleReveal') return;
         const now = Date.now();
         if (now - (this.lastChat.get(player.id) ?? 0) < 400) return;
         this.lastChat.set(player.id, now);
@@ -165,7 +165,7 @@ export class HostEngine {
       case 'playAgain':
         if (player.isHost && s.phase === 'results') {
           s.round++; s.phase = 'lobby';
-          s.players.forEach(p => { p.role = undefined; p.dice = undefined; p.isFollower = false; p.vote = null; p.hasVoted = false; p.inspectedDice = null; });
+          s.players.forEach(p => { p.role = undefined; p.dice = undefined; p.isFollower = false; p.vote = null; p.hasVoted = false; p.inspectedDice = null; p.peeks = []; });
           this.broadcast();
         }
         break;
