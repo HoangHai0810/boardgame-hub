@@ -127,7 +127,7 @@ io.on('connection', (socket: Socket) => {
     state.discussionMs = DISC; // env override (tests) seeds the room option
     room = { state, timers: [], sockets: new Map() };
     rooms.set(code, room);
-    player = { id: String(clientId), name: cleanName(name), isHost: true, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, wins: 0 };
+    player = { id: String(clientId), name: cleanName(name), isHost: true, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, peeks: [], wins: 0 };
     state.players.push(player);
     room.sockets.set(player.id, socket.id);
     socket.join(code);
@@ -149,7 +149,7 @@ io.on('connection', (socket: Socket) => {
     }
     if (r.state.phase !== 'lobby') return cb?.({ ok: false, error: 'GAME_STARTED' });
     if (r.state.players.length >= MAX_PLAYERS) return cb?.({ ok: false, error: 'ROOM_FULL' });
-    player = { id: String(clientId), name: cleanName(name), isHost: false, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, wins: 0 };
+    player = { id: String(clientId), name: cleanName(name), isHost: false, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, peeks: [], wins: 0 };
     r.state.players.push(player);
     r.sockets.set(player.id, socket.id);
     socket.join(r.state.roomCode);
@@ -237,7 +237,7 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('chat', ({ text }: { text: string }) => {
-    if (!guard() || (room!.state.phase !== 'lobby' && room!.state.phase !== 'day' && room!.state.phase !== 'results')) return;
+    if (!guard() || room!.state.phase === 'voting' || room!.state.phase === 'roleReveal') return;
     const now = Date.now();
     if (now - (lastChat.get(player!.id) ?? 0) < 400) return; // spam guard
     lastChat.set(player!.id, now);
@@ -265,7 +265,7 @@ io.on('connection', (socket: Socket) => {
     if (room!.state.phase !== 'results') return;
     room!.state.round++;
     room!.state.phase = 'lobby';
-    room!.state.players.forEach(p => { p.role = undefined; p.dice = undefined; p.isFollower = false; p.vote = null; p.hasVoted = false; p.inspectedDice = null; });
+    room!.state.players.forEach(p => { p.role = undefined; p.dice = undefined; p.isFollower = false; p.vote = null; p.hasVoted = false; p.inspectedDice = null; p.peeks = []; });
     broadcast(room!);
   });
 
