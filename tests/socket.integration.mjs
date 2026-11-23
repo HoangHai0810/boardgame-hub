@@ -73,6 +73,7 @@ await until(() => all.every(c => c.state?.phase === 'night'), 8000, 'night via a
 t('night starts when all players ready (no host skip, no timer)', true);
 // Play through hours: act whenever awake
 const acted = new Set();
+const inspectSenders = new Set();
 const nightWatcher = setInterval(() => {
   for (const c of all) {
     if (c.state?.phase !== 'night' || !c.priv?.awake) continue;
@@ -81,6 +82,7 @@ const nightWatcher = setInterval(() => {
     if (c.priv.canSteal) c.s.emit('nightAction', { kind: 'steal' });
     else if (c.priv.canInspect) {
       const target = c.state.players.find(p => p.id !== c.clientId);
+      inspectSenders.add(c.clientId);
       c.s.emit('nightAction', { kind: 'inspect', targetId: target.id });
     }
   }
@@ -91,7 +93,11 @@ t('day phase reached after 6 hours', true);
 t('cheese reported stolen in the morning', host.state.cheeseStolen === true);
 const inspector = all.find(c => c.priv?.inspected);
 if (inspector) t('a lone sleepyhead inspected and kept the result private', typeof inspector.priv.inspected.dice === 'number'
-  && all.filter(c => c !== inspector).every(c => !c.priv?.inspected || c.priv.inspected.targetId !== inspector.priv.inspected.targetId || c === inspector));
+  // Exact privacy property: the set of clients holding an inspection result is
+  // EXACTLY the set of clients who performed an inspection — nobody receives
+  // another player's result. (The old assertion wrongly failed whenever two
+  // lone wakers happened to peek at the same target — flaky, dice-dependent.)
+  && JSON.stringify(all.filter(c => c.priv?.inspected).map(c => c.clientId).sort()) === JSON.stringify([...inspectSenders].sort()));
 
 // Day chat
 host.s.emit('chat', { text: 'I think it was Mouse2!' });

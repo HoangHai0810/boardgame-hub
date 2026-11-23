@@ -245,4 +245,61 @@ t('fall mouse can be recruited as a follower', () => {
   assert.equal(fall.isFollower, true);
 });
 
+/* ---------------- Session scoreboard (Cycle 1) ---------------- */
+
+t('scoreboard: sleepyheads win -> non-follower villagers +1 only', () => {
+  const g = gameWith(4, [0.0, 0.1, 0.3, 0.5, 0.9]);
+  const thief = g.players.find(p => p.role === 'thief');
+  g.phase = 'voting';
+  g.players.forEach(p => castVote(g, p, p === thief ? g.players.find(x => x !== thief).id : thief.id));
+  resolveVotes(g);
+  assert.equal(g.winner, 'sleepyheads');
+  g.players.forEach(p => assert.equal(p.wins ?? 0, p === thief ? 0 : 1, p.name));
+});
+
+t('scoreboard: thief win -> thief and followers +1', () => {
+  const g = gameWith(6, [0.0, 0.2, 0.0, 0.2, 0.4, 0.6, 0.8, 0.15]);
+  const thief = g.players.find(p => p.role === 'thief');
+  const fol = g.players.find(p => p.role === 'sleepyhead'); fol.isFollower = true;
+  const victim = g.players.find(p => p.role === 'sleepyhead' && !p.isFollower);
+  g.phase = 'voting';
+  g.players.forEach(p => castVote(g, p, p === victim ? thief.id : victim.id));
+  resolveVotes(g);
+  assert.equal(g.winner, 'thief');
+  assert.equal(thief.wins, 1); assert.equal(fol.wins, 1);
+  g.players.filter(p => p !== thief && p !== fol).forEach(p => assert.equal(p.wins ?? 0, 0, p.name));
+});
+
+t('scoreboard: fall mouse solo win -> only the fall mouse +1, even as follower', () => {
+  const g = gameWith(6, [0.0, 0.2, 0.0, 0.2, 0.4, 0.6, 0.8, 0.15]);
+  const fall = g.players.find(p => p.role === 'fallmouse');
+  fall.isFollower = true;
+  g.phase = 'voting';
+  g.players.forEach((p, i) => castVote(g, p, i === 5 ? g.players[0].id : fall.id));
+  resolveVotes(g);
+  assert.equal(g.winner, 'fallmouse');
+  assert.equal(fall.wins, 1);
+  g.players.filter(p => p !== fall).forEach(p => assert.equal(p.wins ?? 0, 0, p.name));
+});
+
+t('scoreboard: wins persist across rounds and never double-count', () => {
+  const g = gameWith(4, [0.0, 0.1, 0.3, 0.5, 0.9]);
+  const thief = g.players.find(p => p.role === 'thief');
+  g.phase = 'voting';
+  g.players.forEach(p => castVote(g, p, p === thief ? g.players[1].id : thief.id));
+  resolveVotes(g); resolveVotes(g); // second call must not re-score
+  const before = g.players.map(p => p.wins ?? 0);
+  assert.deepEqual(before, g.players.map(p => p === thief ? 0 : 1));
+  assignRolesAndDice(g, seq([0.5, 0.1, 0.3, 0.5, 0.9])); // round 2 setup
+  assert.deepEqual(g.players.map(p => p.wins ?? 0), before);
+});
+
+t('scoreboard: publicState exposes wins', () => {
+  const g = gameWith(4, [0.0, 0.1, 0.3, 0.5, 0.9]);
+  g.players[0].wins = 3;
+  const pub = publicState(g);
+  assert.equal(pub.players[0].wins, 3);
+  assert.equal(pub.players[1].wins, 0);
+});
+
 console.log(`\n${passed} logic tests passed`);
