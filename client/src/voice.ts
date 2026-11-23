@@ -13,15 +13,21 @@
 //   symmetric-NAT pair the two players simply won't hear EACH OTHER while
 //   the rest of the mesh keeps working. Failure is per-pair and silent,
 //   never fatal to the room.
-// - The mic is acquired BEFORE presence is published, so every peer
-//   connection is born with the local track attached (no renegotiation).
-//   Muting is track.enabled — instant and renegotiation-free.
+// - Speaker and mic are SEPARATE (v29, Hoàng's ask): joining voice is
+//   listen-only — you hear everyone without a mic (peer connections are
+//   born with a recvonly audio transceiver). Enabling the mic later
+//   REBUILDS each pair (kind:'reset'): a recvonly transceiver cannot be
+//   upgraded to send in place, so both sides recreate the connection —
+//   the new one is born with the mic track attached. Muting stays
+//   track.enabled — instant and renegotiation-free.
 import type { MqttClient } from 'mqtt';
 import { brokerOrder, connectMqttSequential } from './brokers';
 
 const vTopic = (code: string, part: string) => `ct1/${code}/${part}`;
 
 export interface VoiceHandle {
+  /** Acquire the mic and start sending to the whole mesh. */
+  enableMic(): Promise<void>;
   setMuted(muted: boolean): void;
   leave(): void;
 }
@@ -42,10 +48,9 @@ interface Peer {
 }
 
 export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbacks): Promise<VoiceHandle> {
-  // Mic FIRST: if the user denies permission we never join the mesh.
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-  });
+  // Listen-only by default: NO mic is requested to join the mesh.
+  let stream: MediaStream | null = null;
+  let micOn = false;
 
   const code = roomCode.toUpperCase();
   const presenceTopic = vTopic(code, 'v/' + myId);
@@ -66,6 +71,10 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
 
   const peers = new Map<string, Peer>();
   const peerIds = new Set<string>([myId]);
+  // Who is in the voice mesh per PRESENCE (retained) — deliberately kept
+  // separate from live peer connections, so a pair whose ICE failed can
+  // be re-formed while its owner is still present.
+  const present = new Set<string>();
   let left = false;
 
   const audioCtx = new AudioContext();
@@ -78,7 +87,22 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
     src.connect(an);
     return an;
   };
-  analysers.set(myId, makeAnalyser(stream));
+  const enableMic = async () => {
+    if (stream || left) return;
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+    micOn = true;
+    analysers.set(myId, makeAnalyser(stream));
+    // Rebuild every pair: the fresh connections are born with the track.
+    for (const pid of [...peers.keys()]) {
+      publish(vTopic(code, 'vs/' + pid), JSON.stringify({ from: myId, kind: 'reset' }), { qos: 1 });
+      closePeer(pid);
+      ensurePeer(pid);
+      if (myId < pid) void makeOffer(pid);
+    }
+    publishPresence();
+  };
 
   const publishPeers = () => cb.onPeers(new Set(peerIds));
 
@@ -102,7 +126,8 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
         { urls: 'stun:stun1.l.google.com:19302' },
       ],
     });
-    stream.getTracks().forEach(t => pc.addTrack(t, stream));
+    if (stream) { const ms = stream; ms.getTracks().forEach(t => pc.addTrack(t, ms)); }
+    else pc.addTransceiver('audio', { direction: 'recvonly' }); // listen-only until the mic is enabled
     const audio = document.createElement('audio');
     audio.autoplay = true;
     (audio as any).playsInline = true;
@@ -127,7 +152,18 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
       }
     };
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') closePeer(pid);
+      if (pc.connectionState === 'failed') {
+        closePeer(pid);
+        // Self-heal: presence is retained and never redelivered, so a
+        // dropped pair would stay dead forever without this. Re-form it
+        // and re-announce so the counterpart rebuilds its side too.
+        setTimeout(() => {
+          if (left || peers.has(pid) || !present.has(pid)) return;
+          ensurePeer(pid);
+          if (myId < pid) void makeOffer(pid);
+          publishPresence();
+        }, 2000);
+      } else if (pc.connectionState === 'closed') closePeer(pid);
     };
     return peer;
   };
@@ -143,7 +179,7 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
 
   let failoverTimer: ReturnType<typeof setTimeout> | null = null;
   let failoverBusy = false;
-  const publishPresence = () => publish(presenceTopic, JSON.stringify({ id: myId, ts: Date.now() }), { retain: true, qos: 1 });
+  const publishPresence = () => publish(presenceTopic, JSON.stringify({ id: myId, ts: Date.now(), mic: micOn }), { retain: true, qos: 1 });
 
   function attach(c: MqttClient) {
     c.subscribe(vTopic(code, 'v/+'), { qos: 1 });
@@ -154,7 +190,8 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
     if (topicName.startsWith(vTopic(code, 'v/'))) {
       const pid = topicName.slice(vTopic(code, 'v/').length);
       if (pid === myId) return;
-      if (!text) { closePeer(pid); return; } // retained cleared / will fired
+      if (!text) { present.delete(pid); closePeer(pid); return; } // retained cleared / will fired
+      present.add(pid);
       // A voice peer is present. Connect if we haven't; the smaller id offers.
       if (!peers.has(pid)) {
         ensurePeer(pid);
@@ -166,6 +203,14 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
     let msg: any; try { msg = JSON.parse(text); } catch { return; }
     const from = String(msg.from || '');
     if (!from || from === myId) return;
+    if (msg.kind === 'reset') {
+      // Counterpart enabled their mic: rebuild the pair from scratch so
+      // the new connection carries their track from the start.
+      closePeer(from);
+      ensurePeer(from);
+      if (myId < from) void makeOffer(from);
+      return;
+    }
     const peer = ensurePeer(from);
     try {
       if (msg.kind === 'offer') {
@@ -214,13 +259,8 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
     } finally { failoverBusy = false; }
   }
 
-  try {
-    const r0 = await connectMqttSequential(order, 0, busExtra());
-    bus = r0.client; busIdx = r0.idx;
-  } catch (e) {
-    stream.getTracks().forEach(t => t.stop());
-    throw e;
-  }
+  const r0 = await connectMqttSequential(order, 0, busExtra());
+  bus = r0.client; busIdx = r0.idx;
   attach(bus);
   if (bus.connected) publishPresence();
   publishPeers();
@@ -242,15 +282,16 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
   }, 200);
 
   return {
+    enableMic,
     setMuted(muted: boolean) {
-      stream.getAudioTracks().forEach(t => { t.enabled = !muted; });
+      stream?.getAudioTracks().forEach(t => { t.enabled = !muted; });
     },
     leave() {
       left = true;
       clearInterval(poll);
       try { publish(presenceTopic, '', { retain: true, qos: 1 }); } catch { /* noop */ }
       [...peers.keys()].forEach(closePeer);
-      stream.getTracks().forEach(t => t.stop());
+      stream?.getTracks().forEach(t => t.stop());
       audioCtx.close().catch(() => { /* noop */ });
       if (failoverTimer) { clearTimeout(failoverTimer); failoverTimer = null; }
       const b = bus; bus = null;

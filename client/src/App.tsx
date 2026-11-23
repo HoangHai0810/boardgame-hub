@@ -56,18 +56,22 @@ function HelpModal({ d, onClose }: { d: any; onClose: () => void }) {
   );
 }
 
-function TopBar({ d, lang, muted, onToggleMuted, onHelp, onToggleLang, voice }: { d: any; lang: Lang; muted: boolean; onToggleMuted: () => void; onHelp: () => void; onToggleLang: () => void; voice?: { state: 'off' | 'busy' | 'on'; muted: boolean; onToggle: () => void; onLeave: () => void } }) {
+function TopBar({ d, lang, muted, onToggleMuted, onHelp, onToggleLang, voice }: { d: any; lang: Lang; muted: boolean; onToggleMuted: () => void; onHelp: () => void; onToggleLang: () => void; voice?: { speaker: 'off' | 'busy' | 'on'; mic: 'off' | 'busy' | 'on'; muted: boolean; onSpeaker: () => void; onMic: () => void } }) {
   return (
     <div className="flex items-center justify-between gap-2 mb-2">
       <div className="font-extrabold text-white drop-shadow text-lg">🧀 {d.title}</div>
       <div className="flex gap-2">
-        {voice && (voice.state === 'off'
-          ? <button title={d.voiceJoin} className="bg-white/20 text-white rounded-full px-3 py-1" onClick={voice.onToggle}>🎤</button>
-          : voice.state === 'busy'
-            ? <button title={d.voiceJoin} className="bg-amber-400 text-white rounded-full px-3 py-1 anim-pulse-soft">🎤</button>
+        {voice && (voice.speaker === 'off'
+          ? <button title={d.voiceListen} className="bg-white/20 text-white rounded-full px-3 py-1" onClick={voice.onSpeaker}>🎧</button>
+          : voice.speaker === 'busy'
+            ? <button title={d.voiceListen} className="bg-amber-400 text-white rounded-full px-3 py-1 anim-pulse-soft">🎧</button>
             : <>
-              <button title={voice.muted ? d.voiceUnmute : d.voiceMute} className={`${voice.muted ? 'bg-red-500' : 'bg-green-500'} text-white rounded-full px-3 py-1`} onClick={voice.onToggle}>{voice.muted ? '🔇' : '🎤'}</button>
-              <button title={d.voiceLeave} className="bg-white/20 text-white rounded-full px-3 py-1" onClick={voice.onLeave}>✕</button>
+              <button title={d.voiceLeave} className="bg-green-500 text-white rounded-full px-3 py-1" onClick={voice.onSpeaker}>🎧</button>
+              {voice.mic === 'off'
+                ? <button title={d.voiceMicOn} className="bg-white/20 text-white rounded-full px-3 py-1" onClick={voice.onMic}>🎤</button>
+                : voice.mic === 'busy'
+                  ? <button title={d.voiceMicOn} className="bg-amber-400 text-white rounded-full px-3 py-1 anim-pulse-soft">🎤</button>
+                  : <button title={voice.muted ? d.voiceUnmute : d.voiceMute} className={`${voice.muted ? 'bg-red-500' : 'bg-green-500'} text-white rounded-full px-3 py-1`} onClick={voice.onMic}>{voice.muted ? '🔇' : '🎤'}</button>}
             </>)}
         <button aria-label="sound" className="bg-white/20 text-white rounded-full px-3 py-1" onClick={onToggleMuted}>{muted ? '🔇' : '🔊'}</button>
         <button className="bg-white/20 text-white rounded-full px-3 py-1 font-bold" onClick={onHelp}>❓ {d.help}</button>
@@ -146,25 +150,39 @@ function ChatPanel({ chat, myId, d, height = 'h-48', onChat }: { chat: any[]; my
 // Module-level for the same reason as ChatPanel: a click landing while App
 // re-rendered used to hit a freshly remounted chip and die — voting felt
 // like it needed 2–3 clicks. Stable identity = one click, one vote.
-function PlayerChips({ players, myId, phase, d, roleLabel, onPick, pickable, onKick, markThiefId, markFollowerIds, iAmFollower, peeks, speakingIds }: {
+function PlayerChips({ players, myId, phase, d, roleLabel, onPick, pickable, onKick, markThiefId, markFollowerIds, iAmFollower, peeks, speakingIds, compact, winnerSide }: {
   players: any[]; myId?: string; phase?: string; d: any;
   roleLabel: (role?: string | null, isFollower?: boolean) => string;
   onPick?: (id: string) => void; pickable?: (p: any) => boolean; onKick?: (id: string) => void;
   markThiefId?: string | null; markFollowerIds?: string[]; iAmFollower?: boolean; peeks?: { targetId: string; dice: number }[];
-  speakingIds?: Set<string>;
+  speakingIds?: Set<string>; compact?: boolean;
+  /** Results only: which side won — winners get a strong team tint + 🏆,
+   *  losers go grey, so the outcome reads at a glance (Hoàng: "giao diện
+   *  mờ, không phản ánh kết quả"). */
+  winnerSide?: 'thief' | 'village' | 'fallmouse' | null;
 }) {
+  const sideOf = (p: any) => p.role === 'fallmouse' ? 'fallmouse' : (p.role === 'thief' || p.isFollower) ? 'thief' : 'village';
+  const resultCls = (p: any): string | null => {
+    if (phase !== 'results' || !winnerSide) return null;
+    if (sideOf(p) !== winnerSide) return 'bg-gray-100 ring-2 ring-gray-300 opacity-75';
+    return winnerSide === 'thief' ? 'bg-red-100 ring-4 ring-red-500'
+      : winnerSide === 'fallmouse' ? 'bg-violet-200 ring-4 ring-violet-500'
+      : 'bg-emerald-100 ring-4 ring-emerald-500';
+  };
+  const roleColor = (p: any) => sideOf(p) === 'thief' ? 'text-red-600' : sideOf(p) === 'fallmouse' ? 'text-violet-700' : (winnerSide === 'village' && phase === 'results' ? 'text-emerald-700' : 'text-gray-700');
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-3">
+    <div className={`grid grid-cols-2 sm:grid-cols-4 ${compact ? 'gap-2 my-2' : 'gap-3 my-3'}`}>
       {players.map(p => (
         <button key={p.id} disabled={onPick ? (pickable ? !pickable(p) : false) : !onKick}
           onClick={() => onPick?.(p.id)}
-          className={`relative rounded-2xl p-2.5 text-center shadow ${p.id === markThiefId ? 'bg-red-100 ring-4 ring-red-400' : markFollowerIds?.includes(p.id) ? 'bg-emerald-50 ring-4 ring-emerald-400' : p.id === myId ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'} ${onPick ? 'hover:scale-105 transition cursor-pointer' : 'cursor-default'} disabled:opacity-50 disabled:hover:scale-100`}>
+          className={`relative rounded-2xl ${compact ? 'p-2' : 'p-2.5'} text-center shadow ${resultCls(p) ?? (p.id === markThiefId ? 'bg-red-100 ring-4 ring-red-400' : markFollowerIds?.includes(p.id) ? 'bg-emerald-50 ring-4 ring-emerald-400' : p.id === myId ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white')} ${onPick ? 'hover:scale-105 transition cursor-pointer' : 'cursor-default'} disabled:opacity-50 disabled:hover:scale-100`}>
+          {phase === 'results' && winnerSide && sideOf(p) === winnerSide && <span className="absolute -top-2 -right-2 text-2xl anim-pop">🏆</span>}
           {p.id === markThiefId && <span className="absolute -top-2 -left-2 text-2xl anim-pop" title={d.thief}>😈</span>}
           {(markFollowerIds?.includes(p.id) || (p.id === myId && iAmFollower)) && <span className="absolute -top-2 -left-2 text-2xl anim-pop">🤝</span>}
           {peeks?.some(x => x.targetId === p.id) && <span className="absolute -top-2 -right-2 bg-sky-500 text-white text-xs font-extrabold rounded-full px-2 py-0.5 shadow">🎲{peeks!.find(x => x.targetId === p.id)!.dice}</span>}
           {speakingIds?.has(p.id) && <span className="absolute -bottom-2 -left-2 bg-green-500 text-white text-xs rounded-full px-1.5 py-0.5 shadow anim-pulse-soft">🎙️</span>}
-          <div className={`text-3xl anim-bob w-12 h-12 mx-auto rounded-full flex items-center justify-center ${avatarBg(p.id)} shadow-inner`}>{mouseFor(p.id)}</div>
-          <div className="font-bold truncate">{p.name} {p.id === myId && <span className="text-amber-600">({d.you})</span>}</div>
+          <div className={`${compact ? 'text-2xl w-9 h-9' : 'text-3xl w-12 h-12'} anim-bob mx-auto rounded-full flex items-center justify-center ${avatarBg(p.id)} shadow-inner`}>{mouseFor(p.id)}</div>
+          <div className={`font-bold truncate ${compact ? 'text-sm' : ''}`}>{p.name} {p.id === myId && <span className="text-amber-600">({d.you})</span>}</div>
           <div className="text-xs">{p.isHost && <span className="bg-purple-500 text-white rounded-full px-2 py-0.5">👑 {d.host}</span>} {!p.connected && <span className="text-red-500">• {d.offline}</span>}</div>
           {(p.wins ?? 0) > 0 && <div className="text-xs mt-1 font-extrabold text-amber-600">🏆 ×{p.wins}</div>}
           {onKick && p.id !== myId && (
@@ -173,7 +191,7 @@ function PlayerChips({ players, myId, phase, d, roleLabel, onPick, pickable, onK
                 onClick={(e) => { e.stopPropagation(); onKick(p.id); }}
                 className="inline-block text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-0.5 cursor-pointer hover:bg-red-200">✖ {d.kick}</span>
             </div>)}
-          {(phase === 'results') && <div className="text-sm mt-1 flex items-center justify-center gap-2">{roleLabel(p.role, p.isFollower)}<DiceFace value={p.dice ?? 1} size={26} /></div>}
+          {(phase === 'results') && <div className="text-sm mt-1 font-extrabold flex items-center justify-center gap-2"><span className={roleColor(p)}>{roleLabel(p.role, p.isFollower)}</span><DiceFace value={p.dice ?? 1} size={26} /></div>}
           {phase === 'voting' && <div className="text-xs mt-1">{p.hasVoted ? '✅ voted' : '🤔 …'}</div>}
         </button>
       ))}
@@ -387,34 +405,50 @@ export default function App() {
   // Voice chat (v26): off -> busy (mic prompt + mesh join) -> on; the mic
   // button then toggles mute, ✕ leaves the mesh. Speaking ids drive the
   // 🎙️ badges on player cards.
-  const [voiceState, setVoiceState] = useState<'off' | 'busy' | 'on'>('off');
+  // Voice (v29): speaker and mic are separate switches — 🎧 joins the
+  // mesh listen-only (hear everyone, no mic needed); 🎤 starts sending.
+  const [voiceSpeaker, setVoiceSpeaker] = useState<'off' | 'busy' | 'on'>('off');
+  const [voiceMic, setVoiceMic] = useState<'off' | 'busy' | 'on'>('off');
   const [voiceMuted, setVoiceMuted] = useState(false);
   const [speakingIds, setSpeakingIds] = useState<Set<string>>(new Set());
   const voiceRef = useRef<VoiceHandle | null>(null);
   const leaveVoice = () => {
     try { voiceRef.current?.leave(); } catch { /* noop */ }
     voiceRef.current = null;
-    setVoiceState('off'); setVoiceMuted(false); setSpeakingIds(new Set());
+    setVoiceSpeaker('off'); setVoiceMic('off'); setVoiceMuted(false); setSpeakingIds(new Set());
   };
-  const toggleVoice = async () => {
-    if (voiceState === 'busy') return;
-    if (voiceState === 'on') {
-      const m = !voiceMuted;
-      setVoiceMuted(m);
-      voiceRef.current?.setMuted(m);
-      return;
-    }
+  const toggleSpeaker = async () => {
+    if (voiceSpeaker === 'busy') return;
+    if (voiceSpeaker === 'on') { leaveVoice(); return; }
     if (!joined) return;
-    setVoiceState('busy');
+    setVoiceSpeaker('busy');
     try {
       voiceRef.current = await joinVoice(joined.code, joined.playerId, {
         onSpeaking: (ids) => setSpeakingIds(prev => (prev.size === ids.size && [...ids].every(x => prev.has(x)) ? prev : ids)),
         onPeers: () => { /* presence is implicit in the speaking badges */ },
       });
-      setVoiceMuted(false);
-      setVoiceState('on');
+      setVoiceSpeaker('on');
     } catch {
-      setVoiceState('off');
+      setVoiceSpeaker('off');
+      setError('NET_UNREACHABLE');
+    }
+  };
+  const toggleMic = async () => {
+    const vh = voiceRef.current;
+    if (!vh || voiceMic === 'busy') return;
+    if (voiceMic === 'on') {
+      const m = !voiceMuted;
+      setVoiceMuted(m);
+      vh.setMuted(m);
+      return;
+    }
+    setVoiceMic('busy');
+    try {
+      await vh.enableMic();
+      setVoiceMuted(false);
+      setVoiceMic('on');
+    } catch {
+      setVoiceMic('off');
       setError('VOICE_MIC');
     }
   };
@@ -442,7 +476,24 @@ export default function App() {
   useEffect(() => { if (!optReadyVote) return; const t = setTimeout(() => setOptReadyVote(false), 6000); return () => clearTimeout(t); }, [optReadyVote]);
   useEffect(() => { if (!optReady) return; const t = setTimeout(() => setOptReady(false), 6000); return () => clearTimeout(t); }, [optReady]);
   const [chatSeen, setChatSeen] = useState(0);
-  useEffect(() => { setChatSheet(false); setOptVote(null); setOptReadyVote(false); setOptReady(false); setOptPeek(false); }, [phase]);
+  useEffect(() => { setChatSheet(false); setOptVote(null); setOptReadyVote(false); setOptReady(false); setOptPeek(false); pendingRef.current = {}; }, [phase]);
+  // Intents tapped but not yet confirmed by the host. A publish lost in a
+  // connection flap used to vanish silently (Hoàng: "Vote rồi mà ở step
+  // nào cũng 4/6") — on reconnect the unconfirmed ones are re-sent.
+  const pendingRef = useRef<{ vote?: string; readyVote?: boolean; ready?: boolean }>({});
+  const prevConnLostRef = useRef(false);
+  useEffect(() => {
+    if (prevConnLostRef.current && !connLost && joined && pub) {
+      const pd = pendingRef.current;
+      if (phase === 'voting' && pd.vote && !priv?.myVote) getNet().vote(pd.vote);
+      if (phase === 'day' && pd.readyVote && !(pub as any).dayReady?.includes(joined.playerId)) getNet().readyVote();
+      if (phase === 'roleReveal' && pd.ready && !(pub as any).revealReady?.includes(joined.playerId)) getNet().ready();
+    }
+    prevConnLostRef.current = connLost;
+  }, [connLost]);
+  useEffect(() => { if (priv?.myVote) pendingRef.current.vote = undefined; }, [priv?.myVote]);
+  useEffect(() => { if (joined && (pub as any)?.dayReady?.includes(joined.playerId)) pendingRef.current.readyVote = false; }, [(pub as any)?.dayReady?.join(',')]);
+  useEffect(() => { if (joined && (pub as any)?.revealReady?.includes(joined.playerId)) pendingRef.current.ready = false; }, [(pub as any)?.revealReady?.join(',')]);
   useEffect(() => { setOptPeek(false); }, [pub?.currentHour]);
   useEffect(() => { if (chatSheet) setChatSeen(pub?.chat?.length ?? 0); }, [chatSheet, pub?.chat?.length]);
   useEffect(() => {
@@ -506,7 +557,7 @@ export default function App() {
     if (!scored.length) return null;
     const top = (scored[0] as any).wins ?? 0;
     return (
-      <div className="max-w-sm mx-auto bg-amber-50 rounded-2xl p-3 mt-3 text-left">
+      <div className="max-w-sm mx-auto bg-amber-50 rounded-2xl p-2 mt-2 text-left text-sm">
         <div className="font-extrabold text-center mb-1">{d.standings}</div>
         {scored.map(p => (
           <div key={p.id} className="flex justify-between font-bold">
@@ -545,11 +596,11 @@ export default function App() {
             <input className="w-full border-2 border-amber-300 rounded-2xl px-4 py-3 mt-3 text-lg" placeholder={d.name}
               value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
             <button className={`${btn} bg-amber-400 hover:bg-amber-500 w-full mt-3 text-xl`}
-              disabled={!name.trim()} onClick={() => { setError(''); getNet().createRoom(name); }}>{d.create} 🏠</button>
+              disabled={!name.trim() || !!status} onClick={() => { setError(''); getNet().createRoom(name); }}>{d.create} 🏠</button>
             <div className="flex gap-2 mt-3">
               <input className="flex-1 border-2 border-amber-300 rounded-2xl px-4 py-3 uppercase text-lg" placeholder={d.codePh}
                 value={code} maxLength={5} onChange={e => setCode(e.target.value.toUpperCase())} />
-              <button className={`${btn} bg-sky-400 hover:bg-sky-500 text-white`} disabled={!name.trim() || code.trim().length < 4}
+              <button className={`${btn} bg-sky-400 hover:bg-sky-500 text-white`} disabled={!name.trim() || code.trim().length < 4 || !!status}
                 onClick={() => { setError(''); getNet().joinRoom(code, name); }}>{d.join}</button>
             </div>
             <button className="mt-4 underline font-bold text-amber-700" onClick={() => setShowHelp(true)}>📖 {d.how} (1 min)</button>
@@ -575,7 +626,7 @@ export default function App() {
   return (
     <div className={`h-dvh ${bg} p-3 sm:p-4 transition-colors duration-1000 flex flex-col overflow-hidden relative`}>
       <div className="max-w-3xl w-full mx-auto flex flex-col flex-1 min-h-0">
-        <TopBar d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })}  voice={{ state: voiceState, muted: voiceMuted, onToggle: toggleVoice, onLeave: leaveVoice }}/>
+        <TopBar d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })}  voice={{ speaker: voiceSpeaker, mic: voiceMic, muted: voiceMuted, onSpeaker: toggleSpeaker, onMic: toggleMic }}/>
         {connLost && joined && <div className="bg-red-500 text-white text-center font-bold text-sm rounded-full px-4 py-1 mb-2 anim-pulse-soft shadow">📡 {d.connLost}</div>}
         {error && <div className="bg-red-100 border border-red-400 text-red-700 rounded-2xl px-4 py-2 mb-3 font-bold">{localizeMsg(error)}
           <button className="float-right" onClick={() => setError('')}>✕</button></div>}
@@ -606,8 +657,8 @@ export default function App() {
               }}>{copied ? '✅ ' + d.copied : '🔗 ' + d.copyLink}</button>
               <span className="font-bold">{d.players}: {pub.players.length}/8</span>
             </div>
-            <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} onKick={isHost ? (id) => getNet().kick(id) : undefined} speakingIds={speakingIds} />
-            <div className="flex items-center justify-center gap-2 mt-1 flex-wrap">
+            <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} onKick={isHost ? (id) => getNet().kick(id) : undefined} speakingIds={speakingIds} compact />
+            <div className="flex items-center justify-center gap-2 mt-2 flex-wrap bg-indigo-50 border-2 border-indigo-100 rounded-2xl px-3 py-2">
               <span className="font-bold text-gray-500">💬 {d.discussionTime}:</span>
               {isHost
                 ? [60000, 120000, 180000].map(ms => (
@@ -621,12 +672,12 @@ export default function App() {
             <MyRecord />
             {isHost ? (
               <>
-                <button className={`${btn} bg-green-500 hover:bg-green-600 text-white w-full text-xl`}
+                <button className={`${btn} bg-green-500 hover:bg-green-600 text-white w-full text-xl mt-3`}
                   disabled={pub.players.filter(p => p.connected).length < 4}
                   onClick={() => getNet().startGame()}>▶️ {d.start}</button>
                 {pub.players.length < 4 && <p className="text-center text-red-500 font-bold mt-2">{d.need4}</p>}
               </>
-            ) : <p className="text-center font-bold text-gray-500">{d.waiting}</p>}
+            ) : <p className="text-center font-bold text-gray-500 mt-3">{d.waiting}</p>}
             <div className="mt-3 flex flex-col flex-1 min-h-0"><ChatPanel chat={pub.chat} myId={joined.playerId} d={d} height="flex" onChat={t => getNet().chat(t)} /></div>
             <button className="mt-4 underline text-gray-500" onClick={() => { try { sessionStorage.removeItem('ct_guest_session'); } catch { /* ignore */ } getNet().leave(); location.href = location.pathname; }}>{d.leave}</button>
           </div>
@@ -648,7 +699,7 @@ export default function App() {
             <div>
               {pub.revealReady?.includes(joined.playerId) || optReady
                 ? <p className="mt-5 font-extrabold text-green-600">✅ {d.readyOf(pub.revealReady?.length ?? 0, pub.players.filter(p => p.connected).length)}</p>
-                : <button className={`${btn} bg-green-500 hover:bg-green-600 text-white mt-5 text-lg`} onClick={() => { setOptReady(true); getNet().ready(); }}>{d.imReady}</button>}
+                : <button className={`${btn} bg-green-500 hover:bg-green-600 text-white mt-5 text-lg`} onClick={() => { setOptReady(true); pendingRef.current.ready = true; getNet().ready(); }}>{d.imReady}</button>}
               <p className="mt-2 font-bold text-gray-400">{d.readyOf(pub.revealReady?.length ?? 0, pub.players.filter(p => p.connected).length)}</p>
               {isHost && <button className="mt-2 underline text-indigo-500 font-bold" onClick={() => getNet().beginNight()}>🌙 {d.forceNight}</button>}
             </div>
@@ -790,7 +841,7 @@ export default function App() {
             <div className="mt-3 text-center">
               {pub.dayReady?.includes(joined.playerId) || optReadyVote
                 ? <p className="font-extrabold text-green-600">{d.readyVoteDone}</p>
-                : <button className={`${btn} bg-green-500 hover:bg-green-600 text-white`} onClick={() => { setOptReadyVote(true); getNet().readyVote(); }}>{d.readyVoteBtn}</button>}
+                : <button className={`${btn} bg-green-500 hover:bg-green-600 text-white`} onClick={() => { setOptReadyVote(true); pendingRef.current.readyVote = true; getNet().readyVote(); }}>{d.readyVoteBtn}</button>}
               <p className="font-bold text-gray-500 mt-1">{d.readyVoteOf(pub.dayReady?.length ?? 0, pub.players.filter(p => p.connected).length)}</p>
             </div>
             {isHost && <button className={`${btn} bg-purple-500 text-white w-full mt-3`} onClick={() => getNet().toVoting()}>🗳️ {d.toVote}</button>}
@@ -805,7 +856,7 @@ export default function App() {
             <p className="font-bold mt-1">{pub.players.filter(p => p.hasVoted).length}/{pub.players.length} voted</p>
             {priv?.myVote || optVote
               ? <p className="mt-4 font-extrabold text-green-600 text-lg">{d.votedFor(pub.players.find(p => p.id === (priv?.myVote || optVote))?.name || '?')}</p>
-              : <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} markThiefId={priv?.knownThiefId || priv?.witnessedThiefId || null} markFollowerIds={priv?.knownFollowerIds} iAmFollower={priv?.isFollower} peeks={priv?.peeks} speakingIds={speakingIds} onPick={(id) => { setOptVote(id); getNet().vote(id); }} pickable={(p) => p.id !== joined.playerId} />}
+              : <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} markThiefId={priv?.knownThiefId || priv?.witnessedThiefId || null} markFollowerIds={priv?.knownFollowerIds} iAmFollower={priv?.isFollower} peeks={priv?.peeks} speakingIds={speakingIds} onPick={(id) => { setOptVote(id); pendingRef.current.vote = id; getNet().vote(id); }} pickable={(p) => p.id !== joined.playerId} />}
           </div>
         )}
 
@@ -818,7 +869,7 @@ export default function App() {
             <p className="font-bold text-lg mt-1">{d.thiefWas(pub.players.find(p => p.id === pub.thiefId)?.name || '?')} {mouseFor(pub.thiefId || '')}</p>
             {pub.players.some(p => (p as any).role === 'fallmouse') && (
               <p className="font-bold text-lg text-violet-600">{d.fallWas(pub.players.find(p => (p as any).role === 'fallmouse')?.name || '?')} {mouseFor(pub.players.find(p => (p as any).role === 'fallmouse')?.id || '')}</p>)}
-            <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} speakingIds={speakingIds} />
+            <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} speakingIds={speakingIds} winnerSide={pub.winner === 'sleepyheads' ? 'village' : pub.winner === 'fallmouse' ? 'fallmouse' : 'thief'} />
             <div className="text-left max-w-sm mx-auto bg-amber-50 rounded-2xl p-3">
               {pub.voteCounts?.map(v => (
                 <div key={v.id} className="flex justify-between font-bold">

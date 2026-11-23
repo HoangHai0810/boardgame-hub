@@ -74,6 +74,7 @@ export function createMqttNet(h: Handlers): Net {
   let lastSnapAt = 0;
   let lastSnapPhase = '';
   let hostSince = 0;
+  let starting = false; // a create/join walk is already in flight
   let candidacy = false;
   let claimTimer: ReturnType<typeof setTimeout> | null = null;
   let latestSnap: any = null;
@@ -83,8 +84,9 @@ export function createMqttNet(h: Handlers): Net {
   let left = false;
 
   const fireJoinedOnce = (isH: boolean) => {
-    if (!joinedFired) { joinedFired = true; h.onJoined(roomCode, myId, isH); }
+    if (!joinedFired) { joinedFired = true; starting = false; h.onJoined(roomCode, myId, isH); }
   };
+  const notifyError = (m: string) => { starting = false; h.onError(m); };
 
   /* ----- connection lifecycle: surface status + broker failover ----- */
   function watchLifecycle(c: MqttClient) {
@@ -272,7 +274,7 @@ export function createMqttNet(h: Handlers): Net {
         fireJoinedOnce(false);
         return;
       }
-      if (msg.type === 'error') { if (joinTimer) { clearTimeout(joinTimer); joinTimer = null; } h.onError(msg.msg); return; }
+      if (msg.type === 'error') { if (joinTimer) { clearTimeout(joinTimer); joinTimer = null; } notifyError(msg.msg); return; }
       if (msg.enc === 1 && aesKey) {
         try {
           const dec: any = await decryptJson(aesKey, msg);
@@ -294,7 +296,7 @@ export function createMqttNet(h: Handlers): Net {
     // A RETAINED copy redelivered on resubscribe while a live host is
     // serving is stale news, not a death.
     if (packet?.retain && Date.now() - lastStateAt < 8000) return;
-    if (!lastPub || !myEscrowKeyB64) { h.onError('HOST_GONE'); return; }
+    if (!lastPub || !myEscrowKeyB64) { notifyError('HOST_GONE'); return; }
     beginCandidacy();
   }
 
@@ -310,7 +312,7 @@ export function createMqttNet(h: Handlers): Net {
     const myDelay = 5000 + rank * 2500;
     claimTimer = setTimeout(() => { void tryPromote(); }, myDelay);
     // Nobody could take over (e.g. the winner died too): surface the loss.
-    setTimeout(() => { if (candidacy && !engine && !migrating) { candidacy = false; h.onError('HOST_GONE'); } }, myDelay + 25000);
+    setTimeout(() => { if (candidacy && !engine && !migrating) { candidacy = false; notifyError('HOST_GONE'); } }, myDelay + 25000);
   }
 
   async function tryPromote() {
@@ -322,7 +324,7 @@ export function createMqttNet(h: Handlers): Net {
     if (!candidacy || engine || migrating || left) return; // a host resumed meanwhile
     const beaten = [...claimsSeen.values()].some(ts => ts <= now);
     if (beaten) { candidacy = false; return; } // an earlier claim won; stay guest
-    if (!latestSnap || !myEscrowKeyB64) { candidacy = false; h.onError('HOST_GONE'); return; }
+    if (!latestSnap || !myEscrowKeyB64) { candidacy = false; notifyError('HOST_GONE'); return; }
     await promote(latestSnap);
   }
 
@@ -367,7 +369,7 @@ export function createMqttNet(h: Handlers): Net {
       engine.broadcast();
       client.publish(topic(roomCode, 'pub'), JSON.stringify({ type: 'migrated', by: myId }), { qos: 1 });
     } catch {
-      h.onError('HOST_GONE');
+      notifyError('HOST_GONE');
     } finally { migrating = false; }
   }
 
@@ -380,7 +382,7 @@ export function createMqttNet(h: Handlers): Net {
     const old = client;
     try { old?.end(true); } catch { /* noop */ }
     client = null;
-    await startClient(roomCode, myName).catch(() => h.onError('NET_UNREACHABLE'));
+    await startClient(roomCode, myName).catch(() => notifyError('NET_UNREACHABLE'));
   }
 
   async function startClient(code: string, name: string) {
@@ -389,7 +391,7 @@ export function createMqttNet(h: Handlers): Net {
     h.onStatus('STATUS_CONNECTING:' + roomCode);
     myKeys = await generateKeys();
     joinTimer = setTimeout(() => {
-      if (!joinedFired) h.onError('HOST_UNREACHABLE');
+      if (!joinedFired) notifyError('HOST_UNREACHABLE');
     }, 45000);
     makeExtra = () => {
       willConn = nonce();
@@ -414,8 +416,16 @@ export function createMqttNet(h: Handlers): Net {
   };
 
   return {
-    createRoom(name: string) { startHost(name).catch(() => h.onError('NET_UNREACHABLE')); },
-    joinRoom(code: string, name: string) { startClient(code, name).catch(() => h.onError('NET_UNREACHABLE')); },
+    createRoom(name: string) {
+      if (starting || joinedFired) return;
+      starting = true;
+      startHost(name).catch(() => notifyError('NET_UNREACHABLE'));
+    },
+    joinRoom(code: string, name: string) {
+      if (starting || joinedFired) return;
+      starting = true;
+      startClient(code, name).catch(() => notifyError('NET_UNREACHABLE'));
+    },
     startGame: () => intent('startGame'),
     beginNight: () => intent('beginNight'),
     ready: () => intent('ready'),

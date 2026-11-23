@@ -50,16 +50,22 @@ export function brokerOrder(roomCode: string): string[] {
 function tryOneBroker(url: string, extra: mqtt.IClientOptions): Promise<MqttClient | null> {
   return new Promise((resolve) => {
     let c: MqttClient;
-    try { c = mqtt.connect(url, { connectTimeout: 5000, reconnectPeriod: 2000, ...extra }); }
+    try { c = mqtt.connect(url, { connectTimeout: 4000, reconnectPeriod: 0, ...extra }); }
     catch { resolve(null); return; }
-    const timer = setTimeout(() => {
-      c.removeListener('connect', onConn);
-      try { c.end(true); } catch { /* noop */ }
-      resolve(null);
-    }, 6000);
-    const onConn = () => { clearTimeout(timer); resolve(c); };
-    c.on('connect', onConn);
-    c.on('error', () => { /* the 6s cap decides; mqtt.js retries internally meanwhile */ });
+    let done = false;
+    const finish = (ok: boolean) => {
+      if (done) return; done = true;
+      clearTimeout(timer);
+      if (!ok) { try { c.end(true); } catch { /* noop */ } resolve(null); }
+      else resolve(c);
+    };
+    // Hard cap for silent blackholes; an 'error' with no connect inside a
+    // 900ms grace means the broker is dead for this network — fail in
+    // ~1.5s instead of burning the whole cap on every dead entry (the
+    // old behaviour stacked up to ~30s joins).
+    const timer = setTimeout(() => finish(false), 4000);
+    c.on('connect', () => finish(true));
+    c.on('error', () => { setTimeout(() => finish(false), 900); });
   });
 }
 
@@ -70,7 +76,15 @@ export async function connectMqttSequential(
   for (let k = 0; k < order.length; k++) {
     const idx = (startIdx + k) % order.length;
     const c = await tryOneBroker(order[idx], extra);
-    if (c) return { client: c, idx };
+    if (c) {
+      // The walk itself must not auto-reconnect (a dead broker has to
+      // fail fast), but the WINNER is a long-lived bus: restore normal
+      // auto-reconnect on it, or a single socket blink silently kills
+      // QoS-0 traffic (WebRTC ICE candidates) while QoS-1 messages get
+      // queued and everything LOOKS connected — v29 voice regression.
+      (c as any).options.reconnectPeriod = 2000;
+      return { client: c, idx };
+    }
   }
   throw new Error('bus unreachable');
 }
