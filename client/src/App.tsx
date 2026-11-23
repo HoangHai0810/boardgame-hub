@@ -142,6 +142,17 @@ export default function App() {
     </div>
   );
 
+  // Quick reactions + preset phrases (Cycle 3): one-tap chat. Phrases travel
+  // as QC tokens and render localized in the VIEWER's language.
+  const REACTIONS = ['👀', '🧀', '😱', '🤔', '👍', '👎', '😂', '❓'];
+  const QC_KEYS = ['qc1', 'qc2', 'qc3', 'qc4'] as const;
+  const renderChatText = (text: string) => {
+    if ((REACTIONS as string[]).includes(text)) return <span className="text-4xl leading-tight">{text}</span>;
+    const qc = /^QC([1-4])$/.exec(text);
+    if (qc) return <span>{(d as any)['qc' + qc[1]]}</span>;
+    return <span>{text}</span>;
+  };
+
   // Shared chat panel — used in the lobby, the day discussion and the
   // results screen (the only phases where chat is open).
   const ChatPanel = ({ height = 'h-56' }: { height?: string }) => (
@@ -155,13 +166,23 @@ export default function App() {
               <div className={`max-w-[80%] rounded-2xl px-3 py-2 shadow ${mine ? 'bg-amber-400 rounded-br-md' : 'bg-white rounded-bl-md'}`}>
                 <div className="text-xs font-extrabold opacity-70">{mouseFor(m.fromId)} {m.fromName}
                   <span className="font-normal ml-2">{new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
-                <div className="leading-snug">{m.text}</div>
+                <div className="leading-snug">{renderChatText(m.text)}</div>
               </div>
             </div>);
         })}
         <div ref={chatEndRef} />
       </div>
-      <div className="flex gap-2 mt-3">
+      <div className="flex gap-1.5 mt-3 overflow-x-auto pb-1" aria-label="quick reactions">
+        {REACTIONS.map(e => (
+          <button key={e} className="text-2xl bg-white rounded-full w-10 h-10 shrink-0 shadow active:scale-90 transition"
+            onClick={() => getNet().chat(e)}>{e}</button>
+        ))}
+        {QC_KEYS.map((k, i) => (
+          <button key={k} className="text-xs font-bold bg-indigo-100 text-indigo-800 rounded-full px-3 h-10 shrink-0 shadow active:scale-95 transition whitespace-nowrap"
+            onClick={() => getNet().chat('QC' + (i + 1))}>{(d as any)[k]}</button>
+        ))}
+      </div>
+      <div className="flex gap-2 mt-2">
         <input className="flex-1 border-2 border-amber-300 rounded-2xl px-4 py-2.5" placeholder={d.chatPh} maxLength={300}
           value={chatText} onChange={e => setChatText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && chatText.trim()) { getNet().chat(chatText); setChatText(''); } }} />

@@ -44,6 +44,8 @@ const dict = {
     fallWas: (n: string) => `The Dead Mouse was ${n}`,
     playAgain: 'Play Again', backLobby: 'Back to Lobby', votes: 'votes',
     standings: '🏆 Session wins',
+    qc1: 'I saw something suspicious! 👀', qc2: 'I was asleep at that hour 😴',
+    qc3: 'Trust me! 🙏', qc4: 'Who else was awake then? 🤔',
     help: 'Help', round: 'Round', offline: 'offline',
     tutorial: [
       '🎲 Everyone secretly gets a role and a dice number (1–6). One player is the Cheese Mouse!',
@@ -100,6 +102,8 @@ const dict = {
     fallWas: (n: string) => `Chuột Chết là ${n}`,
     playAgain: 'Chơi Lại', backLobby: 'Về Phòng Chờ', votes: 'phiếu',
     standings: '🏆 Số ván thắng cả buổi',
+    qc1: 'Tui thấy có gì đó đáng ngờ! 👀', qc2: 'Giờ đó tui đang ngủ 😴',
+    qc3: 'Tin tui đi! 🙏', qc4: 'Còn ai thức giờ đó nữa không? 🤔',
     help: 'Trợ giúp', round: 'Ván', offline: 'mất kết nối',
     tutorial: [
       '🎲 Mỗi người bí mật nhận một vai và một số xúc xắc (1–6). Một người là Chuột Phô Mai!',
