@@ -111,7 +111,7 @@ export default function App() {
           <div className={`text-4xl anim-bob w-16 h-16 mx-auto rounded-full flex items-center justify-center ${avatarBg(p.id)} shadow-inner`}>{mouseFor(p.id)}</div>
           <div className="font-bold truncate">{p.name} {p.id === joined?.playerId && <span className="text-amber-600">({d.you})</span>}</div>
           <div className="text-xs">{p.isHost && <span className="bg-purple-500 text-white rounded-full px-2 py-0.5">👑 {d.host}</span>} {!p.connected && <span className="text-red-500">• {d.offline}</span>}</div>
-          {(phase === 'results') && <div className="text-sm mt-1 flex items-center justify-center gap-2">{(p as any).role === 'thief' ? '😈 ' + d.thief : '💤 ' + d.sleepy}<DiceFace value={(p as any).dice ?? 1} size={26} /></div>}
+          {(phase === 'results') && <div className="text-sm mt-1 flex items-center justify-center gap-2">{roleLabel((p as any).role, (p as any).isFollower)}<DiceFace value={(p as any).dice ?? 1} size={26} /></div>}
           {phase === 'voting' && <div className="text-xs mt-1">{p.hasVoted ? '✅ voted' : '🤔 …'}</div>}
         </button>
       ))}
@@ -166,9 +166,12 @@ export default function App() {
 
   if (!pub) return <div className="min-h-screen bg-indigo-950 text-white flex items-center justify-center text-2xl">⏳ {status || 'Connecting…'}</div>;
 
-  const bg = phase === 'night' || phase === 'roleReveal'
+  const bg = phase === 'night' || phase === 'roleReveal' || phase === 'recruit'
     ? 'bg-gradient-to-b from-indigo-950 via-purple-950 to-slate-900'
     : 'bg-gradient-to-b from-amber-300 via-orange-200 to-yellow-100';
+  const nameOf = (id?: string | null) => pub?.players.find(p => p.id === id)?.name || '?';
+  const roleLabel = (role?: string | null, isFollower?: boolean) =>
+    (role === 'thief' ? '😈 ' + d.thief : role === 'fallmouse' ? '💀 ' + d.fall : '🐭 ' + d.sleepy) + (isFollower ? ' 🤝' : '');
 
   return (
     <div className={`min-h-screen ${bg} p-4 transition-colors duration-1000`}>
@@ -178,12 +181,15 @@ export default function App() {
           <button className="float-right" onClick={() => setError('')}>✕</button></div>}
 
         {/* Persistent secret info — your role & dice stay visible all game */}
-        {priv?.role && (phase === 'night' || phase === 'day' || phase === 'voting') && (
+        {priv?.role && (phase === 'night' || phase === 'recruit' || phase === 'day' || phase === 'voting') && (
           <div className="sticky top-0 z-30 bg-black/70 text-white rounded-2xl px-4 py-2 mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 font-bold backdrop-blur">
             <span>🤫 {d.yourInfo}:</span>
-            <span>{priv.role === 'thief' ? '😈 ' + d.thief : '🐭 ' + d.sleepy}</span>
+            <span>{roleLabel(priv.role, priv.isFollower)}</span>
             <span className="inline-flex items-center gap-1.5"><DiceFace value={priv.dice ?? 1} size={22} /><span>🎲 {priv.dice ?? '?'} · ⏰ {priv.dice ? d.wakeAt(priv.dice) : ''}</span></span>
             {phase === 'night' && <span>{priv.awake ? '👀 ' + d.youAwake : '💤 ' + d.sleeping}</span>}
+            {priv.knownThiefId && <span className="text-red-300">{d.knowsThief(nameOf(priv.knownThiefId))}</span>}
+            {priv.role === 'thief' && priv.knownFollowerIds.length > 0 && <span className="text-emerald-300">{d.yourFollowers(priv.knownFollowerIds.map(nameOf).join(', '))}</span>}
+            {priv.isFollower && priv.knownFollowerIds.length > 0 && <span className="text-emerald-300">{d.knowsFollower(priv.knownFollowerIds.map(nameOf).join(', '))}</span>}
           </div>
         )}
 
@@ -216,11 +222,11 @@ export default function App() {
         {phase === 'roleReveal' && priv && (
           <div className={`${card} text-center anim-pop`}>
             <h2 className="text-xl font-bold text-gray-500">{d.yourRole} 🤫</h2>
-            <div className="text-8xl my-3">{priv.role === 'thief' ? '😈' : '🐭'}</div>
-            <div className={`text-3xl font-extrabold ${priv.role === 'thief' ? 'text-red-500' : 'text-sky-600'}`}>
-              {priv.role === 'thief' ? d.thief : d.sleepy}</div>
-            <p className="mt-2 text-gray-600">{priv.role === 'thief' ? d.thiefDesc : d.sleepyDesc}</p>
-            <div className={`mt-4 inline-block rounded-3xl px-8 py-4 ${priv.role === 'thief' ? 'bg-red-50 ring-2 ring-red-200' : 'bg-indigo-50 ring-2 ring-indigo-200'}`}>
+            <div className="text-8xl my-3">{priv.role === 'thief' ? '😈' : priv.role === 'fallmouse' ? '💀' : '🐭'}</div>
+            <div className={`text-3xl font-extrabold ${priv.role === 'thief' ? 'text-red-500' : priv.role === 'fallmouse' ? 'text-violet-600' : 'text-sky-600'}`}>
+              {priv.role === 'thief' ? d.thief : priv.role === 'fallmouse' ? d.fall : d.sleepy}</div>
+            <p className="mt-2 text-gray-600">{priv.role === 'thief' ? d.thiefDesc : priv.role === 'fallmouse' ? d.fallDesc : d.sleepyDesc}</p>
+            <div className={`mt-4 inline-block rounded-3xl px-8 py-4 ${priv.role === 'thief' ? 'bg-red-50 ring-2 ring-red-200' : priv.role === 'fallmouse' ? 'bg-violet-50 ring-2 ring-violet-300' : 'bg-indigo-50 ring-2 ring-indigo-200'}`}>
               <div className="text-sm font-bold text-gray-500 mb-2">{d.yourDice}</div>
               <div className="flex justify-center"><DiceFace value={priv.dice ?? 1} size={104} /></div>
               <div className="text-2xl font-extrabold mt-2">{priv.dice}</div>
@@ -285,6 +291,21 @@ export default function App() {
                 {priv.canSteal && !priv.hasActedThisHour && (
                   <button className={`${btn} bg-red-500 hover:bg-red-600 text-white w-full mt-3 text-xl`} onClick={() => getNet().nightAction('steal')}>{d.stealBtn}</button>)}
                 {priv.role === 'thief' && priv.hasActedThisHour && <p className="mt-3 font-bold text-green-600">{d.stolenOk}</p>}
+                {priv.followerCandidates && (
+                  <div className="mt-3">
+                    <div className="font-bold mb-2 text-purple-700">{d.chooseWitnessTitle}</div>
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      {priv.followerCandidates.map(id => (
+                        <button key={id} className={`${btn} bg-purple-500 text-white !py-2`} onClick={() => getNet().nightAction('chooseFollower', id)}>🤝 {mouseFor(id)} {nameOf(id)}</button>))}
+                    </div>
+                  </div>)}
+                {priv.isFollower && (
+                  <div className="mt-3 bg-emerald-50 ring-2 ring-emerald-300 rounded-2xl px-4 py-3">
+                    <p className="font-extrabold text-emerald-700">{d.becameFollower}</p>
+                    {priv.knownThiefId && <p className="font-bold text-red-500">{d.knowsThief(nameOf(priv.knownThiefId))}</p>}
+                  </div>)}
+                {!priv.isFollower && priv.role !== 'thief' && priv.knownFollowerIds.length > 0 && (
+                  <p className="mt-3 font-bold text-purple-600">{d.witnessKnows(priv.knownFollowerIds.map(nameOf).join(', '))}</p>)}
                 {priv.canInspect && (
                   <div className="mt-3">
                     <div className="font-bold mb-2">{d.inspectTitle}</div>
@@ -301,11 +322,51 @@ export default function App() {
           </div>
         )}
 
+        {/* ---------- RECRUIT (after hour 6, 6–8 players) ---------- */}
+        {phase === 'recruit' && priv && (
+          <div className="text-center relative">
+            <div className="stars" /><div className="stars2" />
+            <h2 className="text-3xl font-extrabold text-indigo-200 relative z-10">🌙✨ {d.night} — 🤝
+              <span className="ml-3 text-xl bg-white/10 rounded-full px-3 py-1">⏱ {secsLeft(pub.recruitEndsAt, now)}s</span></h2>
+            {priv.role === 'thief' && priv.followerCandidates ? (
+              <div className={`${card} anim-pop max-w-xl mx-auto mt-4 relative z-10`}>
+                <div className="text-2xl font-extrabold">😈 {d.recruitTitle}</div>
+                <p className="font-bold text-gray-500 mt-1">{d.recruitHint(priv.followersNeeded, priv.followersChosen)}</p>
+                <div className="flex flex-wrap gap-2 justify-center mt-3">
+                  {priv.followerCandidates.map(id => (
+                    <button key={id} className={`${btn} bg-purple-500 hover:bg-purple-600 text-white`} onClick={() => getNet().nightAction('chooseFollower', id)}>🤝 {mouseFor(id)} {nameOf(id)}</button>))}
+                </div>
+              </div>
+            ) : priv.isFollower ? (
+              <div className={`${card} anim-pop max-w-xl mx-auto mt-4 relative z-10`}>
+                <p className="font-extrabold text-emerald-600 text-xl">{d.becameFollower}</p>
+                {priv.knownThiefId
+                  ? <p className="font-bold text-red-500 mt-1">{d.knowsThief(nameOf(priv.knownThiefId))}</p>
+                  : <p className="font-bold text-gray-500 mt-1">{d.followerBlind}</p>}
+                {priv.knownFollowerIds.length > 0 && <p className="font-bold text-emerald-600 mt-1">{d.knowsFollower(priv.knownFollowerIds.map(nameOf).join(', '))}</p>}
+              </div>
+            ) : (
+              <p className="text-indigo-200 font-bold text-xl mt-6 relative z-10">{d.recruitWaiting}</p>
+            )}
+          </div>
+        )}
+
         {/* ---------- DAY ---------- */}
         {phase === 'day' && (
           <div className={`${card} anim-pop`}>
             <h2 className="text-2xl font-extrabold text-center">{d.day}</h2>
             <p className="text-center font-bold text-gray-600">{d.discuss} <span className="bg-amber-100 rounded-full px-3 py-0.5">⏱ {secsLeft(pub.discussionEndsAt, now)}s</span></p>
+            {priv?.isFollower && (
+              <div className="bg-emerald-50 ring-2 ring-emerald-300 rounded-2xl px-4 py-3 mt-3 text-center anim-pop">
+                <p className="font-extrabold text-emerald-700">{d.becameFollower}</p>
+                <p className="font-bold text-gray-600">{d.dayFollowerNote}</p>
+                {priv.knownThiefId
+                  ? <p className="font-bold text-red-500">{d.knowsThief(nameOf(priv.knownThiefId))}</p>
+                  : <p className="font-bold text-gray-500">{d.followerBlind}</p>}
+                {priv.knownFollowerIds.length > 0 && <p className="font-bold text-emerald-600">{d.knowsFollower(priv.knownFollowerIds.map(nameOf).join(', '))}</p>}
+              </div>)}
+            {priv && !priv.isFollower && priv.role !== 'thief' && priv.knownFollowerIds.length > 0 && (
+              <p className="text-center font-bold text-purple-600 mt-3">{d.witnessKnows(priv.knownFollowerIds.map(nameOf).join(', '))}</p>)}
             <PlayerChips />
             <div className="bg-gradient-to-b from-amber-50 to-orange-50 rounded-2xl p-3 h-56 overflow-y-auto text-left space-y-2">
               {pub.chat.map((m, i) => {
@@ -353,9 +414,11 @@ export default function App() {
         {phase === 'results' && (
           <div className={`${card} anim-pop text-center`}>
             <Confetti />
-            <div className="text-7xl anim-bob inline-block">{pub.winner === 'sleepyheads' ? '🎉' : '😈'}</div>
-            <h2 className="text-3xl font-extrabold">{pub.winner === 'sleepyheads' ? d.sleepyWin : d.thiefWin}</h2>
+            <div className="text-7xl anim-bob inline-block">{pub.winner === 'sleepyheads' ? '🎉' : pub.winner === 'fallmouse' ? '💀' : '😈'}</div>
+            <h2 className="text-3xl font-extrabold">{pub.winner === 'sleepyheads' ? d.sleepyWin : pub.winner === 'fallmouse' ? d.fallWin : d.thiefWin}</h2>
             <p className="font-bold text-lg mt-1">{d.thiefWas(pub.players.find(p => p.id === pub.thiefId)?.name || '?')} {mouseFor(pub.thiefId || '')}</p>
+            {pub.players.some(p => (p as any).role === 'fallmouse') && (
+              <p className="font-bold text-lg text-violet-600">{d.fallWas(pub.players.find(p => (p as any).role === 'fallmouse')?.name || '?')} {mouseFor(pub.players.find(p => (p as any).role === 'fallmouse')?.id || '')}</p>)}
             <PlayerChips />
             <div className="text-left max-w-sm mx-auto bg-amber-50 rounded-2xl p-3">
               {pub.voteCounts?.map(v => (

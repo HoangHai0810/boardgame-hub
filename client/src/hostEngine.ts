@@ -6,7 +6,8 @@
 import {
   GameState, Player, createGame, assignRolesAndDice, publicState, privateState,
   doSteal, doInspect, castVote, resolveVotes,
-  MIN_PLAYERS, MAX_PLAYERS, HOUR_MS, DISCUSSION_MS, VOTE_MS,
+  chooseFollower, autoResolveFollowerChoice, recruitCount, followers,
+  MIN_PLAYERS, MAX_PLAYERS, HOUR_MS, RECRUIT_MS, DISCUSSION_MS, VOTE_MS,
 } from '../../shared/logic';
 
 export type Pub = ReturnType<typeof publicState>;
@@ -45,9 +46,12 @@ export class HostEngine {
     const s = this.state; s.phase = 'night';
     const step = (h: number) => {
       if (s.phase !== 'night') return;
+      // The previous hour just ended: if the thief never picked between
+      // witnesses (5p), the choice is made for them so the game can't stall.
+      autoResolveFollowerChoice(s);
       if (h > 6) {
-        s.phase = 'day'; s.dayReady = []; s.discussionEndsAt = Date.now() + DISCUSSION_MS; this.broadcast();
-        this.later(DISCUSSION_MS, () => { if (s.phase === 'day') this.startVoting(); });
+        if (recruitCount(s) > 0) this.startRecruit();
+        else this.startDay();
         return;
       }
       s.currentHour = h; s.hourEndsAt = Date.now() + HOUR_MS;
@@ -55,6 +59,20 @@ export class HostEngine {
       this.broadcast(); this.later(HOUR_MS, () => step(h + 1));
     };
     step(1);
+  }
+  startRecruit() {
+    const s = this.state;
+    s.phase = 'recruit'; s.recruitEndsAt = Date.now() + RECRUIT_MS; this.broadcast();
+    this.later(RECRUIT_MS, () => {
+      if (s.phase !== 'recruit') return;
+      autoResolveFollowerChoice(s); // thief idled: random recruits
+      this.startDay();
+    });
+  }
+  startDay() {
+    const s = this.state;
+    s.phase = 'day'; s.dayReady = []; s.discussionEndsAt = Date.now() + DISCUSSION_MS; this.broadcast();
+    this.later(DISCUSSION_MS, () => { if (s.phase === 'day') this.startVoting(); });
   }
   startVoting() {
     this.clear(); const s = this.state;
@@ -88,6 +106,12 @@ export class HostEngine {
         break;
       }
       case 'steal': doSteal(s, player); this.broadcast(); break;
+      case 'chooseFollower':
+        if (msg.targetId && chooseFollower(s, player, msg.targetId)) {
+          if (s.phase === 'recruit' && followers(s).length >= recruitCount(s)) { this.clear(); this.startDay(); }
+          else this.broadcast();
+        }
+        break;
       case 'inspect': if (msg.targetId) doInspect(s, player, msg.targetId); this.broadcast(); break;
       case 'chat': {
         if (s.phase !== 'day') return;
@@ -108,7 +132,7 @@ export class HostEngine {
       case 'playAgain':
         if (player.isHost && s.phase === 'results') {
           s.round++; s.phase = 'lobby';
-          s.players.forEach(p => { p.role = undefined; p.dice = undefined; p.vote = null; p.hasVoted = false; p.inspectedDice = null; });
+          s.players.forEach(p => { p.role = undefined; p.dice = undefined; p.isFollower = false; p.vote = null; p.hasVoted = false; p.inspectedDice = null; });
           this.broadcast();
         }
         break;

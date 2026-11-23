@@ -19,7 +19,7 @@ export interface Net {
   createRoom(name: string): void;
   joinRoom(code: string, name: string): void;
   startGame(): void; beginNight(): void; ready(): void; readyVote(): void;
-  nightAction(kind: 'steal' | 'inspect', targetId?: string): void;
+  nightAction(kind: 'steal' | 'inspect' | 'chooseFollower', targetId?: string): void;
   chat(text: string): void; toVoting(): void;
   vote(targetId: string): void; playAgain(): void; leave(): void;
 }
