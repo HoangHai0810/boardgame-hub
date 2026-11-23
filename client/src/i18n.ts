@@ -43,6 +43,7 @@ const dict = {
     fallWin: 'The Dead Mouse wins ALONE! 💀 Everyone voted for them \u2014 exactly as planned!',
     fallWas: (n: string) => `The Dead Mouse was ${n}`,
     playAgain: 'Play Again', backLobby: 'Back to Lobby', votes: 'votes',
+    standings: '🏆 Session wins',
     help: 'Help', round: 'Round', offline: 'offline',
     tutorial: [
       '🎲 Everyone secretly gets a role and a dice number (1–6). One player is the Cheese Mouse!',
@@ -98,6 +99,7 @@ const dict = {
     fallWin: 'Chuột Chết thắng MỘT MÌNH! 💀 Bị mọi người bầu chọn — đúng kế hoạch!',
     fallWas: (n: string) => `Chuột Chết là ${n}`,
     playAgain: 'Chơi Lại', backLobby: 'Về Phòng Chờ', votes: 'phiếu',
+    standings: '🏆 Số ván thắng cả buổi',
     help: 'Trợ giúp', round: 'Ván', offline: 'mất kết nối',
     tutorial: [
       '🎲 Mỗi người bí mật nhận một vai và một số xúc xắc (1–6). Một người là Chuột Phô Mai!',

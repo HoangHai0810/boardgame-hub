@@ -35,7 +35,7 @@ export class HostEngine {
   addPlayer(id: string, name: string, isHost: boolean): Player {
     let p = this.state.players.find(x => x.id === id);
     if (p) { p.connected = true; return p; }
-    p = { id, name: cleanName(name), isHost, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null };
+    p = { id, name: cleanName(name), isHost, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, wins: 0 };
     this.state.players.push(p); return p;
   }
   startRound() {

@@ -139,12 +139,31 @@ export default function App() {
           <div className={`text-4xl anim-bob w-16 h-16 mx-auto rounded-full flex items-center justify-center ${avatarBg(p.id)} shadow-inner`}>{mouseFor(p.id)}</div>
           <div className="font-bold truncate">{p.name} {p.id === joined?.playerId && <span className="text-amber-600">({d.you})</span>}</div>
           <div className="text-xs">{p.isHost && <span className="bg-purple-500 text-white rounded-full px-2 py-0.5">👑 {d.host}</span>} {!p.connected && <span className="text-red-500">• {d.offline}</span>}</div>
+          {((p as any).wins ?? 0) > 0 && <div className="text-xs mt-1 font-extrabold text-amber-600">🏆 ×{(p as any).wins}</div>}
           {(phase === 'results') && <div className="text-sm mt-1 flex items-center justify-center gap-2">{roleLabel((p as any).role, (p as any).isFollower)}<DiceFace value={(p as any).dice ?? 1} size={26} /></div>}
           {phase === 'voting' && <div className="text-xs mt-1">{p.hasVoted ? '✅ voted' : '🤔 …'}</div>}
         </button>
       ))}
     </div>
   );
+
+  // Session scoreboard (Cycle 1): rounds won in this room, leader gets 👑.
+  const Standings = () => {
+    const scored = pub!.players.filter(p => ((p as any).wins ?? 0) > 0)
+      .sort((a, b) => ((b as any).wins ?? 0) - ((a as any).wins ?? 0));
+    if (!scored.length) return null;
+    const top = (scored[0] as any).wins ?? 0;
+    return (
+      <div className="max-w-sm mx-auto bg-amber-50 rounded-2xl p-3 mt-3 text-left">
+        <div className="font-extrabold text-center mb-1">{d.standings}</div>
+        {scored.map(p => (
+          <div key={p.id} className="flex justify-between font-bold">
+            <span>{mouseFor(p.id)} {p.name} {((p as any).wins === top) && '👑'}</span>
+            <span>🏆 ×{(p as any).wins}</span>
+          </div>))}
+      </div>
+    );
+  };
 
   /* ---------- LANDING ---------- */
   if (!joined) {
@@ -234,6 +253,7 @@ export default function App() {
               <span className="font-bold">{d.players}: {pub.players.length}/8</span>
             </div>
             <PlayerChips />
+            <Standings />
             {isHost ? (
               <>
                 <button className={`${btn} bg-green-500 hover:bg-green-600 text-white w-full text-xl`}
@@ -436,6 +456,7 @@ export default function App() {
                   <span>{mouseFor(v.id)} {pub.players.find(p => p.id === v.id)?.name}</span><span>{v.count} {d.votes}</span>
                 </div>))}
             </div>
+            <Standings />
             <div className="mt-4"><ChatPanel height="h-40" /></div>
             {isHost
               ? <button className={`${btn} bg-green-500 text-white w-full mt-4 text-xl`} onClick={() => getNet().playAgain()}>🔁 {d.playAgain} ({d.backLobby})</button>
