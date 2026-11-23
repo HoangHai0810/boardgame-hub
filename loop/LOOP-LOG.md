@@ -10,3 +10,4 @@
 | 06 | v19 | Room option: host sets discussion length (60/120/180s) in the lobby, live for everyone | 32 / 23 / 33 / 14 / 9 + options 3/3 | index-w47DCenk.js |
 | 07 | v20 | All network error/status messages localized via language-neutral codes (15 new dict keys EN+VI) | 32 / 23 / 33 / 14 / 9 + hostgone 2/2 | index-Cl0C0Vmf.js |
 | 08 | v21 | Personal session record (my W/L split by dealt role) on results + lobby | 32 / 23 / 33 / 14 / 9 + full 12/12 | index-aOFTf1-6.js |
+| 09 | v22 | Shareable results summary (Wordle-style copy-to-clipboard, localized) | 32 / 23 / 33 / 14 / 9 + full 13/13 | index-Cw6vSN2M.js |
