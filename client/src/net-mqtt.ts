@@ -93,7 +93,7 @@ export function createMqttNet(h: Handlers): Net {
   /* ---------- HOST ---------- */
   async function startHost(name: string) {
     roomCode = makeRoomCode(); isHost = true; joinedFired = false;
-    h.onStatus('Creating room…');
+    h.onStatus('STATUS_CREATING');
     myKeys = await generateKeys();
     client = await connect({ clientId: 'ct-h-' + myId + '-' + Math.random().toString(36).slice(2, 7),
       will: { topic: topic(roomCode, 'pub'), payload: JSON.stringify({ type: 'hostGone' }), retain: true, qos: 1 } as any });
@@ -122,7 +122,7 @@ export function createMqttNet(h: Handlers): Net {
         const verdict = engine!.canAcceptJoin(pid);
         if (verdict !== 'ok') {
           client?.publish(topic(roomCode, 'p/' + pid),
-            JSON.stringify({ type: 'error', msg: verdict === 'full' ? 'Room is full (8 players).' : 'Game already started — you cannot join now.' }), { qos: 1 });
+            JSON.stringify({ type: 'error', msg: verdict === 'full' ? 'ROOM_FULL' : 'GAME_STARTED' }), { qos: 1 });
           return;
         }
         try {
@@ -147,10 +147,10 @@ export function createMqttNet(h: Handlers): Net {
   /* ---------- CLIENT ---------- */
   async function startClient(code: string, name: string) {
     roomCode = code.toUpperCase().trim(); isHost = false; joinedFired = false;
-    h.onStatus('Connecting to room ' + roomCode + '…');
+    h.onStatus('STATUS_CONNECTING:' + roomCode);
     myKeys = await generateKeys();
     const joinTimer = setTimeout(() => {
-      if (!joinedFired) h.onError('Could not reach the host. Check the room code and that the host is still online, then try again.');
+      if (!joinedFired) h.onError('HOST_UNREACHABLE');
     }, 25000);
     client = await connect({ clientId: 'ct-c-' + myId + '-' + Math.random().toString(36).slice(2, 7),
       will: { topic: topic(roomCode, 'in'), payload: JSON.stringify({ type: 'intent', playerId: myId, action: '__gone' }), qos: 1 } as any });
@@ -160,7 +160,7 @@ export function createMqttNet(h: Handlers): Net {
       let msg: any; try { msg = JSON.parse(payload.toString()); } catch { return; }
       if (t === topic(roomCode, 'pub')) {
         if (msg.type === 'state') h.onState(msg.data);
-        else if (msg.type === 'hostGone') h.onError('The host left — the room has closed. 🏠');
+        else if (msg.type === 'hostGone') h.onError('HOST_GONE');
         return;
       }
       // private topic
@@ -189,8 +189,8 @@ export function createMqttNet(h: Handlers): Net {
   };
 
   return {
-    createRoom(name: string) { startHost(name).catch(() => h.onError('Could not reach the game network. Check your connection and try again.')); },
-    joinRoom(code: string, name: string) { startClient(code, name).catch(() => h.onError('Could not reach the game network. Check your connection and try again.')); },
+    createRoom(name: string) { startHost(name).catch(() => h.onError('NET_UNREACHABLE')); },
+    joinRoom(code: string, name: string) { startClient(code, name).catch(() => h.onError('NET_UNREACHABLE')); },
     startGame: () => intent('startGame'),
     beginNight: () => intent('beginNight'),
     ready: () => intent('ready'),

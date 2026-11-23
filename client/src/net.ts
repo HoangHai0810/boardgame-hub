@@ -62,7 +62,7 @@ export function createPeerNet(h: Handlers): Net {
     else if (m.type === 'private') h.onPrivate(m.data);
     else if (m.type === 'joined') h.onJoined(m.code, m.playerId, m.isHost);
     else if (m.type === 'error') h.onError(m.msg);
-    else if (m.type === 'hostGone') h.onError('The host left — the room has closed. 🏠');
+    else if (m.type === 'hostGone') h.onError('HOST_GONE');
   }
   function wireHostConn(conn: DataConnection) {
     conn.on('data', (raw: any) => {
@@ -71,7 +71,7 @@ export function createPeerNet(h: Handlers): Net {
         const pid = String(raw.clientId);
         const verdict = engine.canAcceptJoin(pid);
         if (verdict !== 'ok') {
-          conn.send({ type: 'error', msg: verdict === 'full' ? 'Room is full (8 players).' : 'Game already started — you cannot join now.' });
+          conn.send({ type: 'error', msg: verdict === 'full' ? 'ROOM_FULL' : 'GAME_STARTED' });
           return;
         }
         conns.set(pid, conn);
@@ -98,7 +98,7 @@ export function createPeerNet(h: Handlers): Net {
   return {
     createRoom(name: string) {
       isHost = true; roomCode = makeRoomCode();
-      h.onStatus('Creating room…');
+      h.onStatus('STATUS_CREATING');
       peer = new Peer(PEER_PREFIX + roomCode, PEER_OPTS);
       peer.on('open', () => {
         engine = new HostEngine(roomCode, {
@@ -119,25 +119,25 @@ export function createPeerNet(h: Handlers): Net {
       peer.on('connection', wireHostConn);
       peer.on('error', (e: any) => {
         if (e?.type === 'unavailable-id') { roomCode = makeRoomCode(); peer?.destroy(); this.createRoom(name); }
-        else h.onError('Connection error: ' + (e?.type || 'unknown'));
+        else h.onError('CONN_ERROR:' + (e?.type || 'unknown'));
       });
     },
     joinRoom(code: string, name: string) {
       isHost = false; roomCode = code.toUpperCase().trim();
-      h.onStatus('Connecting to room ' + roomCode + '…');
+      h.onStatus('STATUS_CONNECTING:' + roomCode);
       peer = new Peer(PEER_OPTS);
       const joinTimer = setTimeout(() => {
-        if (!hostConn?.open) h.onError('Could not open a connection to the host (network blocked WebRTC). Try the default mode without ?net=peer.');
+        if (!hostConn?.open) h.onError('PEER_BLOCKED');
       }, 30000);
       peer.on('open', () => {
         hostConn = peer!.connect(PEER_PREFIX + roomCode, { reliable: true });
         hostConn.on('open', () => { clearTimeout(joinTimer); hostConn!.send({ type: 'join', clientId: myId, name: cleanName(name) }); });
         hostConn.on('data', handleHostMsg);
-        hostConn.on('close', () => h.onError('Disconnected from the host. Try rejoining with the same room code.'));
+        hostConn.on('close', () => h.onError('HOST_DISCONNECTED'));
       });
       peer.on('error', (e: any) => {
-        if (e?.type === 'peer-unavailable') h.onError('Room not found. Check the code and make sure the host is still online.');
-        else h.onError('Connection error: ' + (e?.type || 'unknown'));
+        if (e?.type === 'peer-unavailable') h.onError('ROOM_NOT_FOUND');
+        else h.onError('CONN_ERROR:' + (e?.type || 'unknown'));
       });
     },
     startGame: () => intent('startGame'),
@@ -166,15 +166,15 @@ export function createSocketNet(serverUrl: string, h: Handlers): Net {
   socket.on('state', (s: Pub) => h.onState(s));
   socket.on('private', (p: Priv) => h.onPrivate(p));
   socket.on('errorMsg', (m: string) => h.onError(m));
-  socket.on('connect_error', () => h.onError('Cannot reach the game server.'));
+  socket.on('connect_error', () => h.onError('SERVER_UNREACHABLE'));
   return {
     createRoom(name: string) {
       socket.emit('createRoom', { name: cleanName(name), clientId: myId }, (r: any) =>
-        r?.ok ? h.onJoined(r.code, r.playerId, true) : h.onError(r?.error || 'Failed'));
+        r?.ok ? h.onJoined(r.code, r.playerId, true) : h.onError(r?.error || 'FAILED'));
     },
     joinRoom(code: string, name: string) {
       socket.emit('joinRoom', { code, name: cleanName(name), clientId: myId }, (r: any) =>
-        r?.ok ? h.onJoined(r.code, r.playerId, false) : h.onError(r?.error || 'Failed'));
+        r?.ok ? h.onJoined(r.code, r.playerId, false) : h.onError(r?.error || 'FAILED'));
     },
     startGame: () => socket.emit('startGame'),
     beginNight: () => socket.emit('beginNight'),

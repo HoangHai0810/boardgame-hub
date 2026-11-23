@@ -41,6 +41,21 @@ const secsLeft = (endsAt: number | null, now: number) => endsAt ? Math.max(0, Ma
 export default function App() {
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('ct_lang') as Lang) || 'vi');
   const d = t(lang);
+  // Transport errors/statuses arrive as language-neutral codes (Cycle 7) and
+  // are translated at render time, so switching language re-renders them.
+  const localizeMsg = (m: string): string => {
+    if (m === 'KICKED') return d.kickedMsg;
+    if (m.startsWith('CONN_ERROR:')) return d.errConnError(m.slice('CONN_ERROR:'.length));
+    if (m.startsWith('STATUS_CONNECTING:')) return d.statusConnecting(m.slice('STATUS_CONNECTING:'.length));
+    const map: Record<string, string> = {
+      HOST_GONE: d.errHostGone, ROOM_FULL: d.errRoomFull, GAME_STARTED: d.errGameStarted,
+      ROOM_NOT_FOUND: d.errRoomNotFound, HOST_UNREACHABLE: d.errHostUnreachable,
+      NET_UNREACHABLE: d.errNetUnreachable, SERVER_UNREACHABLE: d.errServerUnreachable,
+      HOST_DISCONNECTED: d.errHostDisconnected, PEER_BLOCKED: d.errPeerBlocked,
+      NEED_MORE_PLAYERS: d.errNeedMore, FAILED: d.errFailed, STATUS_CREATING: d.statusCreating,
+    };
+    return map[m] ?? m;
+  };
   const [name, setName] = useState(() => localStorage.getItem('ct_name') || '');
   const [code, setCode] = useState(() => new URLSearchParams(location.search).get('room') || '');
   const [joined, setJoined] = useState<{ code: string; playerId: string; isHost: boolean } | null>(null);
@@ -281,8 +296,8 @@ export default function App() {
                 onClick={() => { setError(''); getNet().joinRoom(code, name); }}>{d.join}</button>
             </div>
             <button className="mt-4 underline font-bold text-amber-700" onClick={() => setShowHelp(true)}>📖 {d.how} (1 min)</button>
-            {status && <p className="mt-3 text-sky-700 font-bold">{status}</p>}
-            {error && <p className="mt-3 text-red-600 font-bold">{error === 'KICKED' ? d.kickedMsg : error}</p>}
+            {status && <p className="mt-3 text-sky-700 font-bold">{localizeMsg(status)}</p>}
+            {error && <p className="mt-3 text-red-600 font-bold">{localizeMsg(error)}</p>}
           </div>
           <p className="text-center text-amber-800/70 mt-4 text-sm">4–8 players · ~5–15 min · free, no install 🎉</p>
         </div>
@@ -291,7 +306,7 @@ export default function App() {
     );
   }
 
-  if (!pub) return <div className="min-h-screen bg-indigo-950 text-white flex items-center justify-center text-2xl">⏳ {status || 'Connecting…'}</div>;
+  if (!pub) return <div className="min-h-screen bg-indigo-950 text-white flex items-center justify-center text-2xl">⏳ {status ? localizeMsg(status) : d.connecting}</div>;
 
   const bg = phase === 'night' || phase === 'roleReveal' || phase === 'recruit'
     ? 'bg-gradient-to-b from-indigo-950 via-purple-950 to-slate-900'
@@ -304,7 +319,7 @@ export default function App() {
     <div className={`min-h-screen ${bg} p-4 transition-colors duration-1000`}>
       <div className="max-w-3xl mx-auto">
         <TopBar />
-        {error && <div className="bg-red-100 border border-red-400 text-red-700 rounded-2xl px-4 py-2 mb-3 font-bold">{error === 'KICKED' ? d.kickedMsg : error}
+        {error && <div className="bg-red-100 border border-red-400 text-red-700 rounded-2xl px-4 py-2 mb-3 font-bold">{localizeMsg(error)}
           <button className="float-right" onClick={() => setError('')}>✕</button></div>}
 
         {/* Persistent secret info — your role & dice stay visible all game */}
