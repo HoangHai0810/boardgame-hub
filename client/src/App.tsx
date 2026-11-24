@@ -69,9 +69,14 @@ export function MouseAvatar({ seed, size = 48, state = 'awake', halo }: { seed: 
 
 export function CheeseWedge({ size = 92 }: { size?: number }) {
   return (
-    <svg width={size} height={Math.round(size * 0.72)} viewBox="0 0 100 72" className="inline-block" aria-hidden>
-      <path d="M6 64 L94 64 L94 34 Q52 8 6 64 Z" fill="#FFC93C" stroke="#2B2016" strokeWidth="3.5" strokeLinejoin="round" />
-      <circle cx="66" cy="48" r="6" fill="#E8A013" /><circle cx="40" cy="54" r="4.4" fill="#E8A013" /><circle cx="80" cy="38" r="3.6" fill="#E8A013" />
+    <svg width={size} height={Math.round(size * 0.76)} viewBox="0 0 100 76" className="inline-block" aria-hidden>
+      <path d="M8 68 L92 68 L92 14 Z" fill="#FFC93C" stroke="#2B2016" strokeWidth="3.5" strokeLinejoin="round" />
+      <path d="M92 14 L92 68 L83 68 L83 23 Z" fill="#F0A92E" />
+      <path d="M15 63 L86 22 L86 31 L27 63 Z" fill="#FFDE59" opacity="0.75" />
+      <g fill="#E39A0B" stroke="#C77F06" strokeWidth="1">
+        <circle cx="66" cy="50" r="6.5" /><circle cx="44" cy="58" r="4.4" /><circle cx="78" cy="35" r="4" /><circle cx="56" cy="43" r="3.1" />
+      </g>
+      <path d="M8 68 L92 68 L92 14 Z" fill="none" stroke="#2B2016" strokeWidth="3.5" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -285,19 +290,34 @@ function ChatSheet({ open, onClose, chat, myId, d, onChat }: { open: boolean; on
 // steal happens — everyone awake at that hour sees it.
 function FlyCheese({ x0, y0, dx, dy, onDone }: { x0: number; y0: number; dx: number; dy: number; onDone: () => void }) {
   const [moved, setMoved] = useState(false);
+  const [burst, setBurst] = useState(false);
   const doneRef = useRef(onDone); doneRef.current = onDone;
   useEffect(() => {
     const raf = requestAnimationFrame(() => requestAnimationFrame(() => setMoved(true)));
-    const t = setTimeout(() => doneRef.current(), 1250);
-    return () => { cancelAnimationFrame(raf); clearTimeout(t); };
+    const t1 = setTimeout(() => setBurst(true), 880);
+    const t2 = setTimeout(() => doneRef.current(), 1520);
+    return () => { cancelAnimationFrame(raf); clearTimeout(t1); clearTimeout(t2); };
   }, []);
   return (
-    <div className="pointer-events-none absolute z-40 text-4xl" style={{
-      left: x0, top: y0,
-      transform: moved ? `translate(${dx}px, ${dy}px) scale(0.55) rotate(24deg)` : 'translate(0px, 0px) scale(1)',
-      transition: 'transform 0.95s cubic-bezier(0.3, 0.7, 0.4, 1)',
-      filter: 'drop-shadow(0 6px 8px rgba(0,0,0,0.45))',
-    }}>🧀</div>
+    <>
+      {[2, 1, 0].map(i => (
+        <div key={i} className="pointer-events-none absolute z-40" style={{
+          left: x0, top: y0,
+          transform: moved ? `translate(${dx}px, ${dy}px) scale(${0.62 + (2 - i) * 0.14})` : 'translate(0px, 0px) scale(1)',
+          transition: `transform 0.9s cubic-bezier(0.3, 0.6, 0.4, 1) ${i * 75}ms`,
+          opacity: 1 - i * 0.3,
+          filter: i === 0 ? 'drop-shadow(0 0 16px rgba(255,176,32,0.95)) drop-shadow(0 8px 10px rgba(0,0,0,0.4))' : undefined,
+        }}>
+          <div className={i === 0 ? 'anim-fly-arc' : ''}><CheeseWedge size={76} /></div>
+        </div>
+      ))}
+      {burst && (
+        <div className="pointer-events-none absolute z-40" style={{ left: x0 + dx, top: y0 + dy }}>
+          <span className="fly-ring" />
+          {[0, 1, 2, 3, 4, 5, 6, 7].map(i => <span key={i} className="fly-dot" style={{ '--a': `${i * 45}deg` } as any} />)}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -461,6 +481,7 @@ export default function App() {
   // -> the thief's night card), replayed at most once per steal.
   const nightBoxRef = useRef<HTMLDivElement>(null);
   const [fly, setFly] = useState<{ key: string; x0: number; y0: number; dx: number; dy: number } | null>(null);
+  const [flyHit, setFlyHit] = useState<string | null>(null);
   const flyKeyRef = useRef('');
   const [chatSheet, setChatSheet] = useState(false);
   const [connLost, setConnLost] = useState(false);
@@ -479,10 +500,9 @@ export default function App() {
     voiceRef.current = null;
     setVoiceSpeaker('off'); setVoiceMic('off'); setVoiceMuted(false); setSpeakingIds(new Set());
   };
-  const toggleSpeaker = async () => {
-    if (voiceSpeaker === 'busy') return;
-    if (voiceSpeaker === 'on') { leaveVoice(); return; }
-    if (!joined) return;
+  const voiceOptOutRef = useRef(false);
+  const startSpeaker = async (auto = false) => {
+    if (!joined || voiceRef.current) return;
     setVoiceSpeaker('busy');
     try {
       voiceRef.current = await joinVoice(joined.code, joined.playerId, {
@@ -492,9 +512,27 @@ export default function App() {
       setVoiceSpeaker('on');
     } catch {
       setVoiceSpeaker('off');
-      setError('NET_UNREACHABLE');
+      if (!auto) setError('NET_UNREACHABLE');
     }
   };
+  const toggleSpeaker = async () => {
+    if (voiceSpeaker === 'busy') return;
+    if (voiceSpeaker === 'on') { voiceOptOutRef.current = true; leaveVoice(); return; }
+    voiceOptOutRef.current = false;
+    await startSpeaker(false);
+  };
+  // Speaker AUTO-joins when a room opens (v32, Hoàng's rule: loa tự mở,
+  // mic tự đóng — the mic only ever starts from its own button). A manual
+  // 🎧-off opts out for the rest of this room session.
+  const autoVoiceRef = useRef('');
+  useEffect(() => {
+    if (!joined) { autoVoiceRef.current = ''; voiceOptOutRef.current = false; return; }
+    const key = joined.code + ':' + joined.playerId;
+    if (autoVoiceRef.current === key || voiceOptOutRef.current) return;
+    autoVoiceRef.current = key;
+    void startSpeaker(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [joined]);
   const toggleMic = async () => {
     const vh = voiceRef.current;
     if (!vh || voiceMic === 'busy') return;
@@ -569,7 +607,9 @@ export default function App() {
     if (!box || !from || !to) return;
     flyKeyRef.current = key;
     const b = box.getBoundingClientRect(), f = from.getBoundingClientRect(), t = to.getBoundingClientRect();
-    setFly({ key, x0: f.left - b.left + f.width / 2 - 18, y0: f.top - b.top + f.height / 2 - 18, dx: (t.left + t.width / 2) - (f.left + f.width / 2), dy: (t.top + t.height / 2) - (f.top + f.height / 2) });
+    setFly({ key, x0: f.left - b.left + f.width / 2 - 38, y0: f.top - b.top + f.height / 2 - 29, dx: (t.left + t.width / 2) - (f.left + f.width / 2), dy: (t.top + t.height / 2) - (f.top + f.height / 2) });
+    setFlyHit(target);
+    window.setTimeout(() => setFlyHit(cur => (cur === target ? null : cur)), 2100);
   }, [priv?.stealById, pub?.currentHour, pub?.round, phase]);
 
   const btn = 'px-5 py-3 rounded-2xl font-bold shadow-lg transition active:scale-95 disabled:opacity-40 disabled:active:scale-100';
@@ -598,13 +638,12 @@ export default function App() {
     const roleChip = (role: string, emoji: string, label: string) => {
       const r = myRecord.roles[role];
       if (!r) return null;
-      return <span key={role} className="bg-white hard-xs rounded-full px-3 py-1 font-bold">{emoji} {label} {r.w}/{r.g}</span>;
+      return <span key={role} className="bg-white hard-xs rounded-full px-2 py-0.5 text-[12px] font-bold">{emoji} {label} {r.w}/{r.g}</span>;
     };
     return (
-      <div className="bg-[#DFF5E3] hard-sm rounded-3xl p-3">
-        <div className="font-extrabold text-center">{d.recordTitle}</div>
-        <div className="text-center font-bold text-teal-700">{d.recordLine(myRecord.w, myRecord.l)}</div>
-        <div className="flex flex-wrap justify-center gap-2 mt-2">
+      <div className="bg-[#DFF5E3] hard-sm rounded-3xl p-2.5">
+        <div className="text-center"><span className="font-extrabold text-[13px]">{d.recordTitle}: </span><span className="font-bold text-teal-700 text-[13px]">{d.recordLine(myRecord.w, myRecord.l)}</span></div>
+        <div className="flex flex-wrap justify-center gap-1.5 mt-1">
           {roleChip('sleepyhead', '🐭', d.sleepy)}
           {roleChip('thief', '😈', d.thief)}
           {roleChip('fallmouse', '💀', d.fall)}
@@ -619,13 +658,12 @@ export default function App() {
     if (!scored.length) return null;
     const top = (scored[0] as any).wins ?? 0;
     return (
-      <div className="bg-[#FFFBef] hard-sm rounded-3xl p-3 text-left text-sm">
-        <div className="font-extrabold text-center mb-1">{d.standings}</div>
-        {scored.map(p => (
-          <div key={p.id} className="flex justify-between font-bold">
-            <span>{mouseFor(p.id)} {p.name} {((p as any).wins === top) && '👑'}</span>
-            <span>🏆 ×{(p as any).wins}</span>
-          </div>))}
+      <div className="bg-[#FFFBef] hard-sm rounded-3xl p-2.5 text-left">
+        <div className="font-extrabold text-center text-[13px] mb-1">{d.standings}</div>
+        <div className="flex flex-wrap gap-1.5 justify-center">
+          {scored.map(p => (
+            <span key={p.id} className="bg-white hard-xs rounded-full px-2 py-0.5 text-[12px] font-bold">{mouseFor(p.id)} {p.name} {((p as any).wins === top) && '👑'} 🏆×{(p as any).wins}</span>))}
+        </div>
       </div>
     );
   };
@@ -901,7 +939,7 @@ export default function App() {
                 const awakeNow = isMe ? !!priv.awake : priv.fellowWakers.includes(p.id);
                 const knownThief = priv.knownThiefId === p.id || priv.witnessedThiefId === p.id;
                 return (
-                <div key={p.id} id={`pcard-${p.id}`} className={`rounded-3xl border-2 p-2 text-center relative ${isMe && priv.awake ? 'bg-[#FFB020] border-[#2B2016] shadow-[0_3px_0_#2B2016] text-[#2B2016]' : awakeNow ? 'bg-[#2E7CD6] border-[#9CC3F5] text-white' : 'bg-[#1D1D38] border-[#3D3D63] text-[#B9BCE0]'}`}>
+                <div key={p.id} id={`pcard-${p.id}`} className={`rounded-3xl border-2 p-2 text-center relative transition-all duration-300 ${isMe && priv.awake ? 'bg-[#FFB020] border-[#2B2016] shadow-[0_3px_0_#2B2016] text-[#2B2016]' : awakeNow ? 'bg-[#2E7CD6] border-[#9CC3F5] text-white' : 'bg-[#1D1D38] border-[#3D3D63] text-[#B9BCE0]'} ${flyHit === p.id ? 'ring-4 ring-[#FFB020] scale-[1.07] z-10' : ''}`}>
                   <MouseAvatar seed={p.id} size={50} state={awakeNow ? (knownThief ? 'thief' : 'awake') : 'asleep'} />
                   {!awakeNow && <span className="absolute top-1.5 right-2.5 text-[#7C83B8] font-black text-sm">z</span>}
                   <div className="font-extrabold truncate text-[13px] leading-tight">{p.name}{isMe ? ` (${d.you})` : ''}</div>
@@ -1083,34 +1121,34 @@ export default function App() {
 
         {/* ---------- RESULTS ---------- */}
         {phase === 'results' && (
-          <div className="anim-pop flex-1 min-h-0 overflow-y-auto">
-            <div className="card-cream overflow-hidden !rounded-[28px]">
-              <div className="relative bg-[#171731] px-5 pt-5 pb-16 text-center overflow-hidden">
+          <div className="anim-pop flex-1 min-h-0 flex flex-col">
+            <div className="card-cream overflow-hidden !rounded-[28px] flex-1 min-h-0 flex flex-col">
+              <div className="relative bg-[#171731] px-4 pt-3 pb-9 text-center overflow-hidden flex-none">
                 <Confetti />
                 <p className="disp relative text-[#FFB020] font-extrabold tracking-[0.22em] text-[11px]">{d.resultsKicker(pub.round)}</p>
-                <h2 className="disp relative text-[#FFF3CF] font-extrabold text-4xl mt-1.5 leading-tight">{pub.winner === 'sleepyheads' ? d.sleepyWin : pub.winner === 'fallmouse' ? d.fallWin : d.thiefWin}</h2>
-                <p className="relative text-[#B9BCE0] font-bold mt-1">{pub.winner === 'sleepyheads' ? d.winSubVillage : pub.winner === 'fallmouse' ? d.winSubFall : d.winSubThief}</p>
+                <h2 className="disp relative text-[#FFF3CF] font-extrabold text-[20px] leading-snug sm:text-3xl sm:leading-tight mt-1">{pub.winner === 'sleepyheads' ? d.sleepyWin : pub.winner === 'fallmouse' ? d.fallWin : d.thiefWin}</h2>
+                <p className="relative text-[#B9BCE0] font-bold mt-0.5 text-sm">{pub.winner === 'sleepyheads' ? d.winSubVillage : pub.winner === 'fallmouse' ? d.winSubFall : d.winSubThief}</p>
               </div>
-              <div className="px-4 -mt-11 relative z-10 space-y-2">
-                <div className="bg-[#FFF3CF] hard rounded-3xl px-4 py-3 flex items-center gap-3 max-w-sm mx-auto">
-                  <MouseAvatar seed={pub.thiefId || ''} size={54} state="thief" halo="#FFFBef" />
+              <div className="px-3 -mt-7 relative z-10 flex flex-row gap-2 flex-none">
+                <div className="bg-[#FFF3CF] hard rounded-3xl px-3 py-1.5 flex items-center gap-2.5 flex-1 min-w-0">
+                  <MouseAvatar seed={pub.thiefId || ''} size={38} state="thief" halo="#FFFBef" />
                   <div className="min-w-0">
-                    <div className="text-[11px] font-black tracking-[0.16em] text-[#8A7B63]">{d.thiefCardLabel}</div>
-                    <div className="disp text-2xl font-extrabold text-[#2B2016] leading-none truncate">{pub.players.find(p => p.id === pub.thiefId)?.name || '?'}</div>
+                    <div className="text-[10px] font-black tracking-[0.06em] text-[#8A7B63] leading-tight">{d.thiefCardLabel}</div>
+                    <div className="disp text-xl font-extrabold text-[#2B2016] leading-none truncate">{pub.players.find(p => p.id === pub.thiefId)?.name || '?'}</div>
                   </div>
                 </div>
                 {pub.players.some(p => (p as any).role === 'fallmouse') && (
-                  <div className="bg-[#EFE6FB] hard rounded-3xl px-4 py-3 flex items-center gap-3 max-w-sm mx-auto">
-                    <MouseAvatar seed={pub.players.find(p => (p as any).role === 'fallmouse')?.id || ''} size={54} state="dead" halo="#FFFBef" />
+                  <div className="bg-[#EFE6FB] hard rounded-3xl px-3 py-1.5 flex items-center gap-2.5 flex-1 min-w-0">
+                    <MouseAvatar seed={pub.players.find(p => (p as any).role === 'fallmouse')?.id || ''} size={38} state="dead" halo="#FFFBef" />
                     <div className="min-w-0">
-                      <div className="text-[11px] font-black tracking-[0.16em] text-[#8A7B63]">{d.fallCardLabel}</div>
-                      <div className="disp text-2xl font-extrabold text-[#2B2016] leading-none truncate">{pub.players.find(p => (p as any).role === 'fallmouse')?.name || '?'}</div>
+                      <div className="text-[10px] font-black tracking-[0.06em] text-[#8A7B63] leading-tight">{d.fallCardLabel}</div>
+                      <div className="disp text-xl font-extrabold text-[#2B2016] leading-none truncate">{pub.players.find(p => (p as any).role === 'fallmouse')?.name || '?'}</div>
                     </div>
                   </div>)}
               </div>
-              <div className="bg-[#FFF3CF] px-4 pt-4 pb-5">
-                <h3 className="disp font-extrabold text-lg text-[#2B2016]">{d.rolesTitle}</h3>
-                <div className="space-y-2 mt-2">
+              <div className="bg-[#FFF3CF] px-3.5 pt-3 pb-3.5 flex-1 min-h-0 flex flex-col">
+                <h3 className="disp font-extrabold text-base text-[#2B2016]">{d.rolesTitle}</h3>
+                <div className="grid grid-cols-2 gap-1.5 mt-1.5 flex-none">
                   {[...pub.players].sort((a, b) => {
                     const w = (p: any) => p.id === pub.thiefId ? 0 : p.id === joined.playerId ? 1 : 2;
                     return w(a) - w(b);
@@ -1120,42 +1158,39 @@ export default function App() {
                     const winnerSide = pub.winner === 'sleepyheads' ? 'village' : pub.winner === 'fallmouse' ? 'fallmouse' : 'thief';
                     const votes = pub.voteCounts?.find(v => v.id === p.id)?.count ?? 0;
                     return (
-                    <div key={p.id} className={`flex items-center gap-2.5 rounded-2xl hard-sm px-3 py-2 ${role === 'thief' ? 'bg-[#FDE3E0]' : p.id === joined.playerId ? 'bg-[#FFE9B8]' : 'bg-[#FFFBef]'}`}>
-                      <MouseAvatar seed={p.id} size={40} halo="#FFFBef" state={role === 'thief' ? 'thief' : role === 'fallmouse' ? 'dead' : 'awake'} />
+                    <div key={p.id} className={`relative flex items-center gap-2 rounded-2xl hard-sm px-2.5 py-1 ${role === 'thief' ? 'bg-[#FDE3E0]' : p.id === joined.playerId ? 'bg-[#FFE9B8]' : 'bg-[#FFFBef]'}`}>
+                      <span className="absolute -top-2 right-2 bg-[#2B2016] text-white text-[10px] font-black rounded-full px-1.5 py-px">{votes} {d.votes}</span>
+                      <MouseAvatar seed={p.id} size={30} halo="#FFFBef" state={role === 'thief' ? 'thief' : role === 'fallmouse' ? 'dead' : 'awake'} />
                       <div className="flex-1 min-w-0">
                         <div className="font-extrabold text-[#2B2016] truncate leading-tight">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</div>
-                        <span className={`inline-block text-[11px] font-black text-white rounded-full px-2 py-px mt-0.5 ${role === 'thief' ? 'bg-[#D63A2F]' : role === 'fallmouse' ? 'bg-[#7C4DBD]' : 'bg-[#2E7CD6]'}`}>
-                          {role === 'thief' ? d.thief : role === 'fallmouse' ? d.fall : d.sleepy}{p.isFollower ? ' 🤝' : ''}
-                        </span>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className={`inline-block text-[10px] font-black text-white rounded-full px-1.5 py-px whitespace-nowrap ${role === 'thief' ? 'bg-[#D63A2F]' : role === 'fallmouse' ? 'bg-[#7C4DBD]' : 'bg-[#2E7CD6]'}`}>
+                            {role === 'thief' ? d.thief : role === 'fallmouse' ? d.fall : d.sleepy}{p.isFollower ? ' 🤝' : ''}
+                          </span>
+                          <span className="inline-block bg-[#2B2016] text-white text-[10px] font-black rounded-full px-1.5 py-px whitespace-nowrap">🎲{p.dice ?? 1}</span>
+                        </div>
                       </div>
-                      {side === winnerSide && <span className="text-xl flex-none">🏆</span>}
-                      <div className="text-center flex-none w-9">
-                        <div className="disp font-extrabold text-lg leading-none text-[#2B2016]">{votes}</div>
-                        <div className="text-[10px] font-bold text-[#8A7B63]">{d.votes}</div>
-                      </div>
-                      <DiceFace value={p.dice ?? 1} size={38} />
+                      {side === winnerSide && <span className="text-base flex-none">🏆</span>}
                     </div>);
                   })}
                 </div>
-                <div className="grid grid-cols-2 gap-2 mt-3 items-start">
+                <div className="results-standings grid grid-cols-2 gap-2 mt-2.5 items-start flex-none">
                   <Standings />
                   <MyRecord />
                 </div>
-                <button className={`${BTN} w-full mt-3 !bg-[#DCEBFB] text-[#2B2016]`} onClick={shareResult}>
-                  {shared ? '✅ ' + d.shareCopied : '📋 ' + d.shareResults}
-                </button>
                 {(pub as any).recap?.length > 0 && (
-                  <div className="bg-[#1D1D38] rounded-3xl hard p-4 mt-3 text-left">
-                    <div className="disp font-extrabold text-[#FFF3CF] text-center mb-1">{d.recapTitle}</div>
+                  <div className="results-recap bg-[#1D1D38] rounded-3xl hard p-3.5 mt-2.5 text-left flex-1 min-h-0 overflow-y-auto">
+                    <div className="disp font-extrabold text-[#FFF3CF] text-center mb-0.5">{d.recapTitle}</div>
+                    <div className="lg:grid lg:grid-cols-2 lg:gap-x-5">
                     {[1, 2, 3, 4, 5, 6].map(h => {
                       const evs = (pub as any).recap.filter((e: any) => e.hour === h && !e.afterNight);
                       if (!evs.length) return null;
                       const wake = evs.find((e: any) => e.kind === 'wake');
                       const steal = evs.some((e: any) => e.kind === 'steal');
                       return (
-                        <div key={h} className="flex gap-2.5 mt-2">
-                          <span className={`disp w-7 h-7 rounded-full flex-none flex items-center justify-center font-extrabold text-sm ${steal ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#3D3D63] text-[#B9BCE0]'}`}>{h}</span>
-                          <div className="text-[#EDEDF7] font-bold text-sm leading-snug pt-0.5">
+                        <div key={h} className="flex gap-2.5 mt-1.5">
+                          <span className={`disp w-6 h-6 rounded-full flex-none flex items-center justify-center font-extrabold text-[13px] ${steal ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#3D3D63] text-[#B9BCE0]'}`}>{h}</span>
+                          <div className="text-[#EDEDF7] font-bold text-[13px] leading-snug pt-0.5">
                             {wake && wake.ids.length
                               ? <span>{d.recapWake(wake.ids.map(nameOf).join(', '))}</span>
                               : <span className="text-[#7C83B8]">{d.recapNone}</span>}
@@ -1170,18 +1205,30 @@ export default function App() {
                         </div>);
                     })}
                     {(pub as any).recap.some((e: any) => e.afterNight) && (
-                      <div className="flex gap-2.5 mt-2">
-                        <span className="disp w-7 h-7 rounded-full flex-none flex items-center justify-center font-extrabold text-sm bg-[#3D3D63] text-[#B9BCE0]">🌅</span>
-                        <div className="text-[#EDEDF7] font-bold text-sm leading-snug pt-0.5">
+                      <div className="flex gap-2.5 mt-1.5">
+                        <span className="disp w-6 h-6 rounded-full flex-none flex items-center justify-center font-extrabold text-[13px] bg-[#3D3D63] text-[#B9BCE0]">🌅</span>
+                        <div className="text-[#EDEDF7] font-bold text-[13px] leading-snug pt-0.5">
                           {(pub as any).recap.filter((e: any) => e.afterNight).map((e: any, i: number) => (
                             <span key={i} className="block">{d.recapRecruit(nameOf(e.ids[0]))}</span>))}
                         </div>
                       </div>)}
+                    </div>
                   </div>)}
-                <div className="mt-3"><ChatPanel chat={pub.chat} myId={joined.playerId} d={d} onChat={t => getNet().chat(t)} height="h-40" /></div>
-                {isHost
-                  ? <button className={`${BTN} btn-amber w-full mt-4 text-xl !py-3.5`} onClick={() => getNet().playAgain()}>🔁 {d.playAgain} ({d.backLobby})</button>
-                  : <p className="mt-4 text-center font-bold text-[#8A7B63]">{d.waiting}</p>}
+                <button className="w-full bg-[#FFFBef] hard-sm push rounded-2xl px-3.5 py-2.5 mt-2.5 flex items-center gap-2 text-left flex-none" onClick={() => setChatSheet(true)}>
+                  <span className="text-lg">💬</span>
+                  <span className="flex-1 min-w-0 truncate font-bold text-[#5C4B33]">
+                    {lastChat ? <><span className="font-extrabold text-[#2B2016]">{lastChat.fromName}:</span> {chatPreview(d, lastChat.text)}</> : d.chatEmpty}
+                  </span>
+                  {pub.chat.length > chatSeen && <span className="bg-[#D63A2F] text-white text-xs font-black rounded-full min-w-6 h-6 px-1 flex items-center justify-center flex-none">{pub.chat.length - chatSeen}</span>}
+                </button>
+                <div className="flex gap-2 mt-2.5 flex-none">
+                  <button className={`${BTN} flex-1 !bg-[#DCEBFB] text-[#2B2016] !py-2.5 !px-3 whitespace-nowrap text-[15px]`} onClick={shareResult}>
+                    {shared ? '✅ ' + d.shareCopied : '📋 ' + d.shareResults}
+                  </button>
+                  {isHost
+                    ? <button className={`${BTN} btn-amber flex-1 !py-2.5 !px-3 whitespace-nowrap text-[15px]`} onClick={() => getNet().playAgain()}>🔁 {d.playAgain}</button>
+                    : <p className="flex-1 text-center font-bold text-[#8A7B63] self-center text-[13px] leading-tight line-clamp-2">{d.waiting}</p>}
+                </div>
               </div>
             </div>
           </div>

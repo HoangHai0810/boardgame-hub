@@ -9,10 +9,12 @@
 //   so late joiners discover the whole mesh from the broker alone.
 // - Deterministic initiator (smaller clientId offers) avoids offer glare
 //   without a perfect-negotiation state machine.
-// - STUN only (Google) — there is no free TURN we can ship; on the rare
-//   symmetric-NAT pair the two players simply won't hear EACH OTHER while
-//   the rest of the mesh keeps working. Failure is per-pair and silent,
-//   never fatal to the room.
+// - STUN (Google) + the free OpenRelay TURN (same public relay the
+//   PeerJS transport uses): a phone on carrier NAT and a computer on a
+//   home/office network usually CANNOT reach each other peer-to-peer —
+//   without a relay both sides show "mic on" and hear nothing (the PO's
+//   live report, 2026-11-24). TURN relays those pairs; failure stays
+//   per-pair and silent, never fatal to the room.
 // - Speaker and mic are SEPARATE (v29, Hoàng's ask): joining voice is
 //   listen-only — you hear everyone without a mic (peer connections are
 //   born with a recvonly audio transceiver). Enabling the mic later
@@ -70,6 +72,15 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
   };
 
   const peers = new Map<string, Peer>();
+  const audios = new Set<HTMLAudioElement>();
+  // Browsers (iOS Safari above all) refuse audio that starts without a
+  // fresh user gesture — and the speaker now joins AUTOMATICALLY when a
+  // room opens (v32), which may be outside a gesture handler. Any later
+  // tap retries playback + resumes the analyser context.
+  const unlockAudio = () => {
+    audioCtx.resume().catch(() => { /* noop */ });
+    audios.forEach(a => { a.play().catch(() => { /* still locked */ }); });
+  };
   const peerIds = new Set<string>([myId]);
   // Who is in the voice mesh per PRESENCE (retained) — deliberately kept
   // separate from live peer connections, so a pair whose ICE failed can
@@ -79,6 +90,7 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
 
   const audioCtx = new AudioContext();
   audioCtx.resume().catch(() => { /* starts on the mic-click gesture anyway */ });
+  document.addEventListener('pointerdown', unlockAudio);
   const analysers = new Map<string, AnalyserNode>();
   const makeAnalyser = (s: MediaStream): AnalyserNode => {
     const src = audioCtx.createMediaStreamSource(s);
@@ -92,6 +104,11 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
     stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
+    // The context was created at (automatic) speaker-join time and may be
+    // suspended under autoplay rules; this call runs inside the mic tap —
+    // a real user gesture — so resuming here reliably starts it (the
+    // speaking analysers live on this context).
+    try { await audioCtx.resume(); } catch { /* noop */ }
     micOn = true;
     analysers.set(myId, makeAnalyser(stream));
     // Rebuild every pair: the fresh connections are born with the track.
@@ -111,6 +128,7 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
     if (!p) return;
     try { p.pc.close(); } catch { /* noop */ }
     try { p.audio.srcObject = null; p.audio.remove(); } catch { /* noop */ }
+    audios.delete(p.audio);
     peers.delete(pid);
     analysers.delete(pid);
     peerIds.delete(pid);
@@ -124,11 +142,15 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
       ],
     });
     if (stream) { const ms = stream; ms.getTracks().forEach(t => pc.addTrack(t, ms)); }
     else pc.addTransceiver('audio', { direction: 'recvonly' }); // listen-only until the mic is enabled
     const audio = document.createElement('audio');
+    audios.add(audio);
     audio.autoplay = true;
     (audio as any).playsInline = true;
     document.body.appendChild(audio);
@@ -288,6 +310,7 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
     },
     leave() {
       left = true;
+      document.removeEventListener('pointerdown', unlockAudio);
       clearInterval(poll);
       try { publish(presenceTopic, '', { retain: true, qos: 1 }); } catch { /* noop */ }
       [...peers.keys()].forEach(closePeer);
