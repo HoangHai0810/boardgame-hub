@@ -677,6 +677,10 @@ export default function App() {
               </div>
               <button className="block mx-auto mt-3 underline font-extrabold text-[#2B2016]" onClick={() => setShowHelp(true)}>{d.how}</button>
               {status && <p className="mt-3 text-center text-sky-700 font-bold">{localizeMsg(status)}</p>}
+              {(status === 'STATUS_CREATING' || status.startsWith('STATUS_CONNECTING:')) && (
+                <button className="block mx-auto mt-2.5 bg-white hard-xs push rounded-full px-5 py-2 font-extrabold text-[#D63A2F]"
+                  onClick={() => { getNet().cancelConnect(); setStatus(''); }}>{d.cancelConnect}</button>
+              )}
               {error && <p className="mt-3 text-center text-red-600 font-bold">{localizeMsg(error)}</p>}
             </div>
           </div>
@@ -686,7 +690,13 @@ export default function App() {
     );
   }
 
-  if (!pub) return <div className="min-h-screen bg-indigo-950 text-white flex items-center justify-center text-2xl">⏳ {status ? localizeMsg(status) : d.connecting}</div>;
+  if (!pub) return (
+    <div className="min-h-screen bg-[#14142B] text-white flex flex-col items-center justify-center gap-5 p-6 text-center">
+      <div className="text-2xl font-bold">⏳ {status ? localizeMsg(status) : d.connecting}</div>
+      <button className="bg-white hard-xs push rounded-full px-5 py-2 font-extrabold text-[#D63A2F]"
+        onClick={() => { try { sessionStorage.removeItem('ct_guest_session'); } catch { /* ignore */ } try { getNet().leave(); } catch { /* ignore */ } location.href = location.pathname; }}>{d.cancelConnect}</button>
+    </div>
+  );
 
   const bg = phase === 'night' || phase === 'roleReveal' || phase === 'recruit' || phase === 'results'
     ? 'bg-[#14142B]'

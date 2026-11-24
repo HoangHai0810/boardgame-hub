@@ -75,6 +75,7 @@ export function createMqttNet(h: Handlers): Net {
   let lastSnapPhase = '';
   let hostSince = 0;
   let starting = false; // a create/join walk is already in flight
+  let attemptSeq = 0; // bumped by every create/join AND by cancelConnect
   let candidacy = false;
   let claimTimer: ReturnType<typeof setTimeout> | null = null;
   let latestSnap: any = null;
@@ -86,7 +87,11 @@ export function createMqttNet(h: Handlers): Net {
   const fireJoinedOnce = (isH: boolean) => {
     if (!joinedFired) { joinedFired = true; starting = false; h.onJoined(roomCode, myId, isH); }
   };
-  const notifyError = (m: string) => { starting = false; h.onError(m); };
+  const notifyError = (m: string) => {
+    starting = false;
+    if (joinTimer) { clearTimeout(joinTimer); joinTimer = null; }
+    h.onError(m);
+  };
 
   /* ----- connection lifecycle: surface status + broker failover ----- */
   function watchLifecycle(c: MqttClient) {
@@ -208,7 +213,7 @@ export function createMqttNet(h: Handlers): Net {
     c.on('connect', () => { try { engine?.broadcast(); } catch { /* noop */ } });
   }
 
-  async function startHost(name: string) {
+  async function startHost(name: string, att: number) {
     roomCode = makeRoomCode(); isHost = true; joinedFired = false; left = false;
     myName = name;
     h.onStatus('STATUS_CREATING');
@@ -223,6 +228,7 @@ export function createMqttNet(h: Handlers): Net {
     bindCurrent = () => { if (client) bindHost(client); };
     order = brokerOrder(roomCode);
     const rh = await connectMqttSequential(order, 0, makeExtra());
+    if (att !== attemptSeq) { try { rh.client.end(true); } catch { /* noop */ } return; } // cancelled mid-walk
     client = rh.client; brokerIdx = rh.idx;
     watchLifecycle(client);
     bindCurrent();
@@ -382,16 +388,16 @@ export function createMqttNet(h: Handlers): Net {
     const old = client;
     try { old?.end(true); } catch { /* noop */ }
     client = null;
-    await startClient(roomCode, myName).catch(() => notifyError('NET_UNREACHABLE'));
+    await startClient(roomCode, myName, ++attemptSeq).catch(() => notifyError('NET_UNREACHABLE'));
   }
 
-  async function startClient(code: string, name: string) {
+  async function startClient(code: string, name: string, att: number) {
     roomCode = code.toUpperCase().trim(); isHost = false; joinedFired = false; left = false;
     myName = name;
     h.onStatus('STATUS_CONNECTING:' + roomCode);
     myKeys = await generateKeys();
     joinTimer = setTimeout(() => {
-      if (!joinedFired) notifyError('HOST_UNREACHABLE');
+      if (att === attemptSeq && !joinedFired) notifyError('HOST_UNREACHABLE');
     }, 45000);
     makeExtra = () => {
       willConn = nonce();
@@ -401,6 +407,7 @@ export function createMqttNet(h: Handlers): Net {
     bindCurrent = () => { if (client) bindGuest(client); };
     order = brokerOrder(roomCode);
     const rc = await connectMqttSequential(order, 0, makeExtra());
+    if (att !== attemptSeq) { try { rc.client.end(true); } catch { /* noop */ } return; } // cancelled mid-walk
     client = rc.client; brokerIdx = rc.idx;
     watchLifecycle(client);
     bindCurrent();
@@ -419,12 +426,28 @@ export function createMqttNet(h: Handlers): Net {
     createRoom(name: string) {
       if (starting || joinedFired) return;
       starting = true;
-      startHost(name).catch(() => notifyError('NET_UNREACHABLE'));
+      const att = ++attemptSeq;
+      startHost(name, att).catch(() => { if (att === attemptSeq) notifyError('NET_UNREACHABLE'); });
     },
     joinRoom(code: string, name: string) {
       if (starting || joinedFired) return;
       starting = true;
-      startClient(code, name).catch(() => notifyError('NET_UNREACHABLE'));
+      const att = ++attemptSeq;
+      startClient(code, name, att).catch(() => { if (att === attemptSeq) notifyError('NET_UNREACHABLE'); });
+    },
+    cancelConnect() {
+      if (!starting) return; // only an in-flight create/join can be cancelled
+      attemptSeq++; // the walk's late result is discarded by the stale-checks
+      starting = false;
+      left = true; // lifecycle watcher/failover stay down; next attempt resets it
+      if (joinTimer) { clearTimeout(joinTimer); joinTimer = null; }
+      if (failoverTimer) { clearTimeout(failoverTimer); failoverTimer = null; }
+      // A client may already be connected (guest waiting on the host's
+      // 'joined' reply): drop it. We never got a player slot, so the
+      // leave-will's __gone names a player the host never added — a no-op.
+      if (client) { try { client.end(true); } catch { /* noop */ } client = null; }
+      engine = null; joinedFired = false;
+      h.onStatus('');
     },
     startGame: () => intent('startGame'),
     beginNight: () => intent('beginNight'),

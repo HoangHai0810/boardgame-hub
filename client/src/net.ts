@@ -18,6 +18,10 @@ export type { Pub, Priv };
 export interface Net {
   createRoom(name: string): void;
   joinRoom(code: string, name: string): void;
+  /** Abort an in-flight create/join (wrong button, dead network): tears
+   *  the attempt down, clears the connecting status, never fires
+   *  onJoined/onError for the cancelled attempt afterwards. */
+  cancelConnect(): void;
   startGame(): void; beginNight(): void; ready(): void; readyVote(): void;
   nightAction(kind: 'steal' | 'inspect' | 'chooseFollower', targetId?: string): void;
   chat(text: string): void; toVoting(): void;
@@ -58,6 +62,7 @@ export function createPeerNet(h: Handlers): Net {
   let myId = getClientId();
   let isHost = false;
   let roomCode = '';
+  let joinTimer: ReturnType<typeof setTimeout> | null = null;
 
   function handleHostMsg(m: any) {
     if (!m || typeof m !== 'object') return;
@@ -129,12 +134,12 @@ export function createPeerNet(h: Handlers): Net {
       isHost = false; roomCode = code.toUpperCase().trim();
       h.onStatus('STATUS_CONNECTING:' + roomCode);
       peer = new Peer(PEER_OPTS);
-      const joinTimer = setTimeout(() => {
+      joinTimer = setTimeout(() => {
         if (!hostConn?.open) h.onError('PEER_BLOCKED');
       }, 30000);
       peer.on('open', () => {
         hostConn = peer!.connect(PEER_PREFIX + roomCode, { reliable: true });
-        hostConn.on('open', () => { clearTimeout(joinTimer); hostConn!.send({ type: 'join', clientId: myId, name: cleanName(name) }); });
+        hostConn.on('open', () => { if (joinTimer) { clearTimeout(joinTimer); joinTimer = null; } hostConn!.send({ type: 'join', clientId: myId, name: cleanName(name) }); });
         hostConn.on('data', handleHostMsg);
         hostConn.on('close', () => h.onError('HOST_DISCONNECTED'));
       });
@@ -142,6 +147,12 @@ export function createPeerNet(h: Handlers): Net {
         if (e?.type === 'peer-unavailable') h.onError('ROOM_NOT_FOUND');
         else h.onError('CONN_ERROR:' + (e?.type || 'unknown'));
       });
+    },
+    cancelConnect() {
+      if (joinTimer) { clearTimeout(joinTimer); joinTimer = null; }
+      try { hostConn?.close(); peer?.destroy(); } catch { /* noop */ }
+      peer = null; hostConn = null; engine = null;
+      h.onStatus('');
     },
     startGame: () => intent('startGame'),
     beginNight: () => intent('beginNight'),
@@ -166,19 +177,27 @@ export function createPeerNet(h: Handlers): Net {
 export function createSocketNet(serverUrl: string, h: Handlers): Net {
   const socket: Socket = io(serverUrl, { transports: ['websocket', 'polling'] });
   let myId = getClientId();
+  let sockAttempt = 0;
   socket.on('state', (s: Pub) => h.onState(s));
   socket.on('private', (p: Priv) => h.onPrivate(p));
   socket.on('errorMsg', (m: string) => h.onError(m));
   socket.on('connect_error', () => h.onError('SERVER_UNREACHABLE'));
   return {
     createRoom(name: string) {
-      socket.emit('createRoom', { name: cleanName(name), clientId: myId }, (r: any) =>
-        r?.ok ? h.onJoined(r.code, r.playerId, true) : h.onError(r?.error || 'FAILED'));
+      const att = ++sockAttempt;
+      socket.emit('createRoom', { name: cleanName(name), clientId: myId }, (r: any) => {
+        if (att !== sockAttempt) return; // cancelled meanwhile
+        r?.ok ? h.onJoined(r.code, r.playerId, true) : h.onError(r?.error || 'FAILED');
+      });
     },
     joinRoom(code: string, name: string) {
-      socket.emit('joinRoom', { code, name: cleanName(name), clientId: myId }, (r: any) =>
-        r?.ok ? h.onJoined(r.code, r.playerId, false) : h.onError(r?.error || 'FAILED'));
+      const att = ++sockAttempt;
+      socket.emit('joinRoom', { code, name: cleanName(name), clientId: myId }, (r: any) => {
+        if (att !== sockAttempt) return; // cancelled meanwhile
+        r?.ok ? h.onJoined(r.code, r.playerId, false) : h.onError(r?.error || 'FAILED');
+      });
     },
+    cancelConnect() { sockAttempt++; h.onStatus(''); },
     startGame: () => socket.emit('startGame'),
     beginNight: () => socket.emit('beginNight'),
     ready: () => socket.emit('ready'),
