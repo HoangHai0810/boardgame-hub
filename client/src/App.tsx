@@ -699,7 +699,9 @@ export default function App() {
 
   return (
     <div className={`h-dvh ${bg} p-3 sm:p-4 transition-colors duration-1000 flex flex-col overflow-hidden relative`}>
-      <div className="max-w-3xl w-full mx-auto flex flex-col flex-1 min-h-0">
+      <div className="max-w-3xl lg:max-w-6xl w-full mx-auto flex flex-col flex-1 min-h-0">
+        <div className="flex flex-col lg:flex-row lg:gap-5 flex-1 min-h-0">
+        <div className="flex flex-col flex-1 min-h-0">
         <TopBar d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })}  tone={tone} voice={{ speaker: voiceSpeaker, mic: voiceMic, muted: voiceMuted, onSpeaker: toggleSpeaker, onMic: toggleMic }}/>
         {connLost && joined && <div className="bg-red-500 text-white text-center font-bold text-sm rounded-full px-4 py-1 mb-2 anim-pulse-soft shadow">📡 {d.connLost}</div>}
         {error && <div className="bg-red-100 border border-red-400 text-red-700 rounded-2xl px-4 py-2 mb-3 font-bold">{localizeMsg(error)}
@@ -749,7 +751,7 @@ export default function App() {
               <h3 className="disp text-lg font-extrabold text-[#2B2016]">{d.players}</h3>
               <span className="text-[13px] font-bold text-[#8A7B63]">{d.playersCount(pub.players.length, 8)}</span>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
               {pub.players.map(p => (
                 <div key={p.id} className={`relative flex items-center gap-2.5 rounded-2xl px-3 py-2 hard-sm ${p.id === joined.playerId ? 'bg-[#FFE9B8]' : 'bg-[#FFFBef]'}`}>
                   <MouseAvatar seed={p.id} size={42} halo="#FFF3CF" state={p.connected ? 'awake' : 'asleep'} />
@@ -782,7 +784,7 @@ export default function App() {
               </div>
             </div>
             <div className="mt-auto pt-3">
-              <button className="w-full bg-[#FFFBef] hard-sm push rounded-2xl px-3.5 py-2.5 flex items-center gap-2 text-left" onClick={() => setChatSheet(true)}>
+              <button className="w-full lg:hidden bg-[#FFFBef] hard-sm push rounded-2xl px-3.5 py-2.5 flex items-center gap-2 text-left" onClick={() => setChatSheet(true)}>
                 <span className="text-lg">💬</span>
                 <span className="flex-1 min-w-0 truncate font-bold text-[#6B5B43] text-sm">
                   {lastChat ? <><span className="font-extrabold text-[#2B2016]">{lastChat.fromName}:</span> {chatPreview(d, lastChat.text)}</> : d.chatEmpty}
@@ -806,7 +808,9 @@ export default function App() {
           <div className="anim-pop flex flex-col flex-1 min-h-0 w-full">
             <p className="disp text-center text-[#FFB020] font-extrabold tracking-[0.22em] text-xs uppercase">{d.yourRole}</p>
             <p className="text-center text-[#B9BCE0] font-bold mt-1">{d.revealSub}</p>
-            <div className="card-cream max-w-md w-full mx-auto mt-4 px-5 py-6 text-center">
+            <div className="card-cream max-w-md sm:max-w-2xl w-full mx-auto mt-4 px-5 py-6 text-center sm:text-left">
+              <div className="flex flex-col sm:flex-row items-center gap-5">
+              <div className="flex-1 text-center">
               <MouseAvatar seed={joined.playerId} size={118} halo="#FFF3CF" state={priv.role === 'thief' ? 'thief' : priv.role === 'fallmouse' ? 'dead' : 'awake'} />
               <div className="mt-3">
                 <span className={`disp inline-block text-white font-extrabold text-xl rounded-2xl px-5 py-1.5 border-[2.5px] border-[#2B2016] shadow-[0_3px_0_#2B2016] ${priv.role === 'thief' ? 'bg-[#D63A2F]' : priv.role === 'fallmouse' ? 'bg-[#7C4DBD]' : 'bg-[#2E7CD6]'}`}>
@@ -814,13 +818,15 @@ export default function App() {
                 </span>
               </div>
               <p className="mt-3 font-bold text-[#5C4B33] leading-snug">{priv.role === 'thief' ? d.thiefDesc : priv.role === 'fallmouse' ? d.fallDesc : d.sleepyDesc}</p>
-              <div className="border-t-2 border-dashed border-[#D8C69A] mt-4 pt-4 flex items-center justify-center gap-4">
+              </div>
+              <div className="border-t-2 sm:border-2 border-dashed border-[#D8C69A] mt-4 sm:mt-0 pt-4 sm:py-5 sm:px-5 sm:rounded-3xl sm:bg-[#FFFBEF] flex items-center justify-center gap-4 sm:w-[280px] flex-none">
                 <DiceFace value={priv.dice ?? 1} size={76} />
                 <div className="text-left">
                   <div className="text-[11px] font-black tracking-[0.16em] text-[#8A7B63] uppercase">{d.yourDice}</div>
                   <div className="disp text-5xl font-extrabold text-[#2B2016] leading-none mt-0.5">{priv.dice}</div>
                   <div className="font-bold text-[#5C4B33] text-sm mt-1">{d.wakeLine(priv.dice ?? 0)}</div>
                 </div>
+              </div>
               </div>
             </div>
             <div className="mt-auto pt-4 max-w-md w-full mx-auto">
@@ -849,7 +855,7 @@ export default function App() {
                 <p className="text-[#B9BCE0] font-bold text-sm mt-1">{d.hourOf(pub.currentHour ?? 1)}</p>
               </div>
               <TimerPill dark secs={secsLeft(pub.hourEndsAt, now)} />
-              <button className="relative bg-[#23233F] border-2 border-[#3D3D63] text-white rounded-xl w-10 h-10 text-lg flex-none" title={d.chatTitle ?? 'Chat'}
+              <button className="relative lg:hidden bg-[#23233F] border-2 border-[#3D3D63] text-white rounded-xl w-10 h-10 text-lg flex-none" title={d.chatTitle ?? 'Chat'}
                 onClick={() => setChatSheet(true)}>💬{pub.chat.length > chatSeen && <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-[#D63A2F] rounded-full border-2 border-[#14142B]" />}</button>
             </div>
             <div className="flex items-center justify-between px-1 mt-3 relative z-10 max-w-md w-full mx-auto">
@@ -975,7 +981,7 @@ export default function App() {
             )}
             <div className="mt-auto relative z-10 flex items-end justify-between gap-3 pt-3 max-w-xl w-full mx-auto">
               <p className="text-[#7C83B8] text-[13px] font-bold leading-snug">{priv.role === 'thief' ? d.recruitNote : ''}</p>
-              <button className="relative bg-[#23233F] border-2 border-[#3D3D63] text-white rounded-2xl px-4 py-2.5 font-extrabold flex-none" onClick={() => setChatSheet(true)}>💬 Chat{pub.chat.length > chatSeen && <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-[#D63A2F] rounded-full border-2 border-[#14142B]" />}</button>
+              <button className="relative lg:hidden bg-[#23233F] border-2 border-[#3D3D63] text-white rounded-2xl px-4 py-2.5 font-extrabold flex-none" onClick={() => setChatSheet(true)}>💬 Chat{pub.chat.length > chatSeen && <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-[#D63A2F] rounded-full border-2 border-[#14142B]" />}</button>
             </div>
           </div>
         )}
@@ -995,7 +1001,7 @@ export default function App() {
               <p className="bg-[#DFF5E3] border-2 border-[#0E9F6E] rounded-2xl px-4 py-2 mt-3 text-center font-extrabold text-[#0B6B4A] anim-pop">🤝 {d.becameFollower}</p>)}
             {priv?.witnessedThiefId && (
               <p className="text-center font-extrabold text-[#D63A2F] mt-3">{d.sawThief(nameOf(priv.witnessedThiefId))}</p>)}
-            <div className="flex gap-1.5 mt-3 pb-1">
+            <div className="flex lg:hidden gap-1.5 mt-3 pb-1">
               {pub.players.map(p => (
                 <div key={p.id} className={`relative flex-1 min-w-0 rounded-2xl border-2 px-1 py-1.5 text-center ${p.id === joined.playerId ? 'bg-[#FFE9B8] border-[#2B2016] shadow-[0_2px_0_#2B2016]' : 'bg-[#FFFBef] border-[#E3D3AC]'}`}>
                   <MouseAvatar seed={p.id} size={36} state={(priv?.knownThiefId === p.id || priv?.witnessedThiefId === p.id) ? 'thief' : 'awake'} />
@@ -1005,8 +1011,18 @@ export default function App() {
                   {(priv?.knownFollowerIds.includes(p.id) || (p.id === joined.playerId && priv?.isFollower)) && <span className="absolute -bottom-2 right-0 text-sm z-10">🤝</span>}
                 </div>))}
             </div>
-            <ChatPanel chat={pub.chat} myId={joined.playerId} d={d} height="flex" onChat={t => getNet().chat(t)} />
-            <div className="mt-3 text-center">
+            <div className="hidden lg:grid grid-cols-3 gap-2.5 mt-3">
+              {pub.players.map(p => (
+                <div key={p.id} className={`relative rounded-2xl border-2 px-3 py-3 text-center ${p.id === joined.playerId ? 'bg-[#FFE9B8] border-[#2B2016] shadow-[0_3px_0_#2B2016]' : 'bg-[#FFFBef] border-[#E3D3AC]'}`}>
+                  <MouseAvatar seed={p.id} size={56} state={(priv?.knownThiefId === p.id || priv?.witnessedThiefId === p.id) ? 'thief' : 'awake'} />
+                  <div className="disp font-extrabold text-lg text-[#2B2016] mt-1 leading-tight">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</div>
+                  {priv?.peeks?.some(x => x.targetId === p.id) && <span className="absolute -top-2.5 right-2 bg-[#2E7CD6] text-white text-xs font-extrabold rounded-full px-2.5 py-0.5 border-2 border-[#2B2016] whitespace-nowrap z-10">{d.peekPill(priv.peeks.find(x => x.targetId === p.id)!.dice)}</span>}
+                  {speakingIds.has(p.id) && <span className="absolute top-2 left-2 bg-[#0E9F6E] text-white text-[11px] rounded-full px-1.5 py-0.5 anim-pulse-soft">🎙️</span>}
+                  {(priv?.knownFollowerIds.includes(p.id) || (p.id === joined.playerId && priv?.isFollower)) && <span className="absolute top-2 right-2 text-lg">🤝</span>}
+                </div>))}
+            </div>
+            <div className="flex-1 min-h-0 flex flex-col lg:hidden"><ChatPanel chat={pub.chat} myId={joined.playerId} d={d} height="flex" onChat={t => getNet().chat(t)} /></div>
+            <div className="mt-3 lg:mt-auto text-center">
               {pub.dayReady?.includes(joined.playerId) || optReadyVote
                 ? <p className="disp font-extrabold text-[#0B8A5E] text-lg">✅ {d.readyVoteDone}</p>
                 : <button className={`${BTN} btn-dark w-full text-lg !py-3`} onClick={() => { setOptReadyVote(true); pendingRef.current.readyVote = true; getNet().readyVote(); }}>{d.readyVoteBtn}</button>}
@@ -1160,6 +1176,20 @@ export default function App() {
             </div>
           </div>
         )}
+        </div>
+        {(phase === 'lobby' || phase === 'day' || phase === 'night' || phase === 'recruit') && joined && (
+          <aside className="hidden lg:flex flex-col w-[360px] flex-none min-h-0 bg-[#FFF3CF] hard-sm rounded-3xl overflow-hidden">
+            <div className="px-4 pt-3.5 pb-3 border-b-2 border-[#E8D9B0]">
+              <div className="disp text-xl font-extrabold text-[#2B2016]">{phase === 'day' ? d.chatPanelDay : d.chatTitle}</div>
+              {(phase === 'night' || phase === 'recruit') && <div className="text-xs font-bold text-[#8A7B63]">{d.chatSleepNote}</div>}
+              {phase === 'recruit' && priv?.role === 'thief' && <div className="text-[13px] font-bold text-[#8A7B63] mt-1.5 leading-snug">{d.recruitNote}</div>}
+            </div>
+            <div className="flex-1 min-h-0 p-3 flex flex-col">
+              <ChatPanel chat={pub.chat} myId={joined.playerId} d={d} onChat={t => getNet().chat(t)} height="flex" />
+            </div>
+          </aside>
+        )}
+        </div>
         <ChatSheet open={chatSheet} onClose={() => setChatSheet(false)} chat={pub.chat} myId={joined.playerId} d={d} onChat={t => getNet().chat(t)} />
       </div>
       {showHelp && <HelpModal d={d} onClose={() => setShowHelp(false)} />}
