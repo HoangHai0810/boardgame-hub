@@ -32,6 +32,56 @@ export function Confetti() {
     }}>{e}</span>))}</>;
 }
 
+// ---- v30 design system components (SVG mice in the mockup's flat style;
+// per-player pastel colors hashed from the player id) ----
+const MOUSE_COLORS: [string, string][] = [
+  ['#C9CED8', '#9AA3B2'], ['#F8CD9E', '#EDA45F'], ['#ACCDF6', '#7FA8E6'], ['#DEC4F4', '#BB94E4'],
+  ['#B4E0C2', '#85C79B'], ['#F6AC8D', '#E67F57'], ['#F8E08C', '#E9C04C'], ['#F7BDD6', '#EA93B8'],
+];
+const hashId = (id: string) => [...id].reduce((a, c) => a + c.charCodeAt(0), 0);
+export function MouseAvatar({ seed, size = 48, state = 'awake', halo }: { seed: string; size?: number; state?: 'awake' | 'asleep' | 'thief' | 'dead'; halo?: string }) {
+  const [face, ear] = MOUSE_COLORS[hashId(seed) % MOUSE_COLORS.length];
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" className="inline-block flex-none" aria-hidden>
+      {halo && <circle cx="50" cy="50" r="48" fill={halo} stroke="#2B2016" strokeWidth="2.5" />}
+      <circle cx="27" cy="27" r="17" fill={ear} stroke="#2B2016" strokeWidth="3" />
+      <circle cx="73" cy="27" r="17" fill={ear} stroke="#2B2016" strokeWidth="3" />
+      <circle cx="27" cy="27" r="8.5" fill="#F6A8BC" />
+      <circle cx="73" cy="27" r="8.5" fill="#F6A8BC" />
+      <circle cx="50" cy="57" r="35" fill={face} stroke="#2B2016" strokeWidth="3" />
+      <g stroke="#2B2016" strokeWidth="1.6" opacity="0.35" strokeLinecap="round"><path d="M8 62 l14 3 M10 72 l13 -1" /><path d="M92 62 l-14 3 M90 72 l-13 -1" /></g>
+      {state === 'thief' ? (<>
+        <rect x="13" y="43" width="74" height="21" rx="10.5" fill="#26221F" />
+        <circle cx="37" cy="53.5" r="6.4" fill="#FFFBef" /><circle cx="63" cy="53.5" r="6.4" fill="#FFFBef" />
+        <circle cx="37" cy="53.5" r="3.2" fill="#2B2016" /><circle cx="63" cy="53.5" r="3.2" fill="#2B2016" />
+      </>) : state === 'asleep' ? (
+        <g stroke="#2B2016" strokeWidth="3" fill="none" strokeLinecap="round"><path d="M30 54 q7 6 14 0" /><path d="M56 54 q7 6 14 0" /></g>
+      ) : state === 'dead' ? (
+        <g stroke="#2B2016" strokeWidth="3.4" strokeLinecap="round"><path d="M31 48 l12 12 M43 48 l-12 12" /><path d="M57 48 l12 12 M69 48 l-12 12" /></g>
+      ) : (
+        <g fill="#2B2016"><circle cx="37" cy="53" r="4.6" /><circle cx="63" cy="53" r="4.6" /></g>
+      )}
+      <ellipse cx="50" cy="68" rx="5.4" ry="4.2" fill="#F2728C" stroke="#2B2016" strokeWidth="1.6" />
+      <path d="M50 72 q0 5 -7 6 M50 72 q0 5 7 6" stroke="#2B2016" strokeWidth="2" fill="none" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function CheeseWedge({ size = 92 }: { size?: number }) {
+  return (
+    <svg width={size} height={Math.round(size * 0.72)} viewBox="0 0 100 72" className="inline-block" aria-hidden>
+      <path d="M6 64 L94 64 L94 34 Q52 8 6 64 Z" fill="#FFC93C" stroke="#2B2016" strokeWidth="3.5" strokeLinejoin="round" />
+      <circle cx="66" cy="48" r="6" fill="#E8A013" /><circle cx="40" cy="54" r="4.4" fill="#E8A013" /><circle cx="80" cy="38" r="3.6" fill="#E8A013" />
+    </svg>
+  );
+}
+
+function TimerPill({ secs, dark = false }: { secs: number | null; dark?: boolean }) {
+  if (secs === null || secs === undefined) return null;
+  const label = secs >= 60 ? `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` : `${secs}s`;
+  return <span className={`disp inline-flex items-center gap-1 rounded-full px-3 py-1 font-extrabold text-base ${dark ? 'bg-[#23233F] border-2 border-[#3D3D63] text-[#FFB020]' : 'bg-[#FFFBef] hard-xs text-[#2B2016]'}`}>🕐 {label}</span>;
+}
+
 function useNow(step = 250) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => { const i = setInterval(() => setNow(Date.now()), step); return () => clearInterval(i); }, [step]);
@@ -39,8 +89,8 @@ function useNow(step = 250) {
 }
 const secsLeft = (endsAt: number | null, now: number) => endsAt ? Math.max(0, Math.ceil((endsAt - now) / 1000)) : null;
 
-const BTN = 'px-5 py-3 rounded-2xl font-bold shadow-lg transition active:scale-95 disabled:opacity-40 disabled:active:scale-100';
-const CARD = 'bg-white/95 rounded-3xl shadow-2xl p-4 sm:p-5';
+const BTN = 'disp px-5 py-3 rounded-2xl font-extrabold hard push disabled:opacity-40';
+const CARD = 'card-cream p-4 sm:p-5';
 
 function HelpModal({ d, onClose }: { d: any; onClose: () => void }) {
   return (
@@ -50,32 +100,39 @@ function HelpModal({ d, onClose }: { d: any; onClose: () => void }) {
         <ol className="space-y-2 text-left text-[15px] leading-snug">
           {d.tutorial.map((s: string, i: number) => <li key={i}>{s}</li>)}
         </ol>
-        <button className={`${BTN} bg-amber-400 w-full mt-4`} onClick={onClose}>OK 👍</button>
+        <button className={`${BTN} btn-amber w-full mt-4`} onClick={onClose}>OK 👍</button>
       </div>
     </div>
   );
 }
 
-function TopBar({ d, lang, muted, onToggleMuted, onHelp, onToggleLang, voice }: { d: any; lang: Lang; muted: boolean; onToggleMuted: () => void; onHelp: () => void; onToggleLang: () => void; voice?: { speaker: 'off' | 'busy' | 'on'; mic: 'off' | 'busy' | 'on'; muted: boolean; onSpeaker: () => void; onMic: () => void } }) {
+function TopBar({ d, lang, muted, onToggleMuted, onHelp, onToggleLang, voice, tone = 'navy' }: { d: any; lang: Lang; muted: boolean; onToggleMuted: () => void; onHelp: () => void; onToggleLang: () => void; tone?: 'navy' | 'cream'; voice?: { speaker: 'off' | 'busy' | 'on'; mic: 'off' | 'busy' | 'on'; muted: boolean; onSpeaker: () => void; onMic: () => void } }) {
+  const chip = tone === 'navy'
+    ? 'bg-[#23233F] border-2 border-[#3D3D63] text-[#EDEDF7]'
+    : 'bg-[#FFFBef] hard-xs text-[#2B2016]';
+  const chipCls = `rounded-xl px-2.5 py-1.5 text-base leading-none ${chip} push`;
   return (
-    <div className="flex items-center justify-between gap-2 mb-2">
-      <div className="font-extrabold text-white drop-shadow text-lg">🧀 {d.title}</div>
-      <div className="flex gap-2">
+    <div className="flex items-center justify-between gap-2 mb-2 relative z-20">
+      <div className={`disp font-extrabold text-lg flex items-center gap-1.5 ${tone === 'navy' ? 'text-[#FFF3CF]' : 'text-[#2B2016]'}`}><CheeseWedge size={30} /> {d.title}</div>
+      <div className="flex gap-1.5 items-center">
         {voice && (voice.speaker === 'off'
-          ? <button title={d.voiceListen} className="bg-white/20 text-white rounded-full px-3 py-1" onClick={voice.onSpeaker}>🎧</button>
+          ? <button title={d.voiceListen} className={chipCls} onClick={voice.onSpeaker}>🎧</button>
           : voice.speaker === 'busy'
-            ? <button title={d.voiceListen} className="bg-amber-400 text-white rounded-full px-3 py-1 anim-pulse-soft">🎧</button>
+            ? <button title={d.voiceListen} className={`${chipCls} !bg-[#FFB020] !text-[#2B2016] anim-pulse-soft`} onClick={voice.onSpeaker}>🎧</button>
             : <>
-              <button title={d.voiceLeave} className="bg-green-500 text-white rounded-full px-3 py-1" onClick={voice.onSpeaker}>🎧</button>
+              <button title={d.voiceLeave} className={`${chipCls} !bg-[#0E9F6E] !text-white`} onClick={voice.onSpeaker}>🎧</button>
               {voice.mic === 'off'
-                ? <button title={d.voiceMicOn} className="bg-white/20 text-white rounded-full px-3 py-1" onClick={voice.onMic}>🎤</button>
+                ? <button title={d.voiceMicOn} className={chipCls} onClick={voice.onMic}>🎤</button>
                 : voice.mic === 'busy'
-                  ? <button title={d.voiceMicOn} className="bg-amber-400 text-white rounded-full px-3 py-1 anim-pulse-soft">🎤</button>
-                  : <button title={voice.muted ? d.voiceUnmute : d.voiceMute} className={`${voice.muted ? 'bg-red-500' : 'bg-green-500'} text-white rounded-full px-3 py-1`} onClick={voice.onMic}>{voice.muted ? '🔇' : '🎤'}</button>}
+                  ? <button title={d.voiceMicOn} className={`${chipCls} !bg-[#FFB020] !text-[#2B2016] anim-pulse-soft`} onClick={voice.onMic}>🎤</button>
+                  : <button title={voice.muted ? d.voiceUnmute : d.voiceMute} className={`${chipCls} ${voice.muted ? '!bg-[#D63A2F] !text-white' : '!bg-[#0E9F6E] !text-white'}`} onClick={voice.onMic}>{voice.muted ? '🔇' : '🎤'}</button>}
             </>)}
-        <button aria-label="sound" className="bg-white/20 text-white rounded-full px-3 py-1" onClick={onToggleMuted}>{muted ? '🔇' : '🔊'}</button>
-        <button className="bg-white/20 text-white rounded-full px-3 py-1 font-bold" onClick={onHelp}>❓ {d.help}</button>
-        <button className="bg-white/20 text-white rounded-full px-3 py-1 font-bold" onClick={onToggleLang}>{lang === 'en' ? '🇻🇳 VI' : '🇬🇧 EN'}</button>
+        <button aria-label="sound" title={muted ? '🔇' : '🔊'} className={chipCls} onClick={onToggleMuted}>{muted ? '🔇' : '🔊'}</button>
+        <button title={d.help} className={`${chipCls} disp font-extrabold`} onClick={onHelp}>?</button>
+        <div className={`flex rounded-xl overflow-hidden ${tone === 'navy' ? 'border-2 border-[#3D3D63]' : 'hard-xs !shadow-none border-2'}`} role="group" aria-label="language">
+          <button className={`disp px-2.5 py-1.5 font-extrabold text-sm leading-none ${lang === 'vi' ? 'bg-[#FFB020] text-[#2B2016]' : tone === 'navy' ? 'bg-[#23233F] text-[#B9BCE0]' : 'bg-[#FFFBef] text-[#8A7B63]'}`} onClick={() => lang !== 'vi' && onToggleLang()}>VI</button>
+          <button className={`disp px-2.5 py-1.5 font-extrabold text-sm leading-none ${lang === 'en' ? 'bg-[#FFB020] text-[#2B2016]' : tone === 'navy' ? 'bg-[#23233F] text-[#B9BCE0]' : 'bg-[#FFFBef] text-[#8A7B63]'}`} onClick={() => lang !== 'en' && onToggleLang()}>EN</button>
+        </div>
       </div>
     </div>
   );
@@ -85,6 +142,12 @@ function TopBar({ d, lang, muted, onToggleMuted, onHelp, onToggleLang, voice }: 
 // tokens and render localized in the VIEWER's language.
 const REACTIONS = ['👀', '🧀', '😱', '🤔', '👍', '👎', '😂', '❓'];
 const QC_KEYS = ['qc1', 'qc2', 'qc3', 'qc4'] as const;
+
+function chatPreview(d: any, text: string): string {
+  const qc = /^QC([1-4])$/.exec(text);
+  if (qc) return d['qc' + qc[1]];
+  return text;
+}
 
 function renderChatText(d: any, text: string) {
   if ((REACTIONS as string[]).includes(text)) return <span className="text-4xl leading-tight">{text}</span>;
@@ -113,15 +176,14 @@ function ChatPanel({ chat, myId, d, height = 'h-48', onChat }: { chat: any[]; my
     <div className={`text-left ${height === 'flex' ? 'flex flex-col flex-1 min-h-0' : ''}`}>
       <div ref={boxRef}
         onScroll={e => { const el = e.currentTarget; stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}
-        className={`bg-gradient-to-b from-amber-50 to-orange-50 rounded-2xl p-3 ${height === 'flex' ? 'flex-1 min-h-0' : height} overflow-y-auto space-y-2`}>
+        className={`bg-[#FFFBef] hard-sm !shadow-none rounded-3xl p-3 ${height === 'flex' ? 'flex-1 min-h-0' : height} overflow-y-auto space-y-2`}>
         {chat.length === 0 && <p className="text-center text-gray-400 font-bold py-4">{d.chatEmpty}</p>}
         {chat.map((m: any, i: number) => {
           const mine = m.fromId === myId;
           return (
             <div key={`${m.ts}-${m.fromId}-${i}`} className={`flex ${mine ? 'justify-end' : 'justify-start'} anim-slide-up`}>
-              <div className={`max-w-[80%] rounded-2xl px-3 py-2 shadow ${mine ? 'bg-amber-400 rounded-br-md' : 'bg-white rounded-bl-md'}`}>
-                <div className="text-xs font-extrabold opacity-70">{mouseFor(m.fromId)} {m.fromName}
-                  <span className="font-normal ml-2">{new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
+              <div className={`max-w-[80%] rounded-2xl px-3 py-2 border-2 border-[#2B2016] shadow-[0_2px_0_#2B2016] ${mine ? 'bg-[#FFDF8E] rounded-br-md' : 'bg-white rounded-bl-md'}`}>
+                <div className="text-xs font-extrabold text-[#8A7B63]">{m.fromName} · {new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                 <div className="leading-snug">{renderChatText(d, m.text)}</div>
               </div>
             </div>);
@@ -129,19 +191,19 @@ function ChatPanel({ chat, myId, d, height = 'h-48', onChat }: { chat: any[]; my
       </div>
       <div className="flex gap-1.5 mt-2 overflow-x-auto pb-1" aria-label="quick reactions">
         {REACTIONS.map(e => (
-          <button key={e} className="text-2xl bg-white rounded-full w-10 h-10 shrink-0 shadow active:scale-90 transition"
+          <button key={e} className="text-2xl bg-white hard-xs rounded-full w-10 h-10 shrink-0 active:scale-90 transition"
             onClick={() => onChat(e)}>{e}</button>
         ))}
         {QC_KEYS.map((k, i) => (
-          <button key={k} className="text-xs font-bold bg-indigo-100 text-indigo-800 rounded-full px-3 h-10 shrink-0 shadow active:scale-95 transition whitespace-nowrap"
+          <button key={k} className="text-xs font-extrabold bg-[#DCEBFB] text-[#1D4E89] hard-xs rounded-full px-3 h-10 shrink-0 active:scale-95 transition whitespace-nowrap"
             onClick={() => onChat('QC' + (i + 1))}>{d[k]}</button>
         ))}
       </div>
       <div className="flex gap-2 mt-2">
-        <input className="flex-1 border-2 border-amber-300 rounded-2xl px-4 py-2.5" placeholder={d.chatPh} maxLength={300}
+        <input className="inp flex-1 min-w-0 px-4 py-2.5 font-bold" placeholder={d.chatPh} maxLength={300}
           value={text} onChange={e => setText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') send(); }} />
-        <button className={`${BTN} bg-amber-400 !py-2`} onClick={send}>{d.send}</button>
+        <button className={`${BTN} btn-amber !px-4 !py-2`} onClick={send} title={d.send}>➤</button>
       </div>
     </div>
   );
@@ -208,10 +270,10 @@ function ChatSheet({ open, onClose, chat, myId, d, onChat }: { open: boolean; on
   return (
     <div className="absolute inset-0 z-50 flex flex-col justify-end">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative w-full max-w-3xl mx-auto h-[62%] bg-gradient-to-b from-amber-50 to-orange-50 rounded-t-3xl p-3 flex flex-col anim-slide-up shadow-2xl">
+      <div className="relative w-full max-w-3xl mx-auto h-[62%] bg-[#FFF3CF] border-t-[3px] border-x-[3px] border-[#2B2016] rounded-t-[28px] p-3 flex flex-col anim-slide-up shadow-2xl">
         <div className="flex items-center justify-between mb-1">
-          <span className="font-extrabold text-lg">💬 {d.chatTitle ?? 'Chat'}</span>
-          <button className="bg-white rounded-full w-9 h-9 shadow font-extrabold" onClick={onClose}>✕</button>
+          <span className="disp font-extrabold text-lg text-[#2B2016]">💬 {d.chatTitle ?? 'Chat'}</span>
+          <button className="bg-white hard-xs rounded-full w-9 h-9 font-extrabold text-[#2B2016]" onClick={onClose}>✕</button>
         </div>
         <ChatPanel chat={chat} myId={myId} d={d} height="flex" onChat={onChat} />
       </div>
@@ -536,10 +598,10 @@ export default function App() {
     const roleChip = (role: string, emoji: string, label: string) => {
       const r = myRecord.roles[role];
       if (!r) return null;
-      return <span key={role} className="bg-white rounded-full px-3 py-1 font-bold shadow">{emoji} {label} {r.w}/{r.g}</span>;
+      return <span key={role} className="bg-white hard-xs rounded-full px-3 py-1 font-bold">{emoji} {label} {r.w}/{r.g}</span>;
     };
     return (
-      <div className="max-w-md mx-auto bg-teal-50 rounded-2xl p-3 mt-3">
+      <div className="bg-[#DFF5E3] hard-sm rounded-3xl p-3">
         <div className="font-extrabold text-center">{d.recordTitle}</div>
         <div className="text-center font-bold text-teal-700">{d.recordLine(myRecord.w, myRecord.l)}</div>
         <div className="flex flex-wrap justify-center gap-2 mt-2">
@@ -557,7 +619,7 @@ export default function App() {
     if (!scored.length) return null;
     const top = (scored[0] as any).wins ?? 0;
     return (
-      <div className="max-w-sm mx-auto bg-amber-50 rounded-2xl p-2 mt-2 text-left text-sm">
+      <div className="bg-[#FFFBef] hard-sm rounded-3xl p-3 text-left text-sm">
         <div className="font-extrabold text-center mb-1">{d.standings}</div>
         {scored.map(p => (
           <div key={p.id} className="flex justify-between font-bold">
@@ -571,43 +633,53 @@ export default function App() {
   /* ---------- LANDING ---------- */
   if (!joined) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-amber-300 via-orange-200 to-yellow-100 p-4">
-        <div className="max-w-xl mx-auto pt-6">
+      <div className="min-h-dvh bg-[#14142B] p-3 sm:p-4">
+        <div className="max-w-xl mx-auto pt-2">
           <TopBar d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })} />
-          <div className={`${card} text-center anim-pop overflow-hidden`}>
-            <div className="relative -mx-5 -mt-5 sm:-mx-7 sm:-mt-7 mb-4 py-6 bg-gradient-to-b from-indigo-950 via-purple-900 to-indigo-800">
+          <div className="card-cream anim-pop overflow-hidden !rounded-[28px]">
+            <div className="relative bg-[#171731] px-5 pt-6 text-center overflow-hidden">
               <div className="stars" style={{ position: 'absolute' }} />
-              <div className="text-8xl anim-floaty inline-block drop-shadow-[0_10px_16px_rgba(0,0,0,0.45)]">🧀</div>
-              <div className="flex justify-center gap-3 text-4xl mt-1">
-                <span className="anim-bob">🐭</span><span className="anim-bob" style={{ animationDelay: '.3s' }}>🐹</span>
-                <span className="anim-bob" style={{ animationDelay: '.6s' }}>😈</span>
-                <span className="anim-bob" style={{ animationDelay: '.9s' }}>🐭</span>
+              <p className="disp relative text-[#FFB020] font-extrabold tracking-[0.22em] text-[11px] sm:text-xs">{d.kicker}</p>
+              <h1 className="disp relative text-[#FFF3CF] font-extrabold text-5xl leading-[1.05] mt-1.5">
+                <svg width="34" height="34" viewBox="0 0 24 24" className="inline-block -mt-3 mr-1"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4 6.8 6.8 0 0 0 20 14.5Z" fill="#FFD94D" /></svg>
+                {d.title}
+              </h1>
+              <p className="relative text-[#B9BCE0] font-bold mt-2">{d.subtitle}</p>
+              <div className="relative h-[104px] mt-1">
+                <div className="absolute inset-x-0 bottom-3 flex items-end justify-center gap-1 sm:gap-2">
+                  {['lan', 'hai', 'mit', 'bo', 'soc'].map((k, i) => (
+                    <span key={k} className="anim-bob inline-block" style={{ animationDelay: `${i * 0.3}s` }}><MouseAvatar seed={'landing-' + k} size={i === 2 ? 58 : 52} /></span>
+                  ))}
+                </div>
+                <div className="absolute left-1/2 -translate-x-1/2 bottom-4 z-10 anim-wiggle"><CheeseWedge size={96} /></div>
+                <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-b from-[#A06A35] to-[#7C4A21] border-t-[3px] border-[#2B2016]" />
               </div>
-              <div className="wood-table mx-10 h-3 mt-2 opacity-90" />
             </div>
-            <h1 className="text-4xl font-extrabold bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 bg-clip-text text-transparent">{d.title}</h1>
-            <p className="text-gray-600 mt-1">{d.subtitle}</p>
-            <div className="flex flex-wrap justify-center gap-2 mt-3">
-              <span className="bg-amber-100 text-amber-800 font-bold rounded-full px-3 py-1 text-sm">👥 4–8 players</span>
-              <span className="bg-sky-100 text-sky-800 font-bold rounded-full px-3 py-1 text-sm">⏱️ 5–15 min</span>
-              <span className="bg-green-100 text-green-800 font-bold rounded-full px-3 py-1 text-sm">📱 No install</span>
-              <span className="bg-purple-100 text-purple-800 font-bold rounded-full px-3 py-1 text-sm">🌐 EN / VI</span>
+            <div className="bg-[#FFF3CF] px-5 py-5 text-left">
+              <label className="text-[11px] font-black tracking-[0.18em] text-[#8A7B63]">{d.nameLabel}</label>
+              <input className="inp w-full px-4 py-3 mt-1.5 text-lg font-bold" placeholder={d.name}
+                value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
+              <button className={`${BTN} btn-amber w-full mt-3.5 text-xl`}
+                disabled={!name.trim() || !!status} onClick={() => { setError(''); getNet().createRoom(name); }}>🏠 {d.create}</button>
+              <div className="flex items-center gap-3 mt-5">
+                <span className="flex-1 h-[2px] bg-[#E3D3AC]" />
+                <span className="text-[11px] font-black tracking-[0.14em] text-[#8A7B63]">{d.orJoin}</span>
+                <span className="flex-1 h-[2px] bg-[#E3D3AC]" />
+              </div>
+              <div className="flex gap-2 mt-3">
+                <input className="inp flex-1 min-w-0 px-3 py-3 uppercase text-lg font-extrabold tracking-[0.25em] text-center" placeholder={d.codePh}
+                  value={code} maxLength={5} onChange={e => setCode(e.target.value.toUpperCase())} />
+                <button className={`${BTN} btn-dark`} disabled={!name.trim() || code.trim().length < 4 || !!status}
+                  onClick={() => { setError(''); getNet().joinRoom(code, name); }}>{d.join}</button>
+              </div>
+              <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mt-5 text-sm font-extrabold text-[#6B5B43]">
+                <span>👥 {d.playersRange}</span><span>🕐 {d.minsRange}</span><span>⚡ {d.noInstall}</span>
+              </div>
+              <button className="block mx-auto mt-3 underline font-extrabold text-[#2B2016]" onClick={() => setShowHelp(true)}>{d.how}</button>
+              {status && <p className="mt-3 text-center text-sky-700 font-bold">{localizeMsg(status)}</p>}
+              {error && <p className="mt-3 text-center text-red-600 font-bold">{localizeMsg(error)}</p>}
             </div>
-            <input className="w-full border-2 border-amber-300 rounded-2xl px-4 py-3 mt-3 text-lg" placeholder={d.name}
-              value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
-            <button className={`${btn} bg-amber-400 hover:bg-amber-500 w-full mt-3 text-xl`}
-              disabled={!name.trim() || !!status} onClick={() => { setError(''); getNet().createRoom(name); }}>{d.create} 🏠</button>
-            <div className="flex gap-2 mt-3">
-              <input className="flex-1 border-2 border-amber-300 rounded-2xl px-4 py-3 uppercase text-lg" placeholder={d.codePh}
-                value={code} maxLength={5} onChange={e => setCode(e.target.value.toUpperCase())} />
-              <button className={`${btn} bg-sky-400 hover:bg-sky-500 text-white`} disabled={!name.trim() || code.trim().length < 4 || !!status}
-                onClick={() => { setError(''); getNet().joinRoom(code, name); }}>{d.join}</button>
-            </div>
-            <button className="mt-4 underline font-bold text-amber-700" onClick={() => setShowHelp(true)}>📖 {d.how} (1 min)</button>
-            {status && <p className="mt-3 text-sky-700 font-bold">{localizeMsg(status)}</p>}
-            {error && <p className="mt-3 text-red-600 font-bold">{localizeMsg(error)}</p>}
           </div>
-          <p className="text-center text-amber-800/70 mt-4 text-sm">4–8 players · ~5–15 min · free, no install 🎉</p>
         </div>
         {showHelp && <HelpModal d={d} onClose={() => setShowHelp(false)} />}
       </div>
@@ -616,28 +688,31 @@ export default function App() {
 
   if (!pub) return <div className="min-h-screen bg-indigo-950 text-white flex items-center justify-center text-2xl">⏳ {status ? localizeMsg(status) : d.connecting}</div>;
 
-  const bg = phase === 'night' || phase === 'roleReveal' || phase === 'recruit'
-    ? 'bg-gradient-to-b from-indigo-950 via-purple-950 to-slate-900'
-    : 'bg-gradient-to-b from-amber-300 via-orange-200 to-yellow-100';
+  const bg = phase === 'night' || phase === 'roleReveal' || phase === 'recruit' || phase === 'results'
+    ? 'bg-[#14142B]'
+    : 'bg-[#FFF3CF]';
+  const tone = bg === 'bg-[#14142B]' ? 'navy' as const : 'cream' as const;
   const nameOf = (id?: string | null) => pub?.players.find(p => p.id === id)?.name || '?';
+  const lastChat = pub && pub.chat.length ? pub.chat[pub.chat.length - 1] : null;
   const roleLabel = (role?: string | null, isFollower?: boolean) =>
     (role === 'thief' ? '😈 ' + d.thief : role === 'fallmouse' ? '💀 ' + d.fall : '🐭 ' + d.sleepy) + (isFollower ? ' 🤝' : '');
 
   return (
     <div className={`h-dvh ${bg} p-3 sm:p-4 transition-colors duration-1000 flex flex-col overflow-hidden relative`}>
       <div className="max-w-3xl w-full mx-auto flex flex-col flex-1 min-h-0">
-        <TopBar d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })}  voice={{ speaker: voiceSpeaker, mic: voiceMic, muted: voiceMuted, onSpeaker: toggleSpeaker, onMic: toggleMic }}/>
+        <TopBar d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })}  tone={tone} voice={{ speaker: voiceSpeaker, mic: voiceMic, muted: voiceMuted, onSpeaker: toggleSpeaker, onMic: toggleMic }}/>
         {connLost && joined && <div className="bg-red-500 text-white text-center font-bold text-sm rounded-full px-4 py-1 mb-2 anim-pulse-soft shadow">📡 {d.connLost}</div>}
         {error && <div className="bg-red-100 border border-red-400 text-red-700 rounded-2xl px-4 py-2 mb-3 font-bold">{localizeMsg(error)}
           <button className="float-right" onClick={() => setError('')}>✕</button></div>}
 
         {/* Persistent secret info — your role & dice stay visible all game */}
         {priv?.role && (phase === 'night' || phase === 'recruit' || phase === 'day' || phase === 'voting') && (
-          <div className="bg-black/70 text-white rounded-2xl px-4 py-1.5 mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 font-bold backdrop-blur">
-            <span>🤫 {d.yourInfo}:</span>
-            <span>{roleLabel(priv.role, priv.isFollower)}</span>
-            <span className="inline-flex items-center gap-1.5"><DiceFace value={priv.dice ?? 1} size={22} /><span>🎲 {priv.dice ?? '?'} · ⏰ {priv.dice ? d.wakeAt(priv.dice) : ''}</span></span>
+          <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-2xl px-3.5 py-2 mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-bold text-[#EDEDF7] relative z-10">
+            <span className="disp bg-[#FFB020] text-[#2B2016] text-[11px] font-black rounded-md px-1.5 py-0.5 tracking-wider">{d.secretTag}</span>
+            <span>{priv.role === 'thief' ? d.thief : priv.role === 'fallmouse' ? d.fall : d.sleepy}{priv.isFollower ? ' 🤝' : ''}</span>
+            <span className="inline-flex items-center gap-1.5"><DiceFace value={priv.dice ?? 1} size={22} /><span>{d.peekPill(priv.dice ?? 0)} · {d.wakeShort(priv.dice ?? 0)}</span></span>
             {phase === 'night' && <span>{priv.awake ? '👀 ' + d.youAwake : '💤 ' + d.sleeping}</span>}
+            {priv.peeks && priv.peeks.length > 0 && <span className="text-[#9CC3F5]">{d.peekedShort}: {priv.peeks.map(x => `${nameOf(x.targetId)} · 🎲${x.dice}`).join(', ')}</span>}
             {priv.knownThiefId && <span className="text-red-300">{d.knowsThief(nameOf(priv.knownThiefId))}</span>}
             {priv.witnessedThiefId && <span className="text-red-300">{d.sawThief(nameOf(priv.witnessedThiefId))}</span>}
             {priv.role === 'thief' && priv.knownFollowerIds.length > 0 && <span className="text-emerald-300">{d.yourFollowers(priv.knownFollowerIds.map(nameOf).join(', '))}</span>}
@@ -647,273 +722,442 @@ export default function App() {
 
         {/* ---------- LOBBY ---------- */}
         {phase === 'lobby' && (
-          <div className={`${card} anim-pop flex flex-col flex-1 min-h-0`}>
-            <h2 className="text-2xl font-extrabold">🏠 {d.lobby} · {d.round} {pub.round}</h2>
-            <div className="flex flex-wrap items-center gap-2 mt-2">
-              <span className="text-3xl font-extrabold tracking-widest bg-amber-100 rounded-2xl px-4 py-1">{pub.roomCode}</span>
-              <button className={`${btn} bg-sky-400 text-white !py-2`} onClick={() => {
+          <div className="anim-pop flex flex-col flex-1 min-h-0">
+            <div className="flex items-center gap-2.5 mb-3">
+              <button className="bg-[#FFFBef] hard-xs push rounded-xl w-10 h-10 text-lg font-black text-[#2B2016] flex-none" title={d.leave}
+                onClick={() => { try { sessionStorage.removeItem('ct_guest_session'); } catch { /* ignore */ } getNet().leave(); location.href = location.pathname; }}>←</button>
+              <div className="min-w-0">
+                <h2 className="disp text-[26px] font-extrabold text-[#2B2016] leading-none">{d.lobby}</h2>
+                <p className="text-[13px] font-bold text-[#8A7B63] mt-0.5">{d.lobbySub(pub.round)}</p>
+              </div>
+            </div>
+            <div className="bg-[#1D1D38] rounded-3xl hard p-3.5 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="disp text-[#FFB020] text-[11px] font-black tracking-[0.2em]">{d.roomCodeLabel}</div>
+                <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                  {pub.roomCode.split('').map((ch, i) => (
+                    <span key={i} className="disp bg-[#FFF3CF] text-[#2B2016] font-extrabold text-xl w-9 h-10 rounded-lg flex items-center justify-center border-2 border-[#2B2016]">{ch}</span>
+                  ))}
+                </div>
+              </div>
+              <button className={`${BTN} btn-amber !px-3.5 !py-2.5 text-sm flex-none`} onClick={() => {
                 navigator.clipboard?.writeText(location.origin + location.pathname + '?room=' + pub.roomCode);
                 setCopied(true); setTimeout(() => setCopied(false), 1500);
               }}>{copied ? '✅ ' + d.copied : '🔗 ' + d.copyLink}</button>
-              <span className="font-bold">{d.players}: {pub.players.length}/8</span>
             </div>
-            <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} onKick={isHost ? (id) => getNet().kick(id) : undefined} speakingIds={speakingIds} compact />
-            <div className="flex items-center justify-center gap-2 mt-2 flex-wrap bg-indigo-50 border-2 border-indigo-100 rounded-2xl px-3 py-2">
-              <span className="font-bold text-gray-500">💬 {d.discussionTime}:</span>
-              {isHost
-                ? [60000, 120000, 180000].map(ms => (
-                  <button key={ms} onClick={() => getNet().setDiscussion(ms)}
-                    className={`rounded-full px-3 py-1 font-extrabold ${((pub as any).discussionMs ?? 120000) === ms ? 'bg-indigo-500 text-white' : 'bg-white text-gray-500'}`}>
-                    {ms / 60000}:00
-                  </button>))
-                : <span className="font-extrabold">{((pub as any).discussionMs ?? 120000) / 60000}:00</span>}
+            <div className="flex items-baseline justify-between mt-4 mb-2">
+              <h3 className="disp text-lg font-extrabold text-[#2B2016]">{d.players}</h3>
+              <span className="text-[13px] font-bold text-[#8A7B63]">{d.playersCount(pub.players.length, 8)}</span>
             </div>
-            <Standings />
-            <MyRecord />
-            {isHost ? (
-              <>
-                <button className={`${btn} bg-green-500 hover:bg-green-600 text-white w-full text-xl mt-3`}
-                  disabled={pub.players.filter(p => p.connected).length < 4}
-                  onClick={() => getNet().startGame()}>▶️ {d.start}</button>
-                {pub.players.length < 4 && <p className="text-center text-red-500 font-bold mt-2">{d.need4}</p>}
-              </>
-            ) : <p className="text-center font-bold text-gray-500 mt-3">{d.waiting}</p>}
-            <div className="mt-3 flex flex-col flex-1 min-h-0"><ChatPanel chat={pub.chat} myId={joined.playerId} d={d} height="flex" onChat={t => getNet().chat(t)} /></div>
-            <button className="mt-4 underline text-gray-500" onClick={() => { try { sessionStorage.removeItem('ct_guest_session'); } catch { /* ignore */ } getNet().leave(); location.href = location.pathname; }}>{d.leave}</button>
+            <div className="grid grid-cols-2 gap-2">
+              {pub.players.map(p => (
+                <div key={p.id} className={`relative flex items-center gap-2.5 rounded-2xl px-3 py-2 hard-sm ${p.id === joined.playerId ? 'bg-[#FFE9B8]' : 'bg-[#FFFBef]'}`}>
+                  <MouseAvatar seed={p.id} size={42} halo="#FFF3CF" state={p.connected ? 'awake' : 'asleep'} />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-extrabold truncate text-[15px] text-[#2B2016] leading-tight">{p.name} {p.isHost && '👑'}</div>
+                    <div className="text-xs font-bold text-[#8A7B63] truncate">
+                      {p.id === joined.playerId && p.isHost ? d.youHost : p.id === joined.playerId ? d.you : (p.wins ?? 0) > 0 ? d.winsSub(p.wins) : !p.connected ? d.offline : ''}
+                    </div>
+                  </div>
+                  {speakingIds.has(p.id) && <span className="absolute -bottom-2 left-2 bg-[#0E9F6E] text-white text-[11px] rounded-full px-1.5 py-0.5 shadow anim-pulse-soft">🎙️</span>}
+                  {isHost && p.id !== joined.playerId && (
+                    <button title={d.kick} className="absolute -top-2 -right-2 bg-[#D63A2F] text-white text-[11px] font-black rounded-full w-6 h-6 border-2 border-[#2B2016] leading-none"
+                      onClick={() => getNet().kick(p.id)}>✕</button>)}
+                </div>
+              ))}
+              {Array.from({ length: Math.max(0, 8 - pub.players.length) }).map((_, i) => (
+                <div key={'slot' + i} className="rounded-2xl border-[2.5px] border-dashed border-[#D8C69A] flex items-center justify-center py-[15px] text-[#B3A284] font-bold text-sm">{d.waitingSlot}</div>
+              ))}
+            </div>
+            {isHost && pub.players.length > 1 && <p className="text-xs font-bold text-[#8A7B63] italic mt-2">{d.kickHint}</p>}
+            <div className="flex items-center gap-3 mt-3.5">
+              <span className="disp font-extrabold text-[#2B2016]">{d.discussionTime}</span>
+              <div className="flex bg-[#FFFBef] hard-xs rounded-2xl overflow-hidden ml-auto">
+                {[60000, 120000, 180000].map(ms => {
+                  const sel = ((pub as any).discussionMs ?? 120000) === ms;
+                  return isHost
+                    ? <button key={ms} onClick={() => getNet().setDiscussion(ms)} className={`disp px-3.5 py-1.5 font-extrabold ${sel ? 'bg-[#33241A] text-[#FFF3CF]' : 'text-[#8A7B63]'}`}>{ms / 60000}:00</button>
+                    : <span key={ms} className={`disp px-3.5 py-1.5 font-extrabold ${sel ? 'bg-[#33241A] text-[#FFF3CF]' : 'text-[#B3A284]'}`}>{ms / 60000}:00</span>;
+                })}
+              </div>
+            </div>
+            <div className="mt-auto pt-3">
+              <button className="w-full bg-[#FFFBef] hard-sm push rounded-2xl px-3.5 py-2.5 flex items-center gap-2 text-left" onClick={() => setChatSheet(true)}>
+                <span className="text-lg">💬</span>
+                <span className="flex-1 min-w-0 truncate font-bold text-[#6B5B43] text-sm">
+                  {lastChat ? <><span className="font-extrabold text-[#2B2016]">{lastChat.fromName}:</span> {chatPreview(d, lastChat.text)}</> : d.chatEmpty}
+                </span>
+                {pub.chat.length > chatSeen && <span className="bg-[#D63A2F] text-white text-xs font-black rounded-full min-w-6 h-6 px-1.5 flex items-center justify-center border-2 border-[#2B2016]">{pub.chat.length - chatSeen}</span>}
+              </button>
+              {isHost ? (
+                <>
+                  <button className={`${BTN} btn-amber w-full text-xl mt-2.5 !py-3.5`}
+                    disabled={pub.players.filter(p => p.connected).length < 4}
+                    onClick={() => getNet().startGame()}>▶ {d.start}</button>
+                  {pub.players.length < 4 && <p className="text-center text-[#D63A2F] font-bold mt-2 text-sm">{d.need4}</p>}
+                </>
+              ) : <p className="text-center font-bold text-[#8A7B63] mt-3">{d.waiting}</p>}
+            </div>
           </div>
         )}
 
         {/* ---------- ROLE REVEAL ---------- */}
         {phase === 'roleReveal' && priv && (
-          <div className={`${card} text-center anim-pop my-auto w-full`}>
-            <h2 className="text-xl font-bold text-gray-500">{d.yourRole} 🤫</h2>
-            <div className="text-8xl my-3">{priv.role === 'thief' ? '😈' : priv.role === 'fallmouse' ? '💀' : '🐭'}</div>
-            <div className={`text-3xl font-extrabold ${priv.role === 'thief' ? 'text-red-500' : priv.role === 'fallmouse' ? 'text-violet-600' : 'text-sky-600'}`}>
-              {priv.role === 'thief' ? d.thief : priv.role === 'fallmouse' ? d.fall : d.sleepy}</div>
-            <p className="mt-2 text-gray-600">{priv.role === 'thief' ? d.thiefDesc : priv.role === 'fallmouse' ? d.fallDesc : d.sleepyDesc}</p>
-            <div className={`mt-4 inline-block rounded-3xl px-8 py-4 ${priv.role === 'thief' ? 'bg-red-50 ring-2 ring-red-200' : priv.role === 'fallmouse' ? 'bg-violet-50 ring-2 ring-violet-300' : 'bg-indigo-50 ring-2 ring-indigo-200'}`}>
-              <div className="text-sm font-bold text-gray-500 mb-2">{d.yourDice}</div>
-              <div className="flex justify-center"><DiceFace value={priv.dice ?? 1} size={104} /></div>
-              <div className="text-2xl font-extrabold mt-2">{priv.dice}</div>
+          <div className="anim-pop flex flex-col flex-1 min-h-0 w-full">
+            <p className="disp text-center text-[#FFB020] font-extrabold tracking-[0.22em] text-xs uppercase">{d.yourRole}</p>
+            <p className="text-center text-[#B9BCE0] font-bold mt-1">{d.revealSub}</p>
+            <div className="card-cream max-w-md w-full mx-auto mt-4 px-5 py-6 text-center">
+              <MouseAvatar seed={joined.playerId} size={118} halo="#FFF3CF" state={priv.role === 'thief' ? 'thief' : priv.role === 'fallmouse' ? 'dead' : 'awake'} />
+              <div className="mt-3">
+                <span className={`disp inline-block text-white font-extrabold text-xl rounded-2xl px-5 py-1.5 border-[2.5px] border-[#2B2016] shadow-[0_3px_0_#2B2016] ${priv.role === 'thief' ? 'bg-[#D63A2F]' : priv.role === 'fallmouse' ? 'bg-[#7C4DBD]' : 'bg-[#2E7CD6]'}`}>
+                  {(priv.role === 'thief' ? d.thief : priv.role === 'fallmouse' ? d.fall : d.sleepy).toUpperCase()}
+                </span>
+              </div>
+              <p className="mt-3 font-bold text-[#5C4B33] leading-snug">{priv.role === 'thief' ? d.thiefDesc : priv.role === 'fallmouse' ? d.fallDesc : d.sleepyDesc}</p>
+              <div className="border-t-2 border-dashed border-[#D8C69A] mt-4 pt-4 flex items-center justify-center gap-4">
+                <DiceFace value={priv.dice ?? 1} size={76} />
+                <div className="text-left">
+                  <div className="text-[11px] font-black tracking-[0.16em] text-[#8A7B63] uppercase">{d.yourDice}</div>
+                  <div className="disp text-5xl font-extrabold text-[#2B2016] leading-none mt-0.5">{priv.dice}</div>
+                  <div className="font-bold text-[#5C4B33] text-sm mt-1">{d.wakeLine(priv.dice ?? 0)}</div>
+                </div>
+              </div>
             </div>
-            <div>
+            <div className="mt-auto pt-4 max-w-md w-full mx-auto">
               {pub.revealReady?.includes(joined.playerId) || optReady
-                ? <p className="mt-5 font-extrabold text-green-600">✅ {d.readyOf(pub.revealReady?.length ?? 0, pub.players.filter(p => p.connected).length)}</p>
-                : <button className={`${btn} bg-green-500 hover:bg-green-600 text-white mt-5 text-lg`} onClick={() => { setOptReady(true); pendingRef.current.ready = true; getNet().ready(); }}>{d.imReady}</button>}
-              <p className="mt-2 font-bold text-gray-400">{d.readyOf(pub.revealReady?.length ?? 0, pub.players.filter(p => p.connected).length)}</p>
-              {isHost && <button className="mt-2 underline text-indigo-500 font-bold" onClick={() => getNet().beginNight()}>🌙 {d.forceNight}</button>}
+                ? <p className="disp text-center font-extrabold text-[#35D99A] text-lg">{d.imReady}</p>
+                : <button className={`${BTN} btn-amber w-full text-xl !py-3.5`} onClick={() => { setOptReady(true); pendingRef.current.ready = true; getNet().ready(); }}>{d.imReady}</button>}
+              <div className="flex items-center justify-center gap-1.5 mt-3">
+                {pub.players.filter(p => p.connected).map(p => (
+                  <span key={p.id} className={`w-3 h-3 rounded-full border-2 ${pub.revealReady?.includes(p.id) ? 'bg-[#FFB020] border-[#FFB020]' : 'bg-transparent border-[#3D3D63]'}`} />
+                ))}
+                <span className="ml-2 font-bold text-[#B9BCE0] text-sm">{d.readyOf(pub.revealReady?.length ?? 0, pub.players.filter(p => p.connected).length)}</span>
+              </div>
+              {isHost && <button className="block mx-auto mt-2.5 underline font-bold text-[#B9BCE0]" onClick={() => getNet().beginNight()}>{d.forceNight}</button>}
             </div>
           </div>
         )}
 
         {/* ---------- NIGHT ---------- */}
         {phase === 'night' && priv && (
-          <div ref={nightBoxRef} className="text-center relative flex-1 min-h-0 flex flex-col">
+          <div ref={nightBoxRef} className="relative flex-1 min-h-0 flex flex-col">
             <div className="stars" /><div className="stars2" />
             {fly && <FlyCheese key={fly.key} x0={fly.x0} y0={fly.y0} dx={fly.dx} dy={fly.dy} onDone={() => setFly(null)} />}
-            <h2 className="text-2xl font-extrabold text-indigo-200">🌙 {d.night} — {d.hour} {pub.currentHour}/6
-              <span className="ml-3 text-lg bg-white/10 rounded-full px-3 py-0.5">⏱ {secsLeft(pub.hourEndsAt, now)}s</span></h2>
-            <div className="flex justify-center gap-1 my-2">
-              {[1, 2, 3, 4, 5, 6].map(h => <div key={h} className={`w-8 h-8 rounded-full flex items-center justify-center font-extrabold ${h === pub.currentHour ? 'bg-amber-400 text-black scale-110' : h < pub.currentHour ? 'bg-indigo-700 text-white' : 'bg-white/10 text-indigo-200'}`}>{h}</div>)}
+            <div className="flex items-start gap-2 relative z-10">
+              <div className="flex-1 min-w-0">
+                <h2 className="disp text-[26px] font-extrabold text-[#FFF3CF] leading-none">🌙 {d.night}</h2>
+                <p className="text-[#B9BCE0] font-bold text-sm mt-1">{d.hourOf(pub.currentHour ?? 1)}</p>
+              </div>
+              <TimerPill dark secs={secsLeft(pub.hourEndsAt, now)} />
+              <button className="relative bg-[#23233F] border-2 border-[#3D3D63] text-white rounded-xl w-10 h-10 text-lg flex-none" title={d.chatTitle ?? 'Chat'}
+                onClick={() => setChatSheet(true)}>💬{pub.chat.length > chatSeen && <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-[#D63A2F] rounded-full border-2 border-[#14142B]" />}</button>
             </div>
-            {/* Thin progress bar for the current 12s hour */}
-            <div className="max-w-md mx-auto h-2 bg-white/15 rounded-full overflow-hidden relative z-10" aria-label="hour progress">
-              <div className="h-full bg-amber-400 rounded-full transition-[width] duration-300" style={{ width: `${pub.hourEndsAt ? Math.max(0, Math.min(100, ((pub.hourEndsAt - now) / HOUR_MS) * 100)) : 0}%` }} />
+            <div className="flex items-center justify-between px-1 mt-3 relative z-10 max-w-md w-full mx-auto">
+              {[1, 2, 3, 4, 5, 6].map(h => (
+                <span key={h} className={`disp w-9 h-9 rounded-full flex items-center justify-center font-extrabold ${h === pub.currentHour ? 'bg-[#FFB020] text-[#2B2016] border-2 border-[#2B2016] scale-110' : h < (pub.currentHour ?? 1) ? 'bg-[#3D3D63] text-[#B9BCE0]' : 'bg-[#23233F] text-[#7C83B8]'}`}>{h}</span>
+              ))}
+            </div>
+            <div className="max-w-md w-full mx-auto h-2 bg-[#23233F] rounded-full overflow-hidden mt-2 relative z-10" aria-label="hour progress">
+              <div className="h-full bg-[#FFB020] rounded-full transition-[width] duration-300" style={{ width: `${pub.hourEndsAt ? Math.max(0, Math.min(100, ((pub.hourEndsAt - now) / HOUR_MS) * 100)) : 0}%` }} />
             </div>
             {/* Table indicator must reflect what THIS player can actually see:
                 wakers see the real table (cheese present or gone); sleepers
                 have their eyes closed and must NOT be told the cheese is
                 "on the table" when it may already be stolen. */}
-            <div className="wood-table w-full max-w-sm mx-auto px-4 pt-3 pb-2 my-2 relative z-10">
-              <div id="table-cheese" className="text-5xl leading-none drop-shadow-[0_6px_8px_rgba(0,0,0,0.4)]">
+            <div className="relative z-10 mt-3 rounded-3xl border-[2.5px] border-[#2B2016] shadow-[0_4px_0_#2B2016] bg-gradient-to-b from-[#A06A35] to-[#7C4A21] px-4 py-3 flex items-center gap-3.5 max-w-md w-full mx-auto">
+              <div id="table-cheese" className="flex-none leading-none">
                 {priv.awake
-                  ? (priv.cheesePresentWhenAwake === false ? '🍽️' : <span className="anim-wiggle inline-block">🧀</span>)
-                  : <span className="opacity-40">🧀</span>}
+                  ? (priv.cheesePresentWhenAwake === false ? <span className="text-5xl">🍽️</span> : <span className="anim-wiggle inline-block"><CheeseWedge size={74} /></span>)
+                  : <span className="opacity-40 inline-block"><CheeseWedge size={74} /></span>}
               </div>
-              <div className="text-base font-bold text-amber-100 drop-shadow mt-1">
-                {priv.awake
-                  ? (priv.cheesePresentWhenAwake === false
-                      ? <span className="text-red-300">💨 {d.tableGone}</span>
-                      : <span className="text-amber-100">✨ {d.onTheTable}</span>)
-                  : <span className="opacity-70">💤 {d.eyesClosed}</span>}
+              <div className="min-w-0">
+                <div className="disp font-extrabold text-[#FFF3CF] text-lg leading-tight">
+                  {priv.awake ? (priv.cheesePresentWhenAwake === false ? d.tableGoneT : d.tableStill) : d.eyesClosedT}
+                </div>
+                <div className="text-[#F3D9AE] font-bold text-sm leading-snug">
+                  {priv.awake ? (priv.cheesePresentWhenAwake === false ? d.tableGoneSub : d.tableStillSub) : d.eyesClosedSub}
+                </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 my-2">
+            <div className="grid grid-cols-3 gap-2 mt-3 relative z-10 max-w-md w-full mx-auto">
               {pub.players.map(p => {
                 const isMe = p.id === joined.playerId;
                 const awakeNow = isMe ? !!priv.awake : priv.fellowWakers.includes(p.id);
+                const knownThief = priv.knownThiefId === p.id || priv.witnessedThiefId === p.id;
                 return (
-                <div key={p.id} id={`pcard-${p.id}`} className={`rounded-2xl p-2 relative z-10 ${isMe && priv.awake ? 'bg-amber-300 text-black ring-4 ring-amber-100 awake-glow' : awakeNow ? 'bg-sky-300 text-black ring-4 ring-sky-100 awake-glow' : 'bg-white/10 text-indigo-100'}`}>
-                  <div className={`text-3xl relative inline-block w-11 h-11 rounded-full ${avatarBg(p.id)} items-center justify-center inline-flex`}>{mouseFor(p.id)}
-                    {awakeNow
-                      ? <span className="absolute -top-2 -right-3 text-lg">👀</span>
-                      : <span className="zzz absolute -top-2 -right-3 text-lg text-sky-300 font-bold">z</span>}
-                  </div>
-                  <div className="font-bold truncate text-sm">{p.name}</div>
+                <div key={p.id} id={`pcard-${p.id}`} className={`rounded-3xl border-2 p-2 text-center relative ${isMe && priv.awake ? 'bg-[#FFB020] border-[#2B2016] shadow-[0_3px_0_#2B2016] text-[#2B2016]' : awakeNow ? 'bg-[#2E7CD6] border-[#9CC3F5] text-white' : 'bg-[#1D1D38] border-[#3D3D63] text-[#B9BCE0]'}`}>
+                  <MouseAvatar seed={p.id} size={50} state={awakeNow ? (knownThief ? 'thief' : 'awake') : 'asleep'} />
+                  {!awakeNow && <span className="absolute top-1.5 right-2.5 text-[#7C83B8] font-black text-sm">z</span>}
+                  <div className="font-extrabold truncate text-[13px] leading-tight">{p.name}{isMe ? ` (${d.you})` : ''}</div>
                   {priv.stealById === p.id && <span className="absolute -top-2 -left-2 text-2xl anim-pop">🧀</span>}
-                  {(priv.knownThiefId === p.id || priv.witnessedThiefId === p.id) && <span className="absolute -bottom-2 -right-2 text-2xl anim-pop">😈</span>}
-                  {priv.peeks?.some(x => x.targetId === p.id) && <span className="absolute -top-2 -right-2 bg-sky-500 text-white text-xs font-extrabold rounded-full px-2 py-0.5 shadow z-20">🎲{priv.peeks.find(x => x.targetId === p.id)!.dice}</span>}
-                  {speakingIds.has(p.id) && <span className="absolute -bottom-2 -left-2 bg-green-500 text-white text-xs rounded-full px-1.5 py-0.5 shadow z-20 anim-pulse-soft">🎙️</span>}
+                  {priv.peeks?.some(x => x.targetId === p.id) && <span className="absolute -top-2 -right-2 bg-[#2E7CD6] text-white text-[11px] font-extrabold rounded-full px-2 py-0.5 border-2 border-[#2B2016] z-20">{d.peekPill(priv.peeks.find(x => x.targetId === p.id)!.dice)}</span>}
+                  {speakingIds.has(p.id) && <span className="absolute -bottom-2 -left-2 bg-[#0E9F6E] text-white text-[11px] rounded-full px-1.5 py-0.5 shadow z-20 anim-pulse-soft">🎙️</span>}
+                  {(priv.knownFollowerIds.includes(p.id) || (isMe && priv.isFollower)) && <span className="absolute -bottom-2 -right-2 text-lg anim-pop">🤝</span>}
                 </div>);
               })}
             </div>
-            <button className="absolute bottom-2 right-2 z-40 bg-white/15 hover:bg-white/25 text-white rounded-full px-4 py-2 font-extrabold backdrop-blur shadow-lg"
-              onClick={() => setChatSheet(true)}>💬 Chat{!chatSheet && (pub.chat.length > chatSeen) && <span className="ml-1 inline-block w-2.5 h-2.5 bg-red-400 rounded-full align-middle" />}</button>
             {priv.awake ? (
-              <div className={`${card} anim-pop max-w-xl mx-auto w-full mt-auto`}>
-                <div className="text-xl font-extrabold">👀 {d.youAwake}</div>
-                {priv.cheesePresentWhenAwake === false && <p className="font-bold text-red-500 mt-1">{d.cheeseGoneWake}</p>}
-                {priv.cheesePresentWhenAwake === true && <p className="text-gray-500 mt-1">{d.cheeseHere}</p>}
-                {priv.fellowWakers.length > 0 && <p className="mt-1 font-bold text-purple-600">👀👀 {d.fellow} ({priv.fellowWakers.map(id => pub.players.find(p => p.id === id)?.name).join(', ')})</p>}
-                {priv.role === 'thief' && priv.hasActedThisHour && <p className="mt-3 font-bold text-green-600">{d.stolenOk}</p>}
+              <div className="card-cream anim-pop max-w-md w-full mx-auto mt-auto relative z-10 px-4 py-3.5 text-center">
+                <div className="disp text-lg font-extrabold text-[#2B2016]">👁 {d.youAwake}</div>
+                {priv.cheesePresentWhenAwake === false && <p className="font-bold text-[#D63A2F] mt-1">{d.cheeseGoneWake}</p>}
+                {priv.cheesePresentWhenAwake === true && <p className="font-bold text-[#8A7B63] mt-1">{d.cheeseHere}</p>}
+                {priv.fellowWakers.length > 0 && <p className="mt-1 font-bold text-[#7C4DBD]">👀👀 {d.fellow} ({priv.fellowWakers.map(id => pub.players.find(p => p.id === id)?.name).join(', ')})</p>}
+                {priv.role === 'thief' && priv.hasActedThisHour && <p className="mt-3 font-extrabold text-[#0B8A5E]">{d.stolenOk}</p>}
                 {priv.followerCandidates && (
                   <div className="mt-3">
-                    <div className="font-bold mb-2 text-purple-700">{d.chooseWitnessTitle}</div>
+                    <div className="font-extrabold mb-2 text-[#7C4DBD]">{d.chooseWitnessTitle}</div>
                     <div className="flex flex-wrap gap-2 justify-center">
                       {priv.followerCandidates.map(id => (
-                        <button key={id} className={`${btn} bg-purple-500 text-white !py-2`} onClick={() => getNet().nightAction('chooseFollower', id)}>🤝 {mouseFor(id)} {nameOf(id)}</button>))}
+                        <button key={id} className={`${BTN} !bg-[#7C4DBD] text-white !px-3.5 !py-1.5 text-sm inline-flex items-center gap-1.5`} onClick={() => getNet().nightAction('chooseFollower', id)}><MouseAvatar seed={id} size={22} /> {nameOf(id)}</button>))}
                     </div>
                   </div>)}
                 {priv.isFollower && (
-                  <p className="mt-3 bg-emerald-50 ring-2 ring-emerald-300 rounded-2xl px-4 py-2 font-extrabold text-emerald-700">🤝 {d.becameFollower}</p>)}
+                  <p className="mt-3 bg-[#DFF5E3] border-2 border-[#0E9F6E] rounded-2xl px-4 py-2 font-extrabold text-[#0B6B4A]">🤝 {d.becameFollower}</p>)}
                 {!priv.isFollower && priv.role !== 'thief' && priv.knownFollowerIds.length > 0 && (
-                  <p className="mt-3 font-bold text-purple-600">{d.witnessKnows(priv.knownFollowerIds.map(nameOf).join(', '))}</p>)}
+                  <p className="mt-3 font-bold text-[#7C4DBD]">{d.witnessKnows(priv.knownFollowerIds.map(nameOf).join(', '))}</p>)}
                 {priv.canInspect && !optPeek && (
                   <div className="mt-3">
-                    <div className="font-bold mb-2">{d.inspectTitle}</div>
+                    <div className="font-bold mb-2 text-[#5C4B33]">{d.inspectTitle}</div>
                     <div className="flex flex-wrap gap-2 justify-center">
                       {pub.players.filter(p => p.id !== joined.playerId).map(p => (
-                        <button key={p.id} className={`${btn} bg-sky-400 text-white !py-2`} onClick={() => { setOptPeek(true); getNet().nightAction('inspect', p.id); }}>{mouseFor(p.id)} {p.name}</button>))}
+                        <button key={p.id} className={`${BTN} btn-blue !px-3.5 !py-1.5 text-sm inline-flex items-center gap-1.5`} onClick={() => { setOptPeek(true); getNet().nightAction('inspect', p.id); }}><MouseAvatar seed={p.id} size={22} /> {p.name}</button>))}
                     </div>
                   </div>)}
                 {priv.canInspect && optPeek && !priv.inspected && (
-                  <p className="mt-3 font-extrabold text-sky-700 text-lg">{d.looking}</p>)}
-                {priv.inspected && <p className="mt-3 font-extrabold text-sky-700 text-lg">🔎 {d.inspected(pub.players.find(p => p.id === priv.inspected!.targetId)?.name || '?', priv.inspected.dice)}</p>}
+                  <p className="mt-3 font-extrabold text-[#2E7CD6] text-lg">{d.looking}</p>)}
+                {priv.inspected && <p className="mt-3 font-extrabold text-[#2E7CD6] text-lg">🔎 {d.inspected(pub.players.find(p => p.id === priv.inspected!.targetId)?.name || '?', priv.inspected.dice)}</p>}
               </div>
             ) : (
-              <p className="text-indigo-200 font-bold text-lg mt-auto pb-2">{d.sleeping}</p>
+              <p className="text-[#B9BCE0] font-bold text-lg text-center mt-auto pb-2 relative z-10">{d.sleeping}</p>
             )}
           </div>
         )}
 
         {/* ---------- RECRUIT (after hour 6, 6–8 players) ---------- */}
         {phase === 'recruit' && priv && (
-          <div className="text-center relative my-auto w-full">
+          <div className="relative flex-1 min-h-0 flex flex-col w-full">
             <div className="stars" /><div className="stars2" />
-            <h2 className="text-3xl font-extrabold text-indigo-200 relative z-10">🌙✨ {d.night} — 🤝
-              <span className="ml-3 text-xl bg-white/10 rounded-full px-3 py-1">⏱ {secsLeft(pub.recruitEndsAt, now)}s</span></h2>
+            <div className="flex items-start gap-2 relative z-10 max-w-xl w-full mx-auto">
+              <div className="flex-1 min-w-0">
+                <h2 className="disp text-[26px] font-extrabold text-[#FFF3CF] leading-tight">{priv.role === 'thief' ? d.recruitTitle : '🌙 ' + d.night}</h2>
+                {priv.role === 'thief' && <p className="text-[#B9BCE0] font-bold text-sm mt-0.5">{d.hourOf(6)} · {d.revealSub}</p>}
+              </div>
+              <TimerPill dark secs={secsLeft(pub.recruitEndsAt, now)} />
+            </div>
             {priv.role === 'thief' && priv.followerCandidates ? (
-              <div className={`${card} anim-pop max-w-xl mx-auto mt-4 relative z-10`}>
-                <div className="text-2xl font-extrabold">😈 {d.recruitTitle}</div>
-                <p className="font-bold text-gray-500 mt-1">{d.recruitHint(priv.followersNeeded, priv.followersChosen)}</p>
-                <div className="flex flex-wrap gap-2 justify-center mt-3">
+              <div className="card-cream anim-pop max-w-xl w-full mx-auto mt-4 relative z-10 px-4 py-4">
+                <div className="flex items-center gap-3">
+                  <MouseAvatar seed={joined.playerId} size={52} state="thief" halo="#FFF3CF" />
+                  <div className="min-w-0">
+                    <div className="disp font-extrabold text-lg text-[#2B2016] leading-tight">{d.recruitTitle}</div>
+                    <div className="text-sm font-bold text-[#8A7B63]">{d.recruitHint(priv.followersNeeded, priv.followersChosen)}</div>
+                  </div>
+                </div>
+                <div className="mt-3 space-y-2">
                   {priv.followerCandidates.map(id => (
-                    <button key={id} className={`${btn} bg-purple-500 hover:bg-purple-600 text-white`} onClick={() => getNet().nightAction('chooseFollower', id)}>🤝 {mouseFor(id)} {nameOf(id)}</button>))}
+                    <div key={id} className="flex items-center gap-2.5 bg-white rounded-2xl hard-sm px-3 py-2">
+                      <MouseAvatar seed={id} size={40} halo="#FFF3CF" />
+                      <span className="flex-1 font-extrabold text-[#2B2016] truncate">{nameOf(id)}</span>
+                      <button className={`${BTN} btn-green !px-4 !py-1.5 text-sm flex-none`} onClick={() => getNet().nightAction('chooseFollower', id)}>+ {d.inviteBtn}</button>
+                    </div>))}
                 </div>
               </div>
             ) : priv.isFollower ? (
-              <div className={`${card} anim-pop max-w-xl mx-auto mt-4 relative z-10`}>
-                <p className="font-extrabold text-emerald-600 text-xl">{d.becameFollower}</p>
+              <div className="card-cream anim-pop max-w-xl w-full mx-auto mt-4 relative z-10 px-4 py-4 text-center">
+                <p className="font-extrabold text-[#0B8A5E] text-xl">🤝 {d.becameFollower}</p>
                 {priv.knownThiefId
-                  ? <p className="font-bold text-red-500 mt-1">{d.knowsThief(nameOf(priv.knownThiefId))}</p>
-                  : <p className="font-bold text-gray-500 mt-1">{d.followerBlind}</p>}
-                {priv.knownFollowerIds.length > 0 && <p className="font-bold text-emerald-600 mt-1">{d.knowsFollower(priv.knownFollowerIds.map(nameOf).join(', '))}</p>}
+                  ? <p className="font-bold text-[#D63A2F] mt-1">{d.knowsThief(nameOf(priv.knownThiefId))}</p>
+                  : <p className="font-bold text-[#8A7B63] mt-1">{d.followerBlind}</p>}
+                {priv.knownFollowerIds.length > 0 && <p className="font-bold text-[#0B8A5E] mt-1">{d.knowsFollower(priv.knownFollowerIds.map(nameOf).join(', '))}</p>}
               </div>
             ) : (
-              <p className="text-indigo-200 font-bold text-xl mt-6 relative z-10">{d.recruitWaiting}</p>
+              <p className="text-[#B9BCE0] font-bold text-xl text-center mt-8 relative z-10">{d.recruitWaiting}</p>
             )}
-            <button className="relative z-10 mt-4 bg-white/15 hover:bg-white/25 text-white rounded-full px-4 py-2 font-extrabold backdrop-blur shadow-lg"
-              onClick={() => setChatSheet(true)}>💬 Chat{!chatSheet && (pub.chat.length > chatSeen) && <span className="ml-1 inline-block w-2.5 h-2.5 bg-red-400 rounded-full align-middle" />}</button>
+            <div className="mt-auto relative z-10 flex items-end justify-between gap-3 pt-3 max-w-xl w-full mx-auto">
+              <p className="text-[#7C83B8] text-[13px] font-bold leading-snug">{priv.role === 'thief' ? d.recruitNote : ''}</p>
+              <button className="relative bg-[#23233F] border-2 border-[#3D3D63] text-white rounded-2xl px-4 py-2.5 font-extrabold flex-none" onClick={() => setChatSheet(true)}>💬 Chat{pub.chat.length > chatSeen && <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-[#D63A2F] rounded-full border-2 border-[#14142B]" />}</button>
+            </div>
           </div>
         )}
 
         {/* ---------- DAY ---------- */}
         {phase === 'day' && (
-          <div className={`${card} anim-pop flex flex-col flex-1 min-h-0`}>
-            <h2 className="text-2xl font-extrabold text-center">{d.day}</h2>
-            <p className="text-center font-bold text-gray-600">{d.discuss} <span className="bg-amber-100 rounded-full px-3 py-0.5">⏱ {secsLeft(pub.discussionEndsAt, now)}s</span></p>
+          <div className="anim-pop flex flex-col flex-1 min-h-0">
+            <div className="flex items-center gap-2.5">
+              <span className="w-11 h-11 rounded-full bg-[#FFB020] border-[2.5px] border-[#2B2016] flex items-center justify-center text-[22px] flex-none">☀️</span>
+              <div className="flex-1 min-w-0">
+                <h2 className="disp text-[26px] font-extrabold text-[#2B2016] leading-none">{d.dayTitle}</h2>
+                <p className="font-extrabold text-[#D63A2F] text-sm mt-0.5">{d.daySub}</p>
+              </div>
+              <TimerPill secs={secsLeft(pub.discussionEndsAt, now)} />
+            </div>
             {priv?.isFollower && (
-              <p className="bg-emerald-50 ring-2 ring-emerald-300 rounded-2xl px-4 py-2 mt-3 text-center font-extrabold text-emerald-700 anim-pop">🤝 {d.becameFollower}</p>)}
+              <p className="bg-[#DFF5E3] border-2 border-[#0E9F6E] rounded-2xl px-4 py-2 mt-3 text-center font-extrabold text-[#0B6B4A] anim-pop">🤝 {d.becameFollower}</p>)}
             {priv?.witnessedThiefId && (
-              <p className="text-center font-extrabold text-red-500 mt-3">{d.sawThief(nameOf(priv.witnessedThiefId))}</p>)}
-            <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} markThiefId={priv?.knownThiefId || priv?.witnessedThiefId || null} markFollowerIds={priv?.knownFollowerIds} iAmFollower={priv?.isFollower} peeks={priv?.peeks} speakingIds={speakingIds} />
+              <p className="text-center font-extrabold text-[#D63A2F] mt-3">{d.sawThief(nameOf(priv.witnessedThiefId))}</p>)}
+            <div className="flex gap-1.5 mt-3 pb-1">
+              {pub.players.map(p => (
+                <div key={p.id} className={`relative flex-1 min-w-0 rounded-2xl border-2 px-1 py-1.5 text-center ${p.id === joined.playerId ? 'bg-[#FFE9B8] border-[#2B2016] shadow-[0_2px_0_#2B2016]' : 'bg-[#FFFBef] border-[#E3D3AC]'}`}>
+                  <MouseAvatar seed={p.id} size={36} state={(priv?.knownThiefId === p.id || priv?.witnessedThiefId === p.id) ? 'thief' : 'awake'} />
+                  <div className="text-[11px] font-extrabold truncate text-[#2B2016]">{p.name}</div>
+                  {priv?.peeks?.some(x => x.targetId === p.id) && <span className="absolute -top-2 -right-1.5 bg-[#2E7CD6] text-white text-[11px] font-black rounded-full w-5 h-5 flex items-center justify-center border-2 border-[#2B2016] z-10">{priv.peeks.find(x => x.targetId === p.id)!.dice}</span>}
+                  {speakingIds.has(p.id) && <span className="absolute -bottom-2 left-0 bg-[#0E9F6E] text-white text-[10px] rounded-full px-1 py-0.5 anim-pulse-soft z-10">🎙️</span>}
+                  {(priv?.knownFollowerIds.includes(p.id) || (p.id === joined.playerId && priv?.isFollower)) && <span className="absolute -bottom-2 right-0 text-sm z-10">🤝</span>}
+                </div>))}
+            </div>
             <ChatPanel chat={pub.chat} myId={joined.playerId} d={d} height="flex" onChat={t => getNet().chat(t)} />
             <div className="mt-3 text-center">
               {pub.dayReady?.includes(joined.playerId) || optReadyVote
-                ? <p className="font-extrabold text-green-600">{d.readyVoteDone}</p>
-                : <button className={`${btn} bg-green-500 hover:bg-green-600 text-white`} onClick={() => { setOptReadyVote(true); pendingRef.current.readyVote = true; getNet().readyVote(); }}>{d.readyVoteBtn}</button>}
-              <p className="font-bold text-gray-500 mt-1">{d.readyVoteOf(pub.dayReady?.length ?? 0, pub.players.filter(p => p.connected).length)}</p>
+                ? <p className="disp font-extrabold text-[#0B8A5E] text-lg">✅ {d.readyVoteDone}</p>
+                : <button className={`${BTN} btn-dark w-full text-lg !py-3`} onClick={() => { setOptReadyVote(true); pendingRef.current.readyVote = true; getNet().readyVote(); }}>{d.readyVoteBtn}</button>}
+              <p className="font-bold text-[#8A7B63] mt-1.5 text-sm">{d.readyVoteOf(pub.dayReady?.length ?? 0, pub.players.filter(p => p.connected).length)}</p>
             </div>
-            {isHost && <button className={`${btn} bg-purple-500 text-white w-full mt-3`} onClick={() => getNet().toVoting()}>🗳️ {d.toVote}</button>}
+            {isHost && <button className={`${BTN} btn-amber w-full mt-2`} onClick={() => getNet().toVoting()}>🗳️ {d.toVote}</button>}
           </div>
         )}
 
         {/* ---------- VOTING ---------- */}
         {phase === 'voting' && (
-          <div className={`${card} anim-pop text-center flex flex-col flex-1 min-h-0`}>
-            <h2 className="text-3xl font-extrabold">🗳️ {d.voting} <span className="text-xl bg-amber-100 rounded-full px-3 py-1">⏱ {secsLeft(pub.voteEndsAt, now)}s</span></h2>
-            <p className="text-gray-500 font-bold">{d.voteHint}</p>
-            <p className="font-bold mt-1">{pub.players.filter(p => p.hasVoted).length}/{pub.players.length} voted</p>
+          <div className="anim-pop flex flex-col flex-1 min-h-0">
+            <div className="flex items-center gap-2.5">
+              <span className="w-11 h-11 rounded-full bg-[#FFB020] border-[2.5px] border-[#2B2016] flex items-center justify-center text-[22px] flex-none">🗳️</span>
+              <div className="flex-1 min-w-0">
+                <h2 className="disp text-[26px] font-extrabold text-[#2B2016] leading-none">{d.voting}</h2>
+                <p className="font-bold text-[#8A7B63] text-sm mt-0.5">{d.votedCount(pub.players.filter(p => p.hasVoted).length, pub.players.length)}</p>
+              </div>
+              <TimerPill secs={secsLeft(pub.voteEndsAt, now)} />
+            </div>
+            <div className="bg-[#FFFBef] hard-sm rounded-2xl px-4 py-2.5 mt-3 font-bold text-[#5C4B33]">
+              {d.voteInstrA}<span className="text-[#D63A2F] font-extrabold">{d.thief}</span>{d.voteInstrB}
+            </div>
             {priv?.myVote || optVote
-              ? <p className="mt-4 font-extrabold text-green-600 text-lg">{d.votedFor(pub.players.find(p => p.id === (priv?.myVote || optVote))?.name || '?')}</p>
-              : <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} markThiefId={priv?.knownThiefId || priv?.witnessedThiefId || null} markFollowerIds={priv?.knownFollowerIds} iAmFollower={priv?.isFollower} peeks={priv?.peeks} speakingIds={speakingIds} onPick={(id) => { setOptVote(id); pendingRef.current.vote = id; getNet().vote(id); }} pickable={(p) => p.id !== joined.playerId} />}
+              ? <p className="mt-5 disp font-extrabold text-[#0B8A5E] text-xl text-center">{d.votedFor(pub.players.find(p => p.id === (priv?.myVote || optVote))?.name || '?')}</p>
+              : (
+              <div className="grid grid-cols-2 gap-2.5 mt-3">
+                {pub.players.map(p => {
+                  const isMe = p.id === joined.playerId;
+                  return (
+                  <button key={p.id} disabled={isMe}
+                    onClick={() => { setOptVote(p.id); pendingRef.current.vote = p.id; getNet().vote(p.id); }}
+                    className={`relative rounded-3xl px-3 pt-4 pb-3 text-center ${isMe ? 'bg-[#FFF3CF] border-[2.5px] border-dashed border-[#D8C69A] opacity-80' : 'card-cream push cursor-pointer'}`}>
+                    <MouseAvatar seed={p.id} size={62} halo="#FFF3CF" state={(priv?.knownThiefId === p.id || priv?.witnessedThiefId === p.id) ? 'thief' : 'awake'} />
+                    <div className="disp font-extrabold text-lg text-[#2B2016] mt-1 leading-tight">{p.name}{isMe ? ` (${d.you})` : ''}</div>
+                    <div className={`text-[13px] font-bold ${isMe ? 'text-[#8A7B63]' : p.hasVoted ? 'text-[#2B2016]' : 'italic text-[#8A7B63]'}`}>
+                      {isMe ? d.cantVoteSelf : p.hasVoted ? d.votedStatus : d.thinkingStatus}
+                    </div>
+                    {priv?.peeks?.some(x => x.targetId === p.id) && <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-[#2E7CD6] text-white text-xs font-extrabold rounded-full px-2.5 py-0.5 border-2 border-[#2B2016] whitespace-nowrap z-10">{d.peekPill(priv.peeks.find(x => x.targetId === p.id)!.dice)}</span>}
+                    {speakingIds.has(p.id) && <span className="absolute top-2 left-2 bg-[#0E9F6E] text-white text-[11px] rounded-full px-1.5 py-0.5 anim-pulse-soft">🎙️</span>}
+                    {(priv?.knownFollowerIds.includes(p.id) || (isMe && priv?.isFollower)) && <span className="absolute top-2 right-2 text-lg">🤝</span>}
+                  </button>);
+                })}
+              </div>)}
+            <p className="text-[13px] font-bold text-[#8A7B63] mt-auto pt-3 leading-snug">{d.voteRule}</p>
           </div>
         )}
 
         {/* ---------- RESULTS ---------- */}
         {phase === 'results' && (
-          <div className={`${card} anim-pop text-center flex-1 min-h-0 overflow-y-auto`}>
-            <Confetti />
-            <div className="text-7xl anim-bob inline-block">{pub.winner === 'sleepyheads' ? '🎉' : pub.winner === 'fallmouse' ? '💀' : '😈'}</div>
-            <h2 className="text-3xl font-extrabold">{pub.winner === 'sleepyheads' ? d.sleepyWin : pub.winner === 'fallmouse' ? d.fallWin : d.thiefWin}</h2>
-            <p className="font-bold text-lg mt-1">{d.thiefWas(pub.players.find(p => p.id === pub.thiefId)?.name || '?')} {mouseFor(pub.thiefId || '')}</p>
-            {pub.players.some(p => (p as any).role === 'fallmouse') && (
-              <p className="font-bold text-lg text-violet-600">{d.fallWas(pub.players.find(p => (p as any).role === 'fallmouse')?.name || '?')} {mouseFor(pub.players.find(p => (p as any).role === 'fallmouse')?.id || '')}</p>)}
-            <PlayerChips players={pub.players} myId={joined.playerId} phase={phase} d={d} roleLabel={roleLabel} speakingIds={speakingIds} winnerSide={pub.winner === 'sleepyheads' ? 'village' : pub.winner === 'fallmouse' ? 'fallmouse' : 'thief'} />
-            <div className="text-left max-w-sm mx-auto bg-amber-50 rounded-2xl p-3">
-              {pub.voteCounts?.map(v => (
-                <div key={v.id} className="flex justify-between font-bold">
-                  <span>{mouseFor(v.id)} {pub.players.find(p => p.id === v.id)?.name}</span><span>{v.count} {d.votes}</span>
-                </div>))}
-            </div>
-            <Standings />
-            <MyRecord />
-            <button className={`${btn} bg-sky-500 hover:bg-sky-600 text-white mt-3`} onClick={shareResult}>
-              {shared ? '✅ ' + d.shareCopied : '📋 ' + d.shareResults}
-            </button>
-            {(pub as any).recap?.length > 0 && (
-              <div className="text-left max-w-md mx-auto bg-indigo-50 rounded-2xl p-3 mt-3">
-                <div className="font-extrabold text-center mb-1">{d.recapTitle}</div>
-                {[1, 2, 3, 4, 5, 6].map(h => {
-                  const evs = (pub as any).recap.filter((e: any) => e.hour === h && !e.afterNight);
-                  if (!evs.length) return null;
-                  const wake = evs.find((e: any) => e.kind === 'wake');
-                  return (
-                    <div key={h} className="mt-1">
-                      <span className="font-extrabold">🕐 {d.recapHour(h)}: </span>
-                      {wake && wake.ids.length
-                        ? <span>{d.recapWake(wake.ids.map(nameOf).join(', '))}</span>
-                        : <span className="text-gray-500">{d.recapNone}</span>}
-                      {evs.filter((e: any) => e.kind !== 'wake').map((e: any, i: number) => (
-                        <div key={i} className="ml-4">
-                          {e.kind === 'steal' && d.recapSteal(nameOf(e.ids[0]))}
-                          {e.kind === 'witness' && d.recapWitness(e.ids.map(nameOf).join(', '))}
-                          {e.kind === 'inspect' && d.recapInspect(nameOf(e.ids[0]), nameOf(e.targetId), e.seen)}
-                          {e.kind === 'recruit' && d.recapRecruit(nameOf(e.ids[0]))}
-                        </div>))}
-                    </div>);
-                })}
-                {(pub as any).recap.some((e: any) => e.afterNight) && (
-                  <div className="mt-1">
-                    <span className="font-extrabold">🌅 {d.recapAfter}: </span>
-                    {(pub as any).recap.filter((e: any) => e.afterNight).map((e: any, i: number) => (
-                      <div key={i} className="ml-4">{d.recapRecruit(nameOf(e.ids[0]))}</div>))}
+          <div className="anim-pop flex-1 min-h-0 overflow-y-auto">
+            <div className="card-cream overflow-hidden !rounded-[28px]">
+              <div className="relative bg-[#171731] px-5 pt-5 pb-16 text-center overflow-hidden">
+                <Confetti />
+                <p className="disp relative text-[#FFB020] font-extrabold tracking-[0.22em] text-[11px]">{d.resultsKicker(pub.round)}</p>
+                <h2 className="disp relative text-[#FFF3CF] font-extrabold text-4xl mt-1.5 leading-tight">{pub.winner === 'sleepyheads' ? d.sleepyWin : pub.winner === 'fallmouse' ? d.fallWin : d.thiefWin}</h2>
+                <p className="relative text-[#B9BCE0] font-bold mt-1">{pub.winner === 'sleepyheads' ? d.winSubVillage : pub.winner === 'fallmouse' ? d.winSubFall : d.winSubThief}</p>
+              </div>
+              <div className="px-4 -mt-11 relative z-10 space-y-2">
+                <div className="bg-[#FFF3CF] hard rounded-3xl px-4 py-3 flex items-center gap-3 max-w-sm mx-auto">
+                  <MouseAvatar seed={pub.thiefId || ''} size={54} state="thief" halo="#FFFBef" />
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-black tracking-[0.16em] text-[#8A7B63]">{d.thiefCardLabel}</div>
+                    <div className="disp text-2xl font-extrabold text-[#2B2016] leading-none truncate">{pub.players.find(p => p.id === pub.thiefId)?.name || '?'}</div>
+                  </div>
+                </div>
+                {pub.players.some(p => (p as any).role === 'fallmouse') && (
+                  <div className="bg-[#EFE6FB] hard rounded-3xl px-4 py-3 flex items-center gap-3 max-w-sm mx-auto">
+                    <MouseAvatar seed={pub.players.find(p => (p as any).role === 'fallmouse')?.id || ''} size={54} state="dead" halo="#FFFBef" />
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-black tracking-[0.16em] text-[#8A7B63]">{d.fallCardLabel}</div>
+                      <div className="disp text-2xl font-extrabold text-[#2B2016] leading-none truncate">{pub.players.find(p => (p as any).role === 'fallmouse')?.name || '?'}</div>
+                    </div>
                   </div>)}
-              </div>)}
-            <div className="mt-3"><ChatPanel chat={pub.chat} myId={joined.playerId} d={d} onChat={t => getNet().chat(t)} height="h-40" /></div>
-            {isHost
-              ? <button className={`${btn} bg-green-500 text-white w-full mt-4 text-xl`} onClick={() => getNet().playAgain()}>🔁 {d.playAgain} ({d.backLobby})</button>
-              : <p className="mt-4 font-bold text-gray-500">{d.waiting}</p>}
+              </div>
+              <div className="bg-[#FFF3CF] px-4 pt-4 pb-5">
+                <h3 className="disp font-extrabold text-lg text-[#2B2016]">{d.rolesTitle}</h3>
+                <div className="space-y-2 mt-2">
+                  {[...pub.players].sort((a, b) => {
+                    const w = (p: any) => p.id === pub.thiefId ? 0 : p.id === joined.playerId ? 1 : 2;
+                    return w(a) - w(b);
+                  }).map(p => {
+                    const role = (p as any).role as string | undefined;
+                    const side = role === 'fallmouse' ? 'fallmouse' : (role === 'thief' || p.isFollower) ? 'thief' : 'village';
+                    const winnerSide = pub.winner === 'sleepyheads' ? 'village' : pub.winner === 'fallmouse' ? 'fallmouse' : 'thief';
+                    const votes = pub.voteCounts?.find(v => v.id === p.id)?.count ?? 0;
+                    return (
+                    <div key={p.id} className={`flex items-center gap-2.5 rounded-2xl hard-sm px-3 py-2 ${role === 'thief' ? 'bg-[#FDE3E0]' : p.id === joined.playerId ? 'bg-[#FFE9B8]' : 'bg-[#FFFBef]'}`}>
+                      <MouseAvatar seed={p.id} size={40} halo="#FFFBef" state={role === 'thief' ? 'thief' : role === 'fallmouse' ? 'dead' : 'awake'} />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-extrabold text-[#2B2016] truncate leading-tight">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</div>
+                        <span className={`inline-block text-[11px] font-black text-white rounded-full px-2 py-px mt-0.5 ${role === 'thief' ? 'bg-[#D63A2F]' : role === 'fallmouse' ? 'bg-[#7C4DBD]' : 'bg-[#2E7CD6]'}`}>
+                          {role === 'thief' ? d.thief : role === 'fallmouse' ? d.fall : d.sleepy}{p.isFollower ? ' 🤝' : ''}
+                        </span>
+                      </div>
+                      {side === winnerSide && <span className="text-xl flex-none">🏆</span>}
+                      <div className="text-center flex-none w-9">
+                        <div className="disp font-extrabold text-lg leading-none text-[#2B2016]">{votes}</div>
+                        <div className="text-[10px] font-bold text-[#8A7B63]">{d.votes}</div>
+                      </div>
+                      <DiceFace value={p.dice ?? 1} size={38} />
+                    </div>);
+                  })}
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-3 items-start">
+                  <Standings />
+                  <MyRecord />
+                </div>
+                <button className={`${BTN} w-full mt-3 !bg-[#DCEBFB] text-[#2B2016]`} onClick={shareResult}>
+                  {shared ? '✅ ' + d.shareCopied : '📋 ' + d.shareResults}
+                </button>
+                {(pub as any).recap?.length > 0 && (
+                  <div className="bg-[#1D1D38] rounded-3xl hard p-4 mt-3 text-left">
+                    <div className="disp font-extrabold text-[#FFF3CF] text-center mb-1">{d.recapTitle}</div>
+                    {[1, 2, 3, 4, 5, 6].map(h => {
+                      const evs = (pub as any).recap.filter((e: any) => e.hour === h && !e.afterNight);
+                      if (!evs.length) return null;
+                      const wake = evs.find((e: any) => e.kind === 'wake');
+                      const steal = evs.some((e: any) => e.kind === 'steal');
+                      return (
+                        <div key={h} className="flex gap-2.5 mt-2">
+                          <span className={`disp w-7 h-7 rounded-full flex-none flex items-center justify-center font-extrabold text-sm ${steal ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#3D3D63] text-[#B9BCE0]'}`}>{h}</span>
+                          <div className="text-[#EDEDF7] font-bold text-sm leading-snug pt-0.5">
+                            {wake && wake.ids.length
+                              ? <span>{d.recapWake(wake.ids.map(nameOf).join(', '))}</span>
+                              : <span className="text-[#7C83B8]">{d.recapNone}</span>}
+                            {evs.filter((e: any) => e.kind !== 'wake').map((e: any, i: number) => (
+                              <span key={i} className="block">
+                                {e.kind === 'steal' && d.recapSteal(nameOf(e.ids[0]))}
+                                {e.kind === 'witness' && d.recapWitness(e.ids.map(nameOf).join(', '))}
+                                {e.kind === 'inspect' && d.recapInspect(nameOf(e.ids[0]), nameOf(e.targetId), e.seen)}
+                                {e.kind === 'recruit' && d.recapRecruit(nameOf(e.ids[0]))}
+                              </span>))}
+                          </div>
+                        </div>);
+                    })}
+                    {(pub as any).recap.some((e: any) => e.afterNight) && (
+                      <div className="flex gap-2.5 mt-2">
+                        <span className="disp w-7 h-7 rounded-full flex-none flex items-center justify-center font-extrabold text-sm bg-[#3D3D63] text-[#B9BCE0]">🌅</span>
+                        <div className="text-[#EDEDF7] font-bold text-sm leading-snug pt-0.5">
+                          {(pub as any).recap.filter((e: any) => e.afterNight).map((e: any, i: number) => (
+                            <span key={i} className="block">{d.recapRecruit(nameOf(e.ids[0]))}</span>))}
+                        </div>
+                      </div>)}
+                  </div>)}
+                <div className="mt-3"><ChatPanel chat={pub.chat} myId={joined.playerId} d={d} onChat={t => getNet().chat(t)} height="h-40" /></div>
+                {isHost
+                  ? <button className={`${BTN} btn-amber w-full mt-4 text-xl !py-3.5`} onClick={() => getNet().playAgain()}>🔁 {d.playAgain} ({d.backLobby})</button>
+                  : <p className="mt-4 text-center font-bold text-[#8A7B63]">{d.waiting}</p>}
+              </div>
+            </div>
           </div>
         )}
         <ChatSheet open={chatSheet} onClose={() => setChatSheet(false)} chat={pub.chat} myId={joined.playerId} d={d} onChat={t => getNet().chat(t)} />

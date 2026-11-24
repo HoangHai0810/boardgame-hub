@@ -1,10 +1,33 @@
-@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;600;700;800;900&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-body { font-family: 'Baloo 2', 'Comic Sans MS', system-ui, sans-serif; }
+body { font-family: 'Nunito', system-ui, sans-serif; }
+.disp { font-family: 'Baloo 2', 'Nunito', system-ui, sans-serif; }
+
+/* ---- v30 design system (Hoàng's mockup): navy night + cream paper,
+   thick ink borders and hard offset shadows, chunky rounded shapes ---- */
+:root { --ink: #2B2016; }
+.hard { border: 2.5px solid var(--ink); box-shadow: 0 4px 0 var(--ink); }
+.hard-sm { border: 2px solid var(--ink); box-shadow: 0 3px 0 var(--ink); }
+.hard-xs { border: 2px solid var(--ink); box-shadow: 0 2px 0 var(--ink); }
+.push { transition: transform .06s ease, box-shadow .06s ease; }
+.push:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+.inp { background: #FFFBef; border: 2.5px solid var(--ink); border-radius: 16px; color: var(--ink); }
+.inp:focus { outline: 3px solid #FFB020; outline-offset: 1px; }
+.inp::placeholder { color: #A89880; }
+.btn-amber { background: #FFB020; color: var(--ink); }
+.btn-amber:hover { background: #FFBA38; }
+.btn-dark { background: #33241A; color: #FFF3CF; }
+.btn-dark:hover { background: #42301F; }
+.btn-green { background: #0E9F6E; color: #fff; }
+.btn-green:hover { background: #0B8A5E; }
+.btn-blue { background: #2E7CD6; color: #fff; }
+.btn-blue:hover { background: #2570C4; }
+.card-cream { background: #FFFBef; border: 2.5px solid var(--ink); border-radius: 24px; box-shadow: 0 5px 0 var(--ink); }
+.chip-dark { background: #23233F; border: 2px solid #3D3D63; color: #EDEDF7; }
 
 @keyframes bob { 0%,100%{ transform: translateY(0)} 50%{ transform: translateY(-8px)} }
 @keyframes zzz { 0%{ opacity:0; transform: translate(0,0) scale(.6)} 30%{opacity:1} 100%{ opacity:0; transform: translate(14px,-26px) scale(1.2)} }
@@ -65,11 +88,11 @@ body { font-family: 'Baloo 2', 'Comic Sans MS', system-ui, sans-serif; }
    against the PARENT's width and collapsed the grid to 0px, rendering blank). */
 .dice-face {
   position: relative;
-  background: linear-gradient(145deg, #ffffff, #e2e8f0);
-  border-radius: 22%; box-shadow: inset 0 -4px 8px rgba(0,0,0,.15), 0 8px 16px rgba(0,0,0,.25);
+  background: #FFFBef;
+  border: 2.5px solid var(--ink); border-radius: 22%; box-shadow: 0 3px 0 var(--ink);
   flex: none;
 }
-.dice-pip { position: absolute; width: 20%; height: 20%; border-radius: 9999px; background: #1e293b; box-shadow: inset 0 -2px 3px rgba(255,255,255,.35); }
+.dice-pip { position: absolute; width: 20%; height: 20%; border-radius: 9999px; background: var(--ink); }
 
 @keyframes pulseSoft { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
 .anim-pulse-soft { animation: pulseSoft 1.6s ease-in-out infinite; }
