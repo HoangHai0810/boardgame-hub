@@ -1,0 +1,1 @@
+{"dependencies":{"cors":"^2.8.5","express":"^4.19.2","socket.io":"^4.7.5"},"devDependencies":{"@types/cors":"^2.8.17","@types/express":"^4.17.21","@types/node":"^22.0.0","tsx":"^4.16.0","typescript":"^5.5.0"},"name":"cheese-thief-server","private":true,"scripts":{"build":"tsc","dev":"tsx src/index.ts","start":"node dist/index.js"},"type":"module","version":"1.0.0"}
