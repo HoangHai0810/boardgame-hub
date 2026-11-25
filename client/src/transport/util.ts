@@ -4,3 +4,5 @@ export function getClientId(): string {
   return id;
 }
 export const cleanName = (n: string) => n.replace(/[<>]/g, '').trim().slice(0, 20) || 'Mouse';
+
+export { makeRoomCode } from '../../../games/room';

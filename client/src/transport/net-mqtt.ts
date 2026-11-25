@@ -23,15 +23,14 @@
 //   join — so the stale will of a pre-F5 connection can no longer kick a
 //   player who already refreshed and rejoined.
 import mqtt, { MqttClient } from 'mqtt';
-import { HostEngine, Pub, Priv } from './hostEngine';
+import { engineFor, EngineLike } from './engines';
 import { generateKeys, deriveAesKey, encryptJson, decryptJson, KeySet } from './crypto';
-import { makeRoomCode, MAX_PLAYERS } from '../../shared/logic';
+import { makeRoomCode } from './util';
 import type { Net, Handlers } from './net';
 import { getClientId } from './util';
 import { brokerOrder, connectMqttSequential } from './brokers';
-import type { EngineHooks } from './hostEngine';
+import type { EngineHooks } from '../games/cheese-thief/hostEngine';
 
-const topic = (code: string, part: string) => `ct1/${code}/${part}`;
 const cleanName = (n: string) => n.replace(/[<>]/g, '').trim().slice(0, 20) || 'Mouse';
 const nonce = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 const b64raw = (buf: Uint8Array) => btoa(String.fromCharCode(...buf));
@@ -40,9 +39,12 @@ async function importRoomKey(b64: string): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', unb64raw(b64) as BufferSource, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
 }
 
-export function createMqttNet(h: Handlers): Net {
+export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
+  // Platform rule: every game's rooms live under its own topic tree,
+  // so two games can never share (or collide on) a room code.
+  const topic = (code: string, part: string) => `ct1/${gameId}/${code}/${part}`;
   let client: MqttClient | null = null;
-  let engine: HostEngine | null = null;
+  let engine: EngineLike | null = null;
   let myId = getClientId();
   let roomCode = '';
   let isHost = false;
@@ -69,7 +71,7 @@ export function createMqttNet(h: Handlers): Net {
   let roomKeyB64 = '';
   let myEscrowKeyB64 = '';
   const pubKeys = new Map<string, JsonWebKey>();
-  let lastPub: Pub | null = null;
+  let lastPub: any | null = null;
   let lastStateAt = 0;
   let lastSnapAt = 0;
   let lastSnapPhase = '';
@@ -154,7 +156,7 @@ export function createMqttNet(h: Handlers): Net {
     };
   }
 
-  async function maybeSnapshot(pub: Pub) {
+  async function maybeSnapshot(pub: any) {
     if (!engine || !roomKey) return;
     const now = Date.now();
     if (now - lastSnapAt < 2500 && pub.phase === lastSnapPhase) return;
@@ -205,7 +207,7 @@ export function createMqttNet(h: Handlers): Net {
           engine!.disconnect(String(msg.playerId));
           return;
         }
-        const p = engine!.state.players.find(x => x.id === msg.playerId);
+        const p = engine!.state.players.find((x: any) => x.id === msg.playerId);
         if (p) engine!.handle(p, msg);
       }
     });
@@ -222,7 +224,9 @@ export function createMqttNet(h: Handlers): Net {
     roomKeyB64 = b64raw(rawKey);
     roomKey = await importRoomKey(roomKeyB64);
     hostSince = Date.now();
-    engine = new HostEngine(roomCode, makeHooks());
+    const Ctor = engineFor(gameId);
+    if (!Ctor) { h.onError('GAME_NOT_SUPPORTED'); return; }
+    engine = new Ctor(roomCode, makeHooks());
     makeExtra = () => ({ clientId: 'ct-h-' + myId + '-' + Math.random().toString(36).slice(2, 7),
       will: { topic: topic(roomCode, 'pub'), payload: JSON.stringify({ type: 'hostGone' }), retain: true, qos: 1 } as any });
     bindCurrent = () => { if (client) bindHost(client); };
@@ -313,8 +317,8 @@ export function createMqttNet(h: Handlers): Net {
     latestSnap = null;
     client.subscribe(topic(roomCode, 'claim'), { qos: 1 });
     client.subscribe(topic(roomCode, 'snap'), { qos: 1 });
-    const cands = (lastPub?.players ?? []).filter(p => p.connected && !p.isHost);
-    const rank = Math.max(0, cands.findIndex(p => p.id === myId));
+    const cands = (lastPub?.players ?? []).filter((p: any) => p.connected && !p.isHost);
+    const rank = Math.max(0, cands.findIndex((p: any) => p.id === myId));
     const myDelay = 5000 + rank * 2500;
     claimTimer = setTimeout(() => { void tryPromote(); }, myDelay);
     // Nobody could take over (e.g. the winner died too): surface the loss.
@@ -344,7 +348,9 @@ export function createMqttNet(h: Handlers): Net {
       const oldHostId = state.players.find((p: any) => p.isHost)?.id;
       myKeys = await generateKeys();
       roomKey = key; roomKeyB64 = myEscrowKeyB64;
-      const eng = new HostEngine(state.roomCode || roomCode, makeHooks());
+      const Ctor = engineFor(gameId);
+      if (!Ctor) { migrating = false; notifyError('GAME_NOT_SUPPORTED'); return; }
+      const eng = new Ctor(state.roomCode || roomCode, makeHooks());
       eng.state = state;
       eng.state.players.forEach((p: any) => {
         if (p.id === myId) { p.isHost = true; p.connected = true; }
@@ -382,7 +388,7 @@ export function createMqttNet(h: Handlers): Net {
   /** A returning old host steps aside: its room already has a successor. */
   async function standDown() {
     if (!engine || migrating) return;
-    try { engine.dispose(); } catch { /* noop */ }
+    try { engine.dispose?.(); } catch { /* noop */ }
     engine = null; isHost = false; hostSince = 0;
     pubKeys.clear(); hostAes.clear();
     const old = client;
@@ -415,7 +421,7 @@ export function createMqttNet(h: Handlers): Net {
 
   const intent = (action: string, extra: object = {}) => {
     if (engine) {
-      const me = engine.state.players.find(p => p.id === myId);
+      const me = engine.state.players.find((p: any) => p.id === myId);
       if (me) engine.handle(me, { action, ...extra });
     } else {
       client?.publish(topic(roomCode, 'in'), JSON.stringify({ type: 'intent', playerId: myId, action, ...extra }), { qos: 1 });
@@ -482,4 +488,3 @@ export function createMqttNet(h: Handlers): Net {
   };
 }
 
-export { MAX_PLAYERS };

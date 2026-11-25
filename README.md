@@ -1,8 +1,25 @@
-# 🧀 Chuột Phô Mai (Cheese Mouse)
+# 🎲 Sảnh Board Game
 
-A real-time multiplayer social deduction game for **4–8 players**, implementing the mechanics of *Cheese Thief* (2020) including the official **Follower** rules and the **Fall Mouse** variant. One secret Cheese Mouse steals the cheese at night; the Village Mice wake by dice number, investigate, discuss, and vote.
+A multi-boardgame platform that runs in the browser — no install, works on mobile. Pick a game, create a room, share the link or 5-letter code, play.
 
-**▶ Play now: https://hoanghai0810.github.io/cheese-thief-game/** — create a room, share the invite link or 5-letter code, play. No install, works on mobile. Vietnamese + English UI.
+**▶ Play now: https://hoanghai0810.github.io/cheese-thief-game/** — Vietnamese + English UI.
+
+## Games
+- 🧀 **Chuột Phô Mai (Cheese Mouse)** — LIVE. Real-time multiplayer social deduction for **4–8 players** (see below).
+- 🐺 **Ma Sói (Werewolf)** — LIVE. Classic Werewolf for **6–12 players**: wolves hunt at night, the village votes by day (see below).
+- 🃏 **Uno** — coming soon.
+- 🕵️ **Ai là Gián Điệp? (Who's the Spy?)** — coming soon.
+
+## Layout
+- `client/src/platform/` — the shell: hub (`Hub.tsx`), game registry (`games.ts`), routing (`PlatformApp.tsx`, `?game=<id>`).
+- `client/src/games/cheese-thief/` — the Cheese Thief game (UI, engine host, i18n).
+- `client/src/games/ma-soi/` — the Ma Sói game (UI, engine host, i18n, wolf avatars).
+- `client/src/transport/` — the shared multiplayer transport (MQTT default, PeerJS, Socket.IO), voice and sound.
+- `games/cheese-thief/logic.ts` — the Cheese Thief rules engine, shared by the browser host and the dedicated server.
+- `games/ma-soi/logic.ts` — the Ma Sói rules engine (browser-hosted; the dedicated server still runs Cheese Thief only for now — Ma Sói rooms opened with `?server=` get `GAME_NOT_SUPPORTED`).
+- `server/` — Socket.IO server, one process for all games; rooms are namespaced `(game, code)`.
+
+Adding a game = one entry in `client/src/platform/games.ts` + its component (and, for server mode, an engine in `games/<id>/` + an id in the server's `GAME_IDS` set). Rooms never collide across games: MQTT/voice topics live under `ct1/<game>/<code>/`, PeerJS ids under `ct-<game>-v1-`.
 
 ## Roles
 - 😈 **Chuột Phô Mai (Cheese Mouse)** — the thief. Steals the cheese on their dice hour.
@@ -27,6 +44,13 @@ A real-time multiplayer social deduction game for **4–8 players**, implementin
    - **Fall Mouse priority:** if the Chuột Chết is in the top-voted group, they win **alone**, ahead of every other outcome.
 6. **Play Again** keeps the room, code and players; roles/dice are re-randomised. A session scoreboard (🏆) tracks rounds won per player for the whole room session, and your own record (wins/losses split by the role you were dealt) is shown on the results screen and in the lobby.
 7. **Chat** is open in the lobby, during the day discussion and on the results screen; it is locked at night, during recruitment and while voting. One-tap emoji reactions and preset quick phrases (rendered in each viewer's own language) keep phone players in the conversation.
+
+## Ma Sói — roles & flow
+- **Roles** (6–12 players): 🐺 Sói (2 at 6–8p, 3 at 9–12p), 🔮 Tiên Tri (peeks one player per night), 🛡️ Bảo Vệ (protects one per night, never the same player twice running), 🧪 Phù Thủy (8p+: one save potion + one kill potion per game, max one potion per night), 🏹 Thợ Săn (10p+: one shot when killed), 🧑 Dân Làng.
+- **Night** (each step 30 s, steps with no living actor are skipped): Thợ Săn (only if a hunter died with a shot pending) → Sói (majority pick, tie → earliest pick) → Tiên Tri → Bảo Vệ → Phù Thủy → dawn. A wolf kill is blocked if the Guardian protected the same player or the Witch used her save. Forgotten night actions default to the safe option (no kill / no peek / no protect / no potion / no shot) — never a random irreversible action.
+- **Day:** deaths are announced with their roles; discussion (host picks 60/120/180 s, ends early when all living players press ready-to-vote); secret vote (60 s, no self-vote); a tie eliminates nobody. The hunter's shot, if pending, resolves before the next night.
+- **Win:** villagers win when no wolf remains; wolves win at parity (wolves ≥ villagers). Roles of the dead are public during play; all roles are revealed at results.
+- **Chat is locked at night** (a villager could blurt their role) and open in the lobby, during the day and at results. Voice works the same as Cheese Thief: speaker auto-on (listen-only), mic manual.
 
 ## Session & social features
 - 🏆 **Session scoreboard** — rounds won per player in this room, leader crowned; plus your **personal record** (W/L split by dealt role).
@@ -57,6 +81,7 @@ Other adaptations vs. the physical game: fixed timers instead of a narrator (nig
 - `tests/logic.test.mjs` — 32 rules tests (including the session-scoreboard scoring and the night-recap recording introduced by the improvement loop) (role/dice distribution, secret leakage, lone-waker inspection, multi-waker block, steal timing, vote integrity, all tie cases, follower witness/recruit/information rules per player count, Fall Mouse dealing + solo wins). Run: compile `shared/logic.ts` to `shared/logic.mjs` with esbuild, then `node tests/logic.test.mjs` (delete `shared/logic.mjs` afterwards — if left in place it shadows the `.ts` source for Vite and breaks the client build).
 - `tests/mqtt.transport.test.mjs` — 14 checks: the shipped public transport itself (compiled from `client/src`), 4 simulated players against a real MQTT broker (aedes) play a complete round — join, encrypted role delivery, all-ready night start, steal, private inspection, ready-to-vote discussion skip, results. Note: some sandboxes' egress proxies block the public brokers, so this test runs against a local broker with identical protocol/topics/encryption.
 - `tests/socket.integration.mjs` — 23 checks: real Socket.IO server, 5 simultaneous clients play a complete round (create/join/rejections, role secrecy, night steal + private inspection, live chat, voting, results, late-join rejection, play-again, reconnection). Run the server with fast-timer env (`CT_HOUR_MS=700 CT_DISCUSSION_MS=3000 CT_VOTE_MS=3000 CT_RECRUIT_MS=1500 PORT=3109`) then `node tests/socket.integration.mjs`.
+- `tests/ma-soi.logic.test.mjs` — 17 rules tests for Ma Sói (role tables 6–12p, wolf majority/tie, seer peek rules, guardian repeat rule, witch potions, night resolution incl. both saves, hunter shot, vote tie, win checks, default votes, public/private secrecy). Browser checks: `check/verify-ma-soi.mjs` (9 checks — full 6-player round in real Chromium over a local aedes broker) and `check/visual-ma-soi.mjs` (8 checks — hub with two live games, lobby, role reveal, wolves' night panel, dawn deaths, results, all screens fitted to one viewport).
 - QA probe — 33 checks (two simultaneous rooms: an 8-player round with leakage/unauthorized-action assertions, host-kick validation, the discussion-length option, disconnect-during-voting). Real-browser self-plays (Playwright) drive complete rounds over both the MQTT and Socket.IO transports, including the scoreboard, night recap, personal record and share-summary flows. The 10-cycle improvement loop that shipped v14–v23 is documented under `loop/` (one CYCLE file + one implementation prompt per cycle).
 
 ## Tech

@@ -1,6 +1,6 @@
 // v24: defaults for forgotten actions + witness visibility of the steal.
 import assert from 'node:assert';
-import { createGame, doSteal, privateState, publicState, applyDefaultVotes, autoInspectIdle } from '../shared/logic.mjs';
+import { createGame, doSteal, privateState, publicState, applyDefaultVotes, autoInspectIdle } from '../games/cheese-thief/logic.mjs';
 
 let passed = 0;
 const t = (name, fn) => { fn(); passed++; console.log('PASS', name); };

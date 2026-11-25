@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createNet, Net, Pub, Priv } from './net';
+import { createNet, Net } from '../../transport/net';
+import { Pub, Priv } from './hostEngine';
+import { TopBar, ChatPanel, ChatSheet, chatPreview } from '../../platform/ui';
 import { t, Lang } from './i18n';
-import { HOUR_MS } from '../../shared/logic';
-import { sfx, ensureCtx } from './sound';
-import { joinVoice, VoiceHandle } from './voice';
+import { HOUR_MS } from '../../../../games/cheese-thief/logic';
+import { sfx, ensureCtx } from '../../transport/sound';
+import { joinVoice, VoiceHandle } from '../../transport/voice';
 
 const MICE = ['🐭', '🐹', '🐰', '🦊', '🐱', '🐶', '🐷', '🐨'];
 const mouseFor = (id: string) => MICE[[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % MICE.length];
@@ -111,109 +113,6 @@ function HelpModal({ d, onClose }: { d: any; onClose: () => void }) {
   );
 }
 
-function TopBar({ d, lang, muted, onToggleMuted, onHelp, onToggleLang, voice, tone = 'navy' }: { d: any; lang: Lang; muted: boolean; onToggleMuted: () => void; onHelp: () => void; onToggleLang: () => void; tone?: 'navy' | 'cream'; voice?: { speaker: 'off' | 'busy' | 'on'; mic: 'off' | 'busy' | 'on'; muted: boolean; onSpeaker: () => void; onMic: () => void } }) {
-  const chip = tone === 'navy'
-    ? 'bg-[#23233F] border-2 border-[#3D3D63] text-[#EDEDF7]'
-    : 'bg-[#FFFBef] hard-xs text-[#2B2016]';
-  const chipCls = `rounded-xl px-2.5 py-1.5 text-base leading-none ${chip} push`;
-  return (
-    <div className="flex items-center justify-between gap-2 mb-2 relative z-20">
-      <div className={`disp font-extrabold text-lg flex items-center gap-1.5 ${tone === 'navy' ? 'text-[#FFF3CF]' : 'text-[#2B2016]'}`}><CheeseWedge size={30} /> {d.title}</div>
-      <div className="flex gap-1.5 items-center">
-        {voice && (voice.speaker === 'off'
-          ? <button title={d.voiceListen} className={chipCls} onClick={voice.onSpeaker}>🎧</button>
-          : voice.speaker === 'busy'
-            ? <button title={d.voiceListen} className={`${chipCls} !bg-[#FFB020] !text-[#2B2016] anim-pulse-soft`} onClick={voice.onSpeaker}>🎧</button>
-            : <>
-              <button title={d.voiceLeave} className={`${chipCls} !bg-[#0E9F6E] !text-white`} onClick={voice.onSpeaker}>🎧</button>
-              {voice.mic === 'off'
-                ? <button title={d.voiceMicOn} className={chipCls} onClick={voice.onMic}>🎤</button>
-                : voice.mic === 'busy'
-                  ? <button title={d.voiceMicOn} className={`${chipCls} !bg-[#FFB020] !text-[#2B2016] anim-pulse-soft`} onClick={voice.onMic}>🎤</button>
-                  : <button title={voice.muted ? d.voiceUnmute : d.voiceMute} className={`${chipCls} ${voice.muted ? '!bg-[#D63A2F] !text-white' : '!bg-[#0E9F6E] !text-white'}`} onClick={voice.onMic}>{voice.muted ? '🔇' : '🎤'}</button>}
-            </>)}
-        <button aria-label="sound" title={muted ? '🔇' : '🔊'} className={chipCls} onClick={onToggleMuted}>{muted ? '🔇' : '🔊'}</button>
-        <button title={d.help} className={`${chipCls} disp font-extrabold`} onClick={onHelp}>?</button>
-        <div className={`flex rounded-xl overflow-hidden ${tone === 'navy' ? 'border-2 border-[#3D3D63]' : 'hard-xs !shadow-none border-2'}`} role="group" aria-label="language">
-          <button className={`disp px-2.5 py-1.5 font-extrabold text-sm leading-none ${lang === 'vi' ? 'bg-[#FFB020] text-[#2B2016]' : tone === 'navy' ? 'bg-[#23233F] text-[#B9BCE0]' : 'bg-[#FFFBef] text-[#8A7B63]'}`} onClick={() => lang !== 'vi' && onToggleLang()}>VI</button>
-          <button className={`disp px-2.5 py-1.5 font-extrabold text-sm leading-none ${lang === 'en' ? 'bg-[#FFB020] text-[#2B2016]' : tone === 'navy' ? 'bg-[#23233F] text-[#B9BCE0]' : 'bg-[#FFFBef] text-[#8A7B63]'}`} onClick={() => lang !== 'en' && onToggleLang()}>EN</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Quick reactions + preset phrases: one-tap chat. Phrases travel as QC
-// tokens and render localized in the VIEWER's language.
-const REACTIONS = ['👀', '🧀', '😱', '🤔', '👍', '👎', '😂', '❓'];
-const QC_KEYS = ['qc1', 'qc2', 'qc3', 'qc4'] as const;
-
-function chatPreview(d: any, text: string): string {
-  const qc = /^QC([1-4])$/.exec(text);
-  if (qc) return d['qc' + qc[1]];
-  return text;
-}
-
-function renderChatText(d: any, text: string) {
-  if ((REACTIONS as string[]).includes(text)) return <span className="text-4xl leading-tight">{text}</span>;
-  const qc = /^QC([1-4])$/.exec(text);
-  if (qc) return <span>{d['qc' + qc[1]]}</span>;
-  return <span>{text}</span>;
-}
-
-// Module-level ON PURPOSE: this panel owns the draft text and the scroll
-// box. When it lived inside App, every state broadcast remounted it — the
-// draft vanished mid-typing, focus was lost, old messages re-animated and
-// scrollIntoView dragged the whole page up and down. Auto-scroll now only
-// moves THIS box, and only while the reader is already near the bottom
-// (or the newest message is their own).
-function ChatPanel({ chat, myId, d, height = 'h-48', onChat }: { chat: any[]; myId?: string; d: any; height?: string; onChat: (text: string) => void }) {
-  const [text, setText] = useState('');
-  const boxRef = useRef<HTMLDivElement>(null);
-  const stickRef = useRef(true);
-  const send = () => { if (text.trim()) { onChat(text); setText(''); } };
-  useEffect(() => {
-    const el = boxRef.current; if (!el) return;
-    const lastMine = chat.length > 0 && chat[chat.length - 1].fromId === myId;
-    if (stickRef.current || lastMine) el.scrollTop = el.scrollHeight;
-  }, [chat.length, myId]);
-  return (
-    <div className={`text-left ${height === 'flex' ? 'flex flex-col flex-1 min-h-0' : ''}`}>
-      <div ref={boxRef}
-        onScroll={e => { const el = e.currentTarget; stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}
-        className={`bg-[#FFFBef] hard-sm !shadow-none rounded-3xl p-3 ${height === 'flex' ? 'flex-1 min-h-0' : height} overflow-y-auto space-y-2`}>
-        {chat.length === 0 && <p className="text-center text-gray-400 font-bold py-4">{d.chatEmpty}</p>}
-        {chat.map((m: any, i: number) => {
-          const mine = m.fromId === myId;
-          return (
-            <div key={`${m.ts}-${m.fromId}-${i}`} className={`flex ${mine ? 'justify-end' : 'justify-start'} anim-slide-up`}>
-              <div className={`max-w-[80%] rounded-2xl px-3 py-2 border-2 border-[#2B2016] shadow-[0_2px_0_#2B2016] ${mine ? 'bg-[#FFDF8E] rounded-br-md' : 'bg-white rounded-bl-md'}`}>
-                <div className="text-xs font-extrabold text-[#8A7B63]">{m.fromName} · {new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                <div className="leading-snug">{renderChatText(d, m.text)}</div>
-              </div>
-            </div>);
-        })}
-      </div>
-      <div className="flex gap-1.5 mt-2 overflow-x-auto pb-1" aria-label="quick reactions">
-        {REACTIONS.map(e => (
-          <button key={e} className="text-2xl bg-white hard-xs rounded-full w-10 h-10 shrink-0 active:scale-90 transition"
-            onClick={() => onChat(e)}>{e}</button>
-        ))}
-        {QC_KEYS.map((k, i) => (
-          <button key={k} className="text-xs font-extrabold bg-[#DCEBFB] text-[#1D4E89] hard-xs rounded-full px-3 h-10 shrink-0 active:scale-95 transition whitespace-nowrap"
-            onClick={() => onChat('QC' + (i + 1))}>{d[k]}</button>
-        ))}
-      </div>
-      <div className="flex gap-2 mt-2">
-        <input className="inp flex-1 min-w-0 px-4 py-2.5 font-bold" placeholder={d.chatPh} maxLength={300}
-          value={text} onChange={e => setText(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') send(); }} />
-        <button className={`${BTN} btn-amber !px-4 !py-2`} onClick={send} title={d.send}>➤</button>
-      </div>
-    </div>
-  );
-}
-
 // Module-level for the same reason as ChatPanel: a click landing while App
 // re-rendered used to hit a freshly remounted chip and die — voting felt
 // like it needed 2–3 clicks. Stable identity = one click, one vote.
@@ -270,22 +169,6 @@ function PlayerChips({ players, myId, phase, d, roleLabel, onPick, pickable, onK
 // while "sleeping" (players asked for it — the wait shouldn't be dead
 // time), but the night scene itself must stay one-screen, so the chat
 // lives in an overlay instead of pushing the layout down.
-function ChatSheet({ open, onClose, chat, myId, d, onChat }: { open: boolean; onClose: () => void; chat: any[]; myId?: string; d: any; onChat: (t: string) => void }) {
-  if (!open) return null;
-  return (
-    <div className="absolute inset-0 z-50 flex flex-col justify-end">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative w-full max-w-3xl mx-auto h-[62%] bg-[#FFF3CF] border-t-[3px] border-x-[3px] border-[#2B2016] rounded-t-[28px] p-3 flex flex-col anim-slide-up shadow-2xl">
-        <div className="flex items-center justify-between mb-1">
-          <span className="disp font-extrabold text-lg text-[#2B2016]">💬 {d.chatTitle ?? 'Chat'}</span>
-          <button className="bg-white hard-xs rounded-full w-9 h-9 font-extrabold text-[#2B2016]" onClick={onClose}>✕</button>
-        </div>
-        <ChatPanel chat={chat} myId={myId} d={d} height="flex" onChat={onChat} />
-      </div>
-    </div>
-  );
-}
-
 // The cheese flies from the table to the thief's avatar the moment the
 // steal happens — everyone awake at that hour sees it.
 function FlyCheese({ x0, y0, dx, dy, onDone }: { x0: number; y0: number; dx: number; dy: number; onDone: () => void }) {
@@ -368,8 +251,8 @@ export default function App() {
           // the room. Hosts can't resume (their room lives in their tab),
           // so a host session is never stored.
           try {
-            if (!isHost) sessionStorage.setItem('ct_guest_session', JSON.stringify({ code: c, name: sessionStorage.getItem('ct_name') || '' }));
-            else sessionStorage.removeItem('ct_guest_session');
+            if (!isHost) sessionStorage.setItem('ct_guest_session:cheese-thief', JSON.stringify({ code: c, name: sessionStorage.getItem('ct_name') || '' }));
+            else sessionStorage.removeItem('ct_guest_session:cheese-thief');
           } catch { /* ignore */ }
           // Keep any transport overrides (?broker= / ?server= / ?net=) in the
           // URL — the net layer re-reads them on reconnect/rejoin.
@@ -377,9 +260,9 @@ export default function App() {
           history.replaceState(null, '', u.pathname + u.search);
         },
         onError: (m) => {
-          if (m === 'HOST_GONE') { try { sessionStorage.removeItem('ct_guest_session'); } catch { /* ignore */ } }
+          if (m === 'HOST_GONE') { try { sessionStorage.removeItem('ct_guest_session:cheese-thief'); } catch { /* ignore */ } }
           if (m === 'KICKED') {
-            try { sessionStorage.removeItem('ct_guest_session'); } catch { /* ignore */ }
+            try { sessionStorage.removeItem('ct_guest_session:cheese-thief'); } catch { /* ignore */ }
             // Host removed us from the lobby: leave cleanly, land on the
             // home screen with a (localized at render) notice.
             try { netRef.current?.leave(); } catch { /* noop */ }
@@ -399,7 +282,7 @@ export default function App() {
           // (and the F5 guard) key off joined.isHost.
           setJoined(j => (j ? { ...j, isHost: true } : j));
         },
-      });
+      }, 'cheese-thief');
     }
     return netRef.current;
   };
@@ -413,7 +296,7 @@ export default function App() {
     if (autoJoinTried.current) return;
     autoJoinTried.current = true;
     try {
-      const raw = sessionStorage.getItem('ct_guest_session');
+      const raw = sessionStorage.getItem('ct_guest_session:cheese-thief');
       if (!raw) return;
       const s = JSON.parse(raw);
       if (!s?.code) return;
@@ -508,7 +391,7 @@ export default function App() {
       voiceRef.current = await joinVoice(joined.code, joined.playerId, {
         onSpeaking: (ids) => setSpeakingIds(prev => (prev.size === ids.size && [...ids].every(x => prev.has(x)) ? prev : ids)),
         onPeers: () => { /* presence is implicit in the speaking badges */ },
-      });
+      }, 'cheese-thief');
       setVoiceSpeaker('on');
     } catch {
       setVoiceSpeaker('off');
@@ -673,7 +556,8 @@ export default function App() {
     return (
       <div className="min-h-dvh bg-[#14142B] p-3 sm:p-4">
         <div className="max-w-xl mx-auto pt-2">
-          <TopBar d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })} />
+          <TopBar logo={<CheeseWedge size={30} />} d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })} />
+          <button className="font-bold text-[#B9BCE0] hover:text-[#FFF3CF] text-sm mt-2 mb-1 px-1" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
           <div className="card-cream anim-pop overflow-hidden !rounded-[28px]">
             <div className="relative bg-[#171731] px-5 pt-6 text-center overflow-hidden">
               <div className="stars" style={{ position: 'absolute' }} />
@@ -732,7 +616,7 @@ export default function App() {
     <div className="min-h-screen bg-[#14142B] text-white flex flex-col items-center justify-center gap-5 p-6 text-center">
       <div className="text-2xl font-bold">⏳ {status ? localizeMsg(status) : d.connecting}</div>
       <button className="bg-white hard-xs push rounded-full px-5 py-2 font-extrabold text-[#D63A2F]"
-        onClick={() => { try { sessionStorage.removeItem('ct_guest_session'); } catch { /* ignore */ } try { getNet().leave(); } catch { /* ignore */ } location.href = location.pathname; }}>{d.cancelConnect}</button>
+        onClick={() => { try { sessionStorage.removeItem('ct_guest_session:cheese-thief'); } catch { /* ignore */ } try { getNet().leave(); } catch { /* ignore */ } location.href = location.pathname; }}>{d.cancelConnect}</button>
     </div>
   );
 
@@ -750,7 +634,7 @@ export default function App() {
       <div className="max-w-3xl lg:max-w-6xl w-full mx-auto flex flex-col flex-1 min-h-0">
         <div className="flex flex-col lg:flex-row lg:gap-5 flex-1 min-h-0">
         <div className="flex flex-col flex-1 min-h-0">
-        <TopBar d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })}  tone={tone} voice={{ speaker: voiceSpeaker, mic: voiceMic, muted: voiceMuted, onSpeaker: toggleSpeaker, onMic: toggleMic }}/>
+        <TopBar logo={<CheeseWedge size={30} />} d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })}  tone={tone} voice={{ speaker: voiceSpeaker, mic: voiceMic, muted: voiceMuted, onSpeaker: toggleSpeaker, onMic: toggleMic }}/>
         {connLost && joined && <div className="bg-red-500 text-white text-center font-bold text-sm rounded-full px-4 py-1 mb-2 anim-pulse-soft shadow">📡 {d.connLost}</div>}
         {error && <div className="bg-red-100 border border-red-400 text-red-700 rounded-2xl px-4 py-2 mb-3 font-bold">{localizeMsg(error)}
           <button className="float-right" onClick={() => setError('')}>✕</button></div>}
@@ -775,7 +659,7 @@ export default function App() {
           <div className="anim-pop flex flex-col flex-1 min-h-0">
             <div className="flex items-center gap-2.5 mb-3">
               <button className="bg-[#FFFBef] hard-xs push rounded-xl w-10 h-10 text-lg font-black text-[#2B2016] flex-none" title={d.leave}
-                onClick={() => { try { sessionStorage.removeItem('ct_guest_session'); } catch { /* ignore */ } getNet().leave(); location.href = location.pathname; }}>←</button>
+                onClick={() => { try { sessionStorage.removeItem('ct_guest_session:cheese-thief'); } catch { /* ignore */ } getNet().leave(); location.href = location.pathname; }}>←</button>
               <div className="min-w-0">
                 <h2 className="disp text-[26px] font-extrabold text-[#2B2016] leading-none">{d.lobby}</h2>
                 <p className="text-[13px] font-bold text-[#8A7B63] mt-0.5">{d.lobbySub(pub.round)}</p>

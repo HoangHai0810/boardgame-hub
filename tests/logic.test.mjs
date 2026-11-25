@@ -1,7 +1,7 @@
 // Logic tests run against the TypeScript source transpiled on the fly by esbuild (bundled with vite install) —
 // fallback: we compile with tsc in the test runner script. This file imports the compiled JS.
 import assert from 'node:assert';
-import { createGame, assignRolesAndDice, canInspect, doInspect, doSteal, castVote, resolveVotes, publicState, privateState, MIN_PLAYERS, MAX_PLAYERS, chooseFollower, followerKnowledge, recruitCount, followers, recordHour } from '../shared/logic.mjs';
+import { createGame, assignRolesAndDice, canInspect, doInspect, doSteal, castVote, resolveVotes, publicState, privateState, MIN_PLAYERS, MAX_PLAYERS, chooseFollower, followerKnowledge, recruitCount, followers, recordHour } from '../games/cheese-thief/logic.mjs';
 
 let passed = 0;
 const t = (name, fn) => { fn(); passed++; console.log('PASS', name); };

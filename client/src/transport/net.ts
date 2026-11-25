@@ -8,12 +8,11 @@
 //  C) Socket.IO (?server=<url>): the dedicated Node server in server/.
 import Peer, { DataConnection } from 'peerjs';
 import { io, Socket } from 'socket.io-client';
-import { HostEngine, Pub, Priv } from './hostEngine';
-import { makeRoomCode } from '../../shared/logic';
+import { engineFor, EngineLike } from './engines';
+import { makeRoomCode } from './util';
 import { createMqttNet } from './net-mqtt';
 import { getClientId } from './util';
 
-export type { Pub, Priv };
 
 export interface Net {
   createRoom(name: string): void;
@@ -23,14 +22,18 @@ export interface Net {
    *  onJoined/onError for the cancelled attempt afterwards. */
   cancelConnect(): void;
   startGame(): void; beginNight(): void; ready(): void; readyVote(): void;
-  nightAction(kind: 'steal' | 'inspect' | 'chooseFollower', targetId?: string): void;
+  // kind IS the action name on the wire ('steal' in Cheese Thief,
+  // 'wolfPick' in Ma Sói, …): the transports forward it verbatim.
+  nightAction(kind: string, targetId?: string): void;
   chat(text: string): void; toVoting(): void;
   vote(targetId: string): void; playAgain(): void; leave(): void;
   kick(targetId: string): void;
   setDiscussion(ms: number): void;
 }
 export interface Handlers {
-  onState(s: Pub): void; onPrivate(p: Priv): void;
+  // Payload-agnostic: the transport forwards states as JSON and never
+  // inspects them — each game's App types its own Pub/Priv.
+  onState(s: any): void; onPrivate(p: any): void;
   onJoined(code: string, playerId: string, isHost: boolean): void;
   onError(msg: string): void; onStatus(msg: string): void;
   /** MQTT transport only: this guest was elected successor host after
@@ -40,7 +43,7 @@ export interface Handlers {
 
 export { getClientId } from './util';
 const cleanName = (n: string) => n.replace(/[<>]/g, '').trim().slice(0, 20) || 'Mouse';
-const PEER_PREFIX = 'cheesethief-v1-';
+const peerPrefix = (gameId: string) => `ct-${gameId}-v1-`;
 const PEER_OPTS = {
   config: {
     iceServers: [
@@ -54,10 +57,10 @@ const PEER_OPTS = {
 };
 
 /* ---------------- PeerJS transport ---------------- */
-export function createPeerNet(h: Handlers): Net {
+export function createPeerNet(h: Handlers, gameId = 'cheese-thief'): Net {
   let peer: Peer | null = null;
   let hostConn: DataConnection | null = null;
-  let engine: HostEngine | null = null;
+  let engine: EngineLike | null = null;
   const conns = new Map<string, DataConnection>();
   let myId = getClientId();
   let isHost = false;
@@ -87,7 +90,7 @@ export function createPeerNet(h: Handlers): Net {
         conn.send({ type: 'joined', code: roomCode, playerId: pid, isHost: false });
         engine.broadcast();
       } else if (raw?.type === 'intent' && raw.playerId) {
-        const p = engine.state.players.find(x => x.id === raw.playerId);
+        const p = engine.state.players.find((x: any) => x.id === raw.playerId);
         if (p) engine.handle(p, raw);
       }
     });
@@ -98,7 +101,7 @@ export function createPeerNet(h: Handlers): Net {
   }
   const intent = (action: string, extra: object = {}) => {
     if (engine) {
-      const me = engine.state.players.find(p => p.id === myId);
+      const me = engine.state.players.find((p: any) => p.id === myId);
       if (me) engine.handle(me, { action, ...extra });
     } else hostConn?.send({ type: 'intent', playerId: myId, action, ...extra });
   };
@@ -107,15 +110,17 @@ export function createPeerNet(h: Handlers): Net {
     createRoom(name: string) {
       isHost = true; roomCode = makeRoomCode();
       h.onStatus('STATUS_CREATING');
-      peer = new Peer(PEER_PREFIX + roomCode, PEER_OPTS);
+      peer = new Peer(peerPrefix(gameId) + roomCode, PEER_OPTS);
       peer.on('open', () => {
-        engine = new HostEngine(roomCode, {
-          sendPub: (pub) => { h.onState(pub); for (const c of conns.values()) c.send({ type: 'state', data: pub }); },
-          sendPriv: (pid, priv) => {
+        const Ctor = engineFor(gameId);
+        if (!Ctor) { h.onError('GAME_NOT_SUPPORTED'); return; }
+        engine = new Ctor(roomCode, {
+          sendPub: (pub: any) => { h.onState(pub); for (const c of conns.values()) c.send({ type: 'state', data: pub }); },
+          sendPriv: (pid: string, priv: any) => {
             if (pid === myId) { h.onPrivate(priv); return; }
             conns.get(pid)?.send({ type: 'private', data: priv });
           },
-          sendError: (pid, msg) => {
+          sendError: (pid: string, msg: string) => {
             if (pid === myId) { h.onError(msg); return; }
             conns.get(pid)?.send({ type: 'error', msg });
           },
@@ -138,7 +143,7 @@ export function createPeerNet(h: Handlers): Net {
         if (!hostConn?.open) h.onError('PEER_BLOCKED');
       }, 30000);
       peer.on('open', () => {
-        hostConn = peer!.connect(PEER_PREFIX + roomCode, { reliable: true });
+        hostConn = peer!.connect(peerPrefix(gameId) + roomCode, { reliable: true });
         hostConn.on('open', () => { if (joinTimer) { clearTimeout(joinTimer); joinTimer = null; } hostConn!.send({ type: 'join', clientId: myId, name: cleanName(name) }); });
         hostConn.on('data', handleHostMsg);
         hostConn.on('close', () => h.onError('HOST_DISCONNECTED'));
@@ -174,25 +179,25 @@ export function createPeerNet(h: Handlers): Net {
 }
 
 /* ---------------- Socket.IO transport ---------------- */
-export function createSocketNet(serverUrl: string, h: Handlers): Net {
+export function createSocketNet(serverUrl: string, h: Handlers, gameId = 'cheese-thief'): Net {
   const socket: Socket = io(serverUrl, { transports: ['websocket', 'polling'] });
   let myId = getClientId();
   let sockAttempt = 0;
-  socket.on('state', (s: Pub) => h.onState(s));
-  socket.on('private', (p: Priv) => h.onPrivate(p));
+  socket.on('state', (s: any) => h.onState(s));
+  socket.on('private', (p: any) => h.onPrivate(p));
   socket.on('errorMsg', (m: string) => h.onError(m));
   socket.on('connect_error', () => h.onError('SERVER_UNREACHABLE'));
   return {
     createRoom(name: string) {
       const att = ++sockAttempt;
-      socket.emit('createRoom', { name: cleanName(name), clientId: myId }, (r: any) => {
+      socket.emit('createRoom', { game: gameId, name: cleanName(name), clientId: myId }, (r: any) => {
         if (att !== sockAttempt) return; // cancelled meanwhile
         r?.ok ? h.onJoined(r.code, r.playerId, true) : h.onError(r?.error || 'FAILED');
       });
     },
     joinRoom(code: string, name: string) {
       const att = ++sockAttempt;
-      socket.emit('joinRoom', { code, name: cleanName(name), clientId: myId }, (r: any) => {
+      socket.emit('joinRoom', { game: gameId, code, name: cleanName(name), clientId: myId }, (r: any) => {
         if (att !== sockAttempt) return; // cancelled meanwhile
         r?.ok ? h.onJoined(r.code, r.playerId, false) : h.onError(r?.error || 'FAILED');
       });
@@ -213,10 +218,10 @@ export function createSocketNet(serverUrl: string, h: Handlers): Net {
   };
 }
 
-export function createNet(h: Handlers): Net {
+export function createNet(h: Handlers, gameId = 'cheese-thief'): Net {
   const q = new URLSearchParams(location.search);
   const server = q.get('server');
-  if (server) return createSocketNet(server, h);
-  if (q.get('net') === 'peer') return createPeerNet(h);
-  return createMqttNet(h);
+  if (server) return createSocketNet(server, h, gameId);
+  if (q.get('net') === 'peer') return createPeerNet(h, gameId);
+  return createMqttNet(h, gameId);
 }

@@ -25,7 +25,6 @@
 import type { MqttClient } from 'mqtt';
 import { brokerOrder, connectMqttSequential } from './brokers';
 
-const vTopic = (code: string, part: string) => `ct1/${code}/${part}`;
 
 export interface VoiceHandle {
   /** Acquire the mic and start sending to the whole mesh. */
@@ -49,7 +48,9 @@ interface Peer {
   remoteSet: boolean;
 }
 
-export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbacks): Promise<VoiceHandle> {
+export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbacks, gameId = 'cheese-thief'): Promise<VoiceHandle> {
+  // Voice rides the same per-game topic tree as the game bus.
+  const vTopic = (code: string, part: string) => `ct1/${gameId}/${code}/${part}`;
   // Listen-only by default: NO mic is requested to join the mesh.
   let stream: MediaStream | null = null;
   let micOn = false;

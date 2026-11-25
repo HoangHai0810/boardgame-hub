@@ -9,7 +9,7 @@ import {
   autoInspectIdle, applyDefaultVotes,
   chooseFollower, autoResolveFollowerChoice, recruitCount, followers, recordHour,
   MIN_PLAYERS, MAX_PLAYERS, HOUR_MS, RECRUIT_MS, DISCUSSION_MS, VOTE_MS,
-} from '../../shared/logic';
+} from '../../../../games/cheese-thief/logic';
 
 export type Pub = ReturnType<typeof publicState>;
 export type Priv = ReturnType<typeof privateState>;

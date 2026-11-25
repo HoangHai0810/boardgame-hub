@@ -7,11 +7,12 @@ import { createServer } from 'node:http';
 import { Server, Socket } from 'socket.io';
 import {
   GameState, Player, createGame, assignRolesAndDice, publicState, privateState,
-  doSteal, doInspect, castVote, resolveVotes, makeRoomCode, canSteal, thiefOf,
+  doSteal, doInspect, castVote, resolveVotes, canSteal, thiefOf,
   autoInspectIdle, applyDefaultVotes,
   chooseFollower, autoResolveFollowerChoice, recruitCount, followers, recordHour,
   MIN_PLAYERS, MAX_PLAYERS, HOUR_MS, RECRUIT_MS, DISCUSSION_MS, VOTE_MS,
 } from '../../games/cheese-thief/logic.js';
+import { makeRoomCode } from '../../games/room.js';
 
 const app = express();
 app.use(cors());
