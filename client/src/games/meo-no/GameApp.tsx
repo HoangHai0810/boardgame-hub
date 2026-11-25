@@ -736,14 +736,16 @@ export default function MeoNoApp() {
                   <span className="font-bold text-[#8A7B63] text-sm">{myTurn ? d.yourTurn : ''}</span>
                 </div>
                 <div className="flex pb-2 pt-2 -mx-1 px-1 overflow-x-auto">
-                  {myHand.map(c => {
+                  {myHand.map((c, hi) => {
                     const playable = canPlay(c);
                     const selected = c.id === selectedCardId;
                     return (
-                      <button key={c.id} data-testid="hand-card" data-card-id={c.id} data-kind={c.kind} disabled={!playable && !selected} onClick={() => setSelectedCardId(selected ? null : c.id)}
-                        className={`flex-none rounded-xl transition -ml-1 first:ml-0 ${playable ? 'hover:-translate-y-2 cursor-pointer' : 'opacity-45 cursor-default'} ${selected ? 'ring-4 ring-[#FFB020] -translate-y-2 z-10' : ''}`}>
+                      <span key={c.id} className="flex-none anim-card-fall -ml-1 first:ml-0" style={{ animationDelay: `${hi * 45}ms` }}>
+                      <button data-testid="hand-card" data-card-id={c.id} data-kind={c.kind} disabled={!playable && !selected} onClick={() => setSelectedCardId(selected ? null : c.id)}
+                        className={`flex-none rounded-xl transition ${playable ? 'hover:-translate-y-2 cursor-pointer' : 'opacity-45 cursor-default'} ${selected ? 'ring-4 ring-[#FFB020] -translate-y-2 z-10' : ''}`}>
                         <MeoCardFace card={c} d={d} size="md" />
                       </button>
+                      </span>
                     );
                   })}
                   {myHand.length === 0 && <p className="font-bold text-[#8A7B63] py-6">…</p>}

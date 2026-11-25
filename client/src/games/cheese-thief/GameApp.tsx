@@ -17,7 +17,7 @@ const PIPS: Record<number, number[]> = { 1: [5], 2: [1, 9], 3: [1, 5, 9], 4: [1,
 export function DiceFace({ value, size = 96 }: { value: number; size?: number }) {
   const pips = PIPS[value] || [];
   return (
-    <div className="dice-face" style={{ width: size, height: size }} aria-label={`dice ${value}`}>
+    <div className="dice-face anim-dice" style={{ width: size, height: size }} aria-label={`dice ${value}`}>
       {pips.map(cell => {
         const row = Math.ceil(cell / 3), col = ((cell - 1) % 3) + 1;
         return <div key={cell} className="dice-pip" style={{ left: `${(col - 1) * 28 + 12}%`, top: `${(row - 1) * 28 + 12}%` }} />;
@@ -496,8 +496,8 @@ export default function App() {
       <div className="bg-[#FFFBef] hard-sm rounded-3xl p-2 text-left text-[#2B2016]">
         <div className="font-extrabold text-center text-[13px] mb-1">{d.standings}</div>
         <div className="flex flex-wrap gap-1.5 justify-center max-h-[58px] overflow-y-auto">
-          {scored.map(p => (
-            <span key={p.id} className="bg-white hard-xs rounded-full px-2 py-0.5 text-[12px] font-bold">{mouseFor(p.id)} {p.name} {((p as any).wins === top) && '👑'} 🏆×{(p as any).wins}</span>))}
+          {scored.map((p, si) => (
+            <span key={p.id} className="inline-block bg-white hard-xs rounded-full px-2 py-0.5 text-[12px] font-bold anim-slide-up" style={{ animationDelay: `${si * 70}ms` }}>{mouseFor(p.id)} {p.name} {((p as any).wins === top) && '👑'} 🏆×{(p as any).wins}</span>))}
         </div>
       </div>
     );
@@ -692,7 +692,7 @@ export default function App() {
           <div className="anim-pop flex flex-col flex-1 min-h-0 w-full">
             <p className="disp text-center text-[#FFB020] font-extrabold tracking-[0.22em] text-xs uppercase">{d.yourRole}</p>
             <p className="text-center text-[#B9BCE0] font-bold mt-1">{d.revealSub}</p>
-            <div className="card-cream max-w-md sm:max-w-2xl w-full mx-auto mt-4 px-5 py-6 text-center sm:text-left">
+            <div className="card-cream max-w-md sm:max-w-2xl w-full mx-auto mt-4 px-5 py-6 text-center sm:text-left anim-card-flip">
               <div className="flex flex-col sm:flex-row items-center gap-5">
               <div className="flex-1 text-center">
               <MouseAvatar seed={joined.playerId} size={118} halo="#FFF3CF" state={priv.role === 'thief' ? 'thief' : priv.role === 'fallmouse' ? 'dead' : 'awake'} />

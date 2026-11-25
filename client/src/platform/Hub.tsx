@@ -95,8 +95,8 @@ export default function Hub() {
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mt-4 sm:mt-5">
-          {live.map(g => (
-            <a key={g.id} href={playUrl(g.id)} className="col-span-2 lg:col-span-1 card-cream !rounded-[28px] overflow-hidden flex flex-col no-underline">
+          {live.map((g, gi) => (
+            <a key={g.id} href={playUrl(g.id)} className="col-span-2 lg:col-span-1 card-cream !rounded-[28px] overflow-hidden flex flex-col no-underline anim-enter lift" style={{ animationDelay: `${gi * 70}ms` }}>
               {/* mobile: thin color strip; laptop: tall banner with icon + pill */}
               <div className="h-2.5 lg:hidden flex-none" style={{ background: g.color }} />
               <div className="hidden lg:flex relative items-center px-5 h-[110px] flex-none" style={{ background: g.color }}>
@@ -128,8 +128,8 @@ export default function Hub() {
             </a>
           ))}
 
-          {soon.map(c => (
-            <div key={c.name} className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-3 sm:p-5 flex flex-col opacity-95">
+          {soon.map((c, ci) => (
+            <div key={c.name} className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-3 sm:p-5 flex flex-col opacity-95 anim-enter" style={{ animationDelay: `${(live.length + ci) * 70}ms` }}>
               <div className="flex items-start justify-between gap-2">
                 {c.icon}
                 <span className="lg:hidden inline-block border-2 border-[#FFB020] text-[#FFB020] text-[10px] font-black rounded-full px-2 py-px whitespace-nowrap">{d.comingSoon}</span>

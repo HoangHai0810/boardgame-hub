@@ -28,7 +28,7 @@ import { generateKeys, deriveAesKey, encryptJson, decryptJson, KeySet } from './
 import { makeRoomCode } from './util';
 import type { Net, Handlers } from './net';
 import { getClientId } from './util';
-import { brokerOrder, connectMqttSequential } from './brokers';
+import { brokerOrder, connectMqttSequential, connectMqttParallel } from './brokers';
 import type { EngineHooks } from '../games/cheese-thief/hostEngine';
 
 const cleanName = (n: string) => n.replace(/[<>]/g, '').trim().slice(0, 20) || 'Mouse';
@@ -59,7 +59,7 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
   let makeExtra: (() => mqtt.IClientOptions) | null = null;
   let bindCurrent: (() => void) | null = null;
   let joinTimer: ReturnType<typeof setTimeout> | null = null;
-  let joinTried = new Set<number>(); // broker indices already tried for this join
+  let raceClients: MqttClient[] = []; // in-flight parallel join clients (ended on win/cancel)
   let order: string[] = [];
   let brokerIdx = 0;
   let failoverTimer: ReturnType<typeof setTimeout> | null = null;
@@ -403,11 +403,6 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
     myName = name;
     h.onStatus('STATUS_CONNECTING:' + roomCode);
     myKeys = await generateKeys();
-    // The join clock starts AFTER the broker walk, not before: the walk
-    // itself can take ~20s on a bad network, and the old 45s timer fired
-    // while the guest was still walking — or sat on one broker for 45s
-    // while the host was on another (split-broker: host and guest on
-    // different networks can reach different brokers first).
     makeExtra = () => {
       willConn = nonce();
       return { clientId: 'ct-c-' + myId + '-' + Math.random().toString(36).slice(2, 7),
@@ -415,39 +410,84 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
     };
     bindCurrent = () => { if (client) bindGuest(client); };
     order = brokerOrder(roomCode);
-    const rc = await connectMqttSequential(order, 0, makeExtra());
-    if (att !== attemptSeq) { try { rc.client.end(true); } catch { /* noop */ } return; } // cancelled mid-walk
-    client = rc.client; brokerIdx = rc.idx;
-    joinTried = new Set([rc.idx]);
+    // JOIN RACE (v40 — "bấm phát vào luôn"): connect to every broker in
+    // the room's order in parallel and send the join on each one as soon
+    // as it connects. Only the broker the host is on can answer 'joined'
+    // (the reply is never retained, and no host listens on the others),
+    // so the guest lands on the host's broker in ~1–2s — whether or not
+    // that broker is first in the order. The old sequential walk + 12s
+    // hop burned 12s+ on split-broker rooms (host and guest on different
+    // networks reaching different brokers first).
+    const rc = await raceJoin(att);
+    if (att !== attemptSeq) { if (rc && 'client' in rc) { try { rc.client.end(true); } catch { /* noop */ } } return; } // cancelled mid-race
+    if (!rc) { notifyError('HOST_UNREACHABLE'); return; }
+    if ('error' in rc) { notifyError(rc.error); return; }
+    client = rc.client; brokerIdx = rc.idx; willConn = rc.conn;
+    // Long-lived bus: restore auto-reconnect (v29 voice regression).
+    (client as any).options.reconnectPeriod = 2000;
     watchLifecycle(client);
-    bindCurrent();
-    armJoinTimer(att);
+    bindCurrent(); // re-joins with the winner's conn; the host answers 'joined' again
+    armJoinTimer(att); // the re-join's reply has 12s; bindGuest clears it
   }
 
-  /** (Re)arm the host-reply clock: 12s on this broker with no 'joined'
-   *  reply, then hop to the next broker in the room's order instead of
-   *  erroring at once. Up to 3 distinct brokers, then HOST_UNREACHABLE. */
+  /** (Re)arm the host-reply clock: 12s with no 'joined' reply, then the
+   *  host is unreachable on every broker we tried. */
   function armJoinTimer(att: number) {
     if (joinTimer) { clearTimeout(joinTimer); joinTimer = null; }
-    joinTimer = setTimeout(() => { void hopJoinBroker(att); }, 12000);
+    joinTimer = setTimeout(() => { if (att === attemptSeq && !joinedFired && !left) notifyError('HOST_UNREACHABLE'); }, 12000);
   }
-  async function hopJoinBroker(att: number) {
-    if (att !== attemptSeq || joinedFired || left) return;
-    joinTried.add(brokerIdx);
-    if (joinTried.size >= 3) { notifyError('HOST_UNREACHABLE'); return; }
-    const old = client; client = null;
-    try { old?.removeAllListeners(); old?.end(true); } catch { /* noop */ }
-    const extra = makeExtra;
-    if (!extra) { notifyError('NET_UNREACHABLE'); return; }
-    try {
-      const rc = await connectMqttSequential(order, (brokerIdx + 1) % order.length, extra());
-      if (att !== attemptSeq || joinedFired || left) { try { rc.client.end(true); } catch { /* noop */ } return; }
-      if (joinTried.has(rc.idx)) { try { rc.client.end(true); } catch { /* noop */ } notifyError('HOST_UNREACHABLE'); return; }
-      client = rc.client; brokerIdx = rc.idx;
-      watchLifecycle(client);
-      bindCurrent?.();
-      armJoinTimer(att);
-    } catch { notifyError('NET_UNREACHABLE'); }
+
+  /** Parallel join race (see startClient). Resolves the winning client
+   *  (with its leave-will nonce), {error} when the host answers with a
+   *  rejection (ROOM_FULL / GAME_STARTED), or null when no broker is
+   *  reachable at all (NET_UNREACHABLE) or nobody answers in 12s
+   *  (HOST_UNREACHABLE — the caller maps null to that). Loser clients are
+   *  ended gracefully, so their leave-wills never fire. */
+  function raceJoin(att: number): Promise<{ client: MqttClient; idx: number; conn: string } | { error: string } | null> {
+    return new Promise((resolve) => {
+      let done = false;
+      let connected = 0;
+      const clients: MqttClient[] = [];
+      raceClients = clients;
+      let replyTimer: ReturnType<typeof setTimeout> | null = null;
+      const finish = (r: { client: MqttClient; idx: number; conn: string } | { error: string } | null) => {
+        if (done) return; done = true;
+        if (replyTimer) { clearTimeout(replyTimer); replyTimer = null; }
+        if (joinTimer) { clearTimeout(joinTimer); joinTimer = null; }
+        for (const c of clients) {
+          if (!r || !('client' in r) || c !== r.client) { try { c.removeAllListeners(); c.end(true); } catch { /* noop */ } }
+        }
+        raceClients = [];
+        resolve(r);
+      };
+      const onClient = (c: MqttClient, idx: number, conn: string) => {
+        if (done || att !== attemptSeq || left) { try { c.end(true); } catch { /* noop */ } return; }
+        clients.push(c); connected++;
+        if (!replyTimer) {
+          // First join is out — the host has 12s to answer on any broker.
+          replyTimer = setTimeout(() => finish(null), 12000);
+          joinTimer = replyTimer; // cancelConnect / notifyError clear it
+        }
+        // Minimal race binding: only the private topic. We deliberately do
+        // NOT subscribe to 'pub' yet — a stale retained state/hostGone on
+        // a broker we don't end up using must not fail the join.
+        c.subscribe(topic(roomCode, 'p/' + myId), { qos: 1 });
+        c.on('message', (_t, payload) => {
+          if (done || att !== attemptSeq) return;
+          let msg: any; try { msg = JSON.parse(payload.toString()); } catch { return; }
+          if (msg.type === 'joined') finish({ client: c, idx, conn });
+          else if (msg.type === 'error') finish({ error: String(msg.msg || 'HOST_UNREACHABLE') });
+        });
+        c.publish(topic(roomCode, 'in'), JSON.stringify({
+          type: 'join', clientId: myId, name: cleanName(myName), pubJwk: myKeys!.pubJwk, conn,
+        }), { qos: 1 });
+      };
+      const extraFactory = () => { const opts = makeExtra!(); return { opts, tag: willConn }; };
+      void connectMqttParallel(order, extraFactory, onClient).then(() => {
+        if (done) return;
+        if (connected === 0) finish({ error: 'NET_UNREACHABLE' });
+      });
+    });
   }
 
   const intent = (action: string, extra: object = {}) => {
@@ -479,6 +519,10 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
       left = true; // lifecycle watcher/failover stay down; next attempt resets it
       if (joinTimer) { clearTimeout(joinTimer); joinTimer = null; }
       if (failoverTimer) { clearTimeout(failoverTimer); failoverTimer = null; }
+      // A join race may be in flight (module `client` is still null):
+      // drop its clients too, or they linger connected with live wills.
+      for (const c of raceClients) { try { c.end(true); } catch { /* noop */ } }
+      raceClients = [];
       // A client may already be connected (guest waiting on the host's
       // 'joined' reply): drop it. We never got a player slot, so the
       // leave-will's __gone names a player the host never added — a no-op.
@@ -501,6 +545,8 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
     leave() {
       left = true;
       if (failoverTimer) { clearTimeout(failoverTimer); failoverTimer = null; }
+      for (const c of raceClients) { try { c.end(true); } catch { /* noop */ } }
+      raceClients = [];
       try {
         if (engine) {
           client?.publish(topic(roomCode, 'pub'), JSON.stringify({ type: 'hostGone' }), { retain: true, qos: 1 });

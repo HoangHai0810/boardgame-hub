@@ -553,14 +553,16 @@ export default function UnoApp() {
                   <span className="font-bold text-[#8A7B63] text-sm">{myTurn ? d.yourTurn : ''}</span>
                 </div>
                 <div className="flex gap-1 overflow-x-auto pb-2 pt-2 -mx-1 px-1">
-                  {(priv?.myHand ?? []).map(c => {
+                  {(priv?.myHand ?? []).map((c, hi) => {
                     const playable = canPlay(c);
                     const isDrawn = c.id === priv?.drawnCardId;
                     return (
-                      <button key={c.id} data-testid="hand-card" data-card-id={c.id} disabled={!playable} onClick={() => doPlay(c)}
+                      <span key={c.id} className="flex-none anim-card-fall" style={{ animationDelay: `${hi * 45}ms` }}>
+                      <button data-testid="hand-card" data-card-id={c.id} disabled={!playable} onClick={() => doPlay(c)}
                         className={`flex-none rounded-xl transition ${playable ? 'hover:-translate-y-2 cursor-pointer' : 'opacity-40 cursor-default'} ${isDrawn ? 'ring-4 ring-[#FFB020] -translate-y-2' : ''}`}>
                         <UnoCardFace card={c} size="md" />
                       </button>
+                      </span>
                     );
                   })}
                   {(priv?.myHand.length ?? 0) === 0 && <p className="font-bold text-[#8A7B63] py-6">…</p>}

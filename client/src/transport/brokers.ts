@@ -88,3 +88,23 @@ export async function connectMqttSequential(
   }
   throw new Error('bus unreachable');
 }
+
+/** Connect to every broker in `order` IN PARALLEL; `onClient` fires for
+ *  each one as soon as it connects (with the per-client `tag` the extra
+ *  factory returned). Resolves when every attempt has settled. Used ONLY
+ *  by the guest join race (v40): the guest sends its join on every
+ *  connected broker and follows the first 'joined' answer, so it lands on
+ *  the host's broker in ~1–2s even when that broker is not first in the
+ *  room's order. The HOST never uses this — its broker choice stays
+ *  deterministic per room (see the v27 rule above). */
+export async function connectMqttParallel<T>(
+  order: string[],
+  extra: () => { opts: mqtt.IClientOptions; tag: T },
+  onClient: (client: MqttClient, idx: number, tag: T) => void,
+): Promise<void> {
+  await Promise.all(order.map(async (url, idx) => {
+    const { opts, tag } = extra();
+    const c = await tryOneBroker(url, opts);
+    if (c) onClient(c, idx, tag);
+  }));
+}

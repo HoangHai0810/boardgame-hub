@@ -104,10 +104,11 @@ const dict = {
     favorGiveTitle: (n: string) => `${n} xin bài từ bạn`,
     favorGiveSub: 'Chọn 1 lá trên tay để đưa cho họ.',
     favorGiveBtn: 'Đưa lá này',
-    // Cards
-    cardDefuse: 'Gỡ bom', cardNope: 'Không!', cardSkip: 'Bỏ lượt', cardShuffle: 'Xáo bài',
-    cardPeek: 'Xem trước', cardAttack: 'Tấn công', cardFavor: 'Xin bài',
-    cardCat: 'Mèo thường', cardEK: 'Mèo nổ',
+    // Cards — card names stay English (Hoàng 2026-11-26), except the Nope
+    // card which keeps its Vietnamese name "Không!" per his design.
+    cardDefuse: 'Defuse', cardNope: 'Không!', cardSkip: 'Skip', cardShuffle: 'Shuffle',
+    cardPeek: 'See the Future', cardAttack: 'Attack', cardFavor: 'Favor',
+    cardCat: 'Cat', cardEK: 'Exploding Kitten',
     // Results (design MN8)
     roundOver: 'HẾT VÁN',
     survived: (n: number) => `Sống sót · còn ${n} lá`,
@@ -233,7 +234,7 @@ const dict = {
     favorGiveBtn: 'Give this card',
     cardDefuse: 'Defuse', cardNope: 'Nope!', cardSkip: 'Skip', cardShuffle: 'Shuffle',
     cardPeek: 'See the Future', cardAttack: 'Attack', cardFavor: 'Favor',
-    cardCat: 'Cat Card', cardEK: 'Exploding Cat',
+    cardCat: 'Cat', cardEK: 'Exploding Kitten',
     roundOver: 'GAME OVER',
     survived: (n: number) => `Survived · ${n} cards left`,
     explodedAt: (n: number) => `Exploded on turn ${n} · out of Defuses`,

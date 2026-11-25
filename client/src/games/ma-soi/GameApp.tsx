@@ -287,7 +287,7 @@ export default function MaSoiApp() {
     const emptySlots = variant === 'lobby' ? Math.max(0, 12 - players.length) : 0;
     return (
       <div className={`grid ${cols} gap-2 my-3`}>
-        {players.map(p => {
+        {players.map((p, pi) => {
           const canPick = onPick && pickable ? pickable(p) : false;
           const dead = !p.alive;
           const isMe = p.id === joined?.playerId;
@@ -299,7 +299,7 @@ export default function MaSoiApp() {
           if (variant === 'results') {
             const bg = p.role === 'wolf' ? 'bg-[#FBE3E0]' : dead ? 'bg-[#E5E5E5]' : 'bg-[#FFFBef]';
             return (
-              <div key={p.id} className={`flex items-center gap-2.5 rounded-2xl px-3 py-2.5 hard-xs ${bg}`}>
+              <div key={p.id} className={`flex items-center gap-2.5 rounded-2xl px-3 py-2.5 hard-xs ${bg} anim-slide-up`} style={{ animationDelay: `${pi * 60}ms` }}>
                 <span className="flex-none">{isWolfCard ? <WolfAvatar seed={p.id} size={44} state="dead" /> : <MouseAvatar seed={p.id} size={44} state={dead ? 'dead' : 'awake'} />}</span>
                 <span className="min-w-0">
                   <span className={`block font-extrabold truncate ${dead ? 'line-through text-[#6B6257]' : 'text-[#2B2016]'}`}>{p.name}{isMe ? ` (${d.you})` : ''}</span>
@@ -314,7 +314,7 @@ export default function MaSoiApp() {
               <button key={p.id} disabled={!canPick}
                 onClick={() => onPick?.(p.id)}
                 className={`relative rounded-[20px] p-3 text-center hard-sm ${dead ? 'bg-[#EFEFEF] opacity-70' : voted ? 'bg-[#DFF5E3]' : isMe ? 'bg-[#EFE7D3]' : 'bg-white'} ${canPick ? 'hover:scale-[1.03] transition cursor-pointer' : 'cursor-default'}`}>
-                {voted && <span className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-[#0E9F6E] text-white disp font-extrabold text-sm flex items-center justify-center border-2 border-[#2B2016]">✓</span>}
+                {voted && <span className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-[#0E9F6E] text-white disp font-extrabold text-sm flex items-center justify-center border-2 border-[#2B2016] anim-badge-pop">✓</span>}
                 <span className="mx-auto block w-fit">{isWolfCard ? <WolfAvatar seed={p.id} size={56} state="wolf" /> : <MouseAvatar seed={p.id} size={56} state={dead ? 'dead' : 'awake'} />}</span>
                 <span className={`block font-extrabold text-lg mt-1 ${dead ? 'line-through text-gray-500' : 'text-[#2B2016]'}`}>{p.name}{isMe ? ` (${d.you})` : ''}</span>
                 <span className="block text-sm font-bold text-[#8A7B63] mt-0.5">
@@ -631,7 +631,7 @@ export default function MaSoiApp() {
           <div className="max-w-md mx-auto text-center">
             <p className="disp text-[#FFB020] font-extrabold tracking-[0.22em] text-xs">{d.revealKicker}</p>
             <p className="text-[#B9BCE0] font-bold mt-1">{d.revealHide}</p>
-            <div className="card-cream !rounded-[28px] p-5 mt-4">
+            <div className="card-cream !rounded-[28px] p-5 mt-4 anim-card-flip">
               <RoleIcon role={priv?.myRole ?? 'villager'} size={112} />
               <div className="mt-3">
                 <span className="inline-block disp font-extrabold text-xl tracking-wide text-white rounded-full px-5 py-1.5" style={{ background: ROLE_STRONG[priv?.myRole ?? 'villager'] }}>{roleLabel(d, priv?.myRole)}</span>
@@ -676,7 +676,7 @@ export default function MaSoiApp() {
               })}
             </div>
             <div className={amWolf ? 'lg:grid lg:grid-cols-[1fr_340px] lg:gap-4' : 'max-w-3xl mx-auto'}>
-              <div>
+              <div key={pub!.nightStep} className="anim-enter">
                 {amDead ? (
                   <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-5 text-center">
                     <div className="text-6xl mb-2">💀</div>
@@ -831,8 +831,8 @@ export default function MaSoiApp() {
                   {pub!.nightDeaths.length > 0 ? (<>
                     <p className="font-extrabold">{d.diedLastNight}</p>
                     <div className="grid sm:grid-cols-2 gap-2 mt-2">
-                      {pub!.nightDeaths.map(x => (
-                        <div key={x.id} className="flex items-center gap-2 bg-white hard-sm rounded-2xl px-3 py-2">
+                      {pub!.nightDeaths.map((x, di) => (
+                        <div key={x.id} className="flex items-center gap-2 bg-white hard-sm rounded-2xl px-3 py-2 anim-slide-up" style={{ animationDelay: `${di * 90}ms` }}>
                           <MouseAvatar seed={x.id} size={40} state="dead" />
                           <div className="font-bold min-w-0 truncate">{x.name}</div>
                         </div>
