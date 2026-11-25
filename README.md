@@ -2,7 +2,7 @@
 
 A multi-boardgame platform that runs in the browser — no install, works on mobile. Pick a game, create a room, share the link or 5-letter code, play.
 
-**▶ Play now: https://hoanghai0810.github.io/cheese-thief-game/** — Vietnamese + English UI.
+**▶ Play now: https://hoanghai0810.github.io/boardgame-hub/** — Vietnamese + English UI.
 
 ## Games
 - 🧀 **Chuột Phô Mai (Cheese Mouse)** — LIVE. Real-time multiplayer social deduction for **4–8 players** (see below).
