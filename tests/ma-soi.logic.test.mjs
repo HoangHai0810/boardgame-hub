@@ -4,6 +4,7 @@ import {
   createGame, assignRoles, roleTable, publicState, privateState,
   wolfPick, resolveWolfTarget, seerPeek, guardianProtect, witchSave, witchKill,
   hunterShoot, resolveNight, castVote, resolveVotes, applyDefaultVotes, checkWin,
+  wolfChatMsg, wolfConfirm,
   MIN_PLAYERS, MAX_PLAYERS,
 } from '../games/ma-soi/logic.mjs';
 
@@ -137,6 +138,29 @@ t('publicState hides roles of the living; privateState keeps my secrets', () => 
   const priv2 = privateState(s, s.players[1]);
   assert.equal(priv2.wolfTeam.length, 0);
   assert.equal(priv2.myRole, 'villager');
+});
+t('wolf chat: wolves only, night only, private to wolves', () => {
+  const s = mk(['wolf', 'wolf', 'villager']); night(s, 'wolves');
+  assert.equal(wolfChatMsg(s, s.players[0], 'Ăn Lan đi'), true);
+  assert.equal(s.wolfChat.length, 1);
+  assert.equal(privateState(s, s.players[0]).wolfChat.length, 1);
+  assert.equal(privateState(s, s.players[1]).wolfChat.length, 1); // fellow wolf sees it
+  assert.equal(privateState(s, s.players[2]).wolfChat.length, 0); // villager never sees it
+  assert.equal(wolfChatMsg(s, s.players[2], 'tôi là sói'), false); // villager cannot send
+  assert.equal(wolfChatMsg(s, s.players[0], '   '), false); // empty message
+  s.phase = 'day';
+  assert.equal(wolfChatMsg(s, s.players[0], 'ban ngày'), false); // night only
+});
+t('wolf confirm locks the pick', () => {
+  const s = mk(['wolf', 'wolf', 'villager', 'villager']); night(s, 'wolves');
+  assert.equal(wolfConfirm(s, s.players[0]), false); // nothing picked yet
+  wolfPick(s, s.players[0], 'p2');
+  assert.equal(wolfConfirm(s, s.players[0]), true);
+  assert.equal(privateState(s, s.players[0]).wolfConfirmed, true);
+  assert.equal(wolfPick(s, s.players[0], 'p3'), false); // locked: cannot change pick
+  assert.equal(s.players[0].wolfPick, 'p2');
+  assert.equal(resolveWolfTarget(s), 'p2');
+  assert.equal(wolfConfirm(s, s.players[1]), false); // second wolf has no pick
 });
 t('dead players reveal their role in publicState', () => {
   const s = mk(['wolf', 'villager']);

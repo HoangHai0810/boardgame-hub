@@ -6,6 +6,7 @@ import { t, Lang } from './i18n';
 import { HOUR_MS } from '../../../../games/cheese-thief/logic';
 import { sfx, ensureCtx } from '../../transport/sound';
 import { joinVoice, VoiceHandle } from '../../transport/voice';
+import { MouseAvatar, CheeseWedge } from '../../platform/avatars';
 
 const MICE = ['🐭', '🐹', '🐰', '🦊', '🐱', '🐶', '🐷', '🐨'];
 const mouseFor = (id: string) => MICE[[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % MICE.length];
@@ -32,55 +33,6 @@ export function Confetti() {
       left: `${6 + i * 12}%`, fontSize: 22 + (i % 3) * 8,
       animationDuration: `${2.6 + (i % 4) * 0.7}s`, animationDelay: `${i * 0.22}s`,
     }}>{e}</span>))}</>;
-}
-
-// ---- v30 design system components (SVG mice in the mockup's flat style;
-// per-player pastel colors hashed from the player id) ----
-const MOUSE_COLORS: [string, string][] = [
-  ['#C9CED8', '#9AA3B2'], ['#F8CD9E', '#EDA45F'], ['#ACCDF6', '#7FA8E6'], ['#DEC4F4', '#BB94E4'],
-  ['#B4E0C2', '#85C79B'], ['#F6AC8D', '#E67F57'], ['#F8E08C', '#E9C04C'], ['#F7BDD6', '#EA93B8'],
-];
-const hashId = (id: string) => [...id].reduce((a, c) => a + c.charCodeAt(0), 0);
-export function MouseAvatar({ seed, size = 48, state = 'awake', halo }: { seed: string; size?: number; state?: 'awake' | 'asleep' | 'thief' | 'dead'; halo?: string }) {
-  const [face, ear] = MOUSE_COLORS[hashId(seed) % MOUSE_COLORS.length];
-  return (
-    <svg width={size} height={size} viewBox="0 0 100 100" className="inline-block flex-none" aria-hidden>
-      {halo && <circle cx="50" cy="50" r="48" fill={halo} stroke="#2B2016" strokeWidth="2.5" />}
-      <circle cx="27" cy="27" r="17" fill={ear} stroke="#2B2016" strokeWidth="3" />
-      <circle cx="73" cy="27" r="17" fill={ear} stroke="#2B2016" strokeWidth="3" />
-      <circle cx="27" cy="27" r="8.5" fill="#F6A8BC" />
-      <circle cx="73" cy="27" r="8.5" fill="#F6A8BC" />
-      <circle cx="50" cy="57" r="35" fill={face} stroke="#2B2016" strokeWidth="3" />
-      <g stroke="#2B2016" strokeWidth="1.6" opacity="0.35" strokeLinecap="round"><path d="M8 62 l14 3 M10 72 l13 -1" /><path d="M92 62 l-14 3 M90 72 l-13 -1" /></g>
-      {state === 'thief' ? (<>
-        <rect x="13" y="43" width="74" height="21" rx="10.5" fill="#26221F" />
-        <circle cx="37" cy="53.5" r="6.4" fill="#FFFBef" /><circle cx="63" cy="53.5" r="6.4" fill="#FFFBef" />
-        <circle cx="37" cy="53.5" r="3.2" fill="#2B2016" /><circle cx="63" cy="53.5" r="3.2" fill="#2B2016" />
-      </>) : state === 'asleep' ? (
-        <g stroke="#2B2016" strokeWidth="3" fill="none" strokeLinecap="round"><path d="M30 54 q7 6 14 0" /><path d="M56 54 q7 6 14 0" /></g>
-      ) : state === 'dead' ? (
-        <g stroke="#2B2016" strokeWidth="3.4" strokeLinecap="round"><path d="M31 48 l12 12 M43 48 l-12 12" /><path d="M57 48 l12 12 M69 48 l-12 12" /></g>
-      ) : (
-        <g fill="#2B2016"><circle cx="37" cy="53" r="4.6" /><circle cx="63" cy="53" r="4.6" /></g>
-      )}
-      <ellipse cx="50" cy="68" rx="5.4" ry="4.2" fill="#F2728C" stroke="#2B2016" strokeWidth="1.6" />
-      <path d="M50 72 q0 5 -7 6 M50 72 q0 5 7 6" stroke="#2B2016" strokeWidth="2" fill="none" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-export function CheeseWedge({ size = 92 }: { size?: number }) {
-  return (
-    <svg width={size} height={Math.round(size * 0.76)} viewBox="0 0 100 76" className="inline-block" aria-hidden>
-      <path d="M8 68 L92 68 L92 14 Z" fill="#FFC93C" stroke="#2B2016" strokeWidth="3.5" strokeLinejoin="round" />
-      <path d="M92 14 L92 68 L83 68 L83 23 Z" fill="#F0A92E" />
-      <path d="M15 63 L86 22 L86 31 L27 63 Z" fill="#FFDE59" opacity="0.75" />
-      <g fill="#E39A0B" stroke="#C77F06" strokeWidth="1">
-        <circle cx="66" cy="50" r="6.5" /><circle cx="44" cy="58" r="4.4" /><circle cx="78" cy="35" r="4" /><circle cx="56" cy="43" r="3.1" />
-      </g>
-      <path d="M8 68 L92 68 L92 14 Z" fill="none" stroke="#2B2016" strokeWidth="3.5" strokeLinejoin="round" />
-    </svg>
-  );
 }
 
 function TimerPill({ secs, dark = false }: { secs: number | null; dark?: boolean }) {
@@ -524,7 +476,7 @@ export default function App() {
       return <span key={role} className="bg-white hard-xs rounded-full px-2 py-0.5 text-[12px] font-bold">{emoji} {label} {r.w}/{r.g}</span>;
     };
     return (
-      <div className="bg-[#DFF5E3] hard-sm rounded-3xl p-2.5">
+      <div className="bg-[#DFF5E3] hard-sm rounded-3xl p-2.5 text-[#2B2016]">
         <div className="text-center"><span className="font-extrabold text-[13px]">{d.recordTitle}: </span><span className="font-bold text-teal-700 text-[13px]">{d.recordLine(myRecord.w, myRecord.l)}</span></div>
         <div className="flex flex-wrap justify-center gap-1.5 mt-1">
           {roleChip('sleepyhead', '🐭', d.sleepy)}
@@ -541,7 +493,7 @@ export default function App() {
     if (!scored.length) return null;
     const top = (scored[0] as any).wins ?? 0;
     return (
-      <div className="bg-[#FFFBef] hard-sm rounded-3xl p-2.5 text-left">
+      <div className="bg-[#FFFBef] hard-sm rounded-3xl p-2.5 text-left text-[#2B2016]">
         <div className="font-extrabold text-center text-[13px] mb-1">{d.standings}</div>
         <div className="flex flex-wrap gap-1.5 justify-center">
           {scored.map(p => (

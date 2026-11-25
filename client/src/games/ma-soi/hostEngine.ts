@@ -13,6 +13,7 @@ import {
   wolfPick, resolveWolfTarget, seerPeek, guardianProtect,
   witchSave, witchKill, hunterShoot, resolveNight,
   castVote, resolveVotes, applyDefaultVotes, checkWin,
+  wolfChatMsg, wolfConfirm,
   MIN_PLAYERS, MAX_PLAYERS, NIGHT_STEP_MS, DISCUSSION_MS, VOTE_MS,
 } from '../../../../games/ma-soi/logic';
 import type { NightStep } from '../../../../games/ma-soi/logic';
@@ -66,6 +67,7 @@ export class HostEngine {
     s.nightDeaths = []; s.voteTie = false;
     s.wolfTarget = null; s.guardianTarget = null; s.witchKillTarget = null; s.witchSaved = false;
     s.players.forEach(p => { p.wolfPick = null; p.hasVoted = false; p.vote = null; });
+    s.wolfChat = []; s.wolfConfirmed = [];
     this.wolfPassed.clear();
     // A hunter killed by the last vote shoots first, before the wolves.
     this.runNightStep(s.pendingHunterShot ? 'hunter' : 'wolves');
@@ -208,10 +210,25 @@ export class HostEngine {
       // forward nightAction(kind) verbatim — see transport/net.ts).
       // A pass moves a single-actor step on at once; a wolf pass counts
       // toward the wolves' consensus and retracts that wolf's pick.
-      case 'wolfPick': if (msg.targetId && wolfPick(s, player, msg.targetId)) { this.maybeAdvance('wolves'); this.broadcast(); } break;
+      case 'wolfPick':
+        // The lock lives in logic.wolfPick: a confirmed pick cannot change.
+        if (msg.targetId && wolfPick(s, player, msg.targetId)) { this.maybeAdvance('wolves'); this.broadcast(); }
+        break;
+      case 'wolfConfirm': if (wolfConfirm(s, player)) this.broadcast(); break;
+      case 'wolfChat': {
+        // Wolves-only night chat (v35 mockup): same 400ms guard as public
+        // chat; the messages ride privateState, so only wolves ever get them.
+        if (s.phase !== 'night' || !player.alive || player.role !== 'wolf') break;
+        const now = Date.now();
+        if (now - (this.lastChat.get(player.id) ?? 0) < 400) break;
+        this.lastChat.set(player.id, now);
+        if (wolfChatMsg(s, player, String(msg.text ?? ''))) this.broadcast();
+        break;
+      }
       case 'wolfPass':
         if (s.phase === 'night' && s.nightStep === 'wolves' && player.alive && player.role === 'wolf') {
-          player.wolfPick = null; this.wolfPassed.add(player.id);
+          player.wolfPick = null; s.wolfConfirmed = s.wolfConfirmed.filter(id => id !== player.id);
+          this.wolfPassed.add(player.id);
           const wolves = s.players.filter(p => p.alive && p.role === 'wolf');
           if (wolves.every(p => p.wolfPick || this.wolfPassed.has(p.id))) { this.clear(); this.advanceNightStep(); } else this.broadcast();
         }

@@ -60,6 +60,13 @@ export interface GameState {
   lastVoteOut: Death | null;
   voteTie: boolean;
   winner: 'wolves' | 'villagers' | null;
+  /** Wolves-only night chat (v35 mockup: "Chat riêng của sói"). Kept in
+   *  the state so it survives host migration; only wolves ever receive it
+   *  (see privateState). Cleared each night. */
+  wolfChat: ChatMsg[];
+  /** Wolves who locked their pick with "Chốt lựa chọn" this night — a
+   *  locked pick cannot be changed afterwards. */
+  wolfConfirmed: string[];
 }
 
 export function createGame(code: string): GameState {
@@ -69,6 +76,7 @@ export function createGame(code: string): GameState {
     nightEndsAt: null, discussionEndsAt: null, voteEndsAt: null,
     revealReady: [], dayReady: [], chat: [],
     nightDeaths: [], lastVoteOut: null, voteTie: false, winner: null,
+    wolfChat: [], wolfConfirmed: [],
   };
 }
 
@@ -100,6 +108,7 @@ export function assignRoles(s: GameState, rng: () => number = Math.random): void
   s.nightDeaths = []; s.lastVoteOut = null; s.voteTie = false; s.winner = null;
   s.pendingHunterShot = null; s.wolfTarget = null; s.guardianTarget = null;
   s.witchKillTarget = null; s.witchSaved = false;
+  s.wolfChat = []; s.wolfConfirmed = [];
 }
 
 export const alive = (s: GameState) => s.players.filter(p => p.alive);
@@ -127,9 +136,31 @@ function kill(s: GameState, p: Player, cause: Death['cause']): Death {
 export function wolfPick(s: GameState, wolf: Player, targetId: string): boolean {
   if (s.phase !== 'night' || s.nightStep !== 'wolves') return false;
   if (!wolf.alive || wolf.role !== 'wolf') return false;
+  if (s.wolfConfirmed.includes(wolf.id)) return false; // locked with "Chốt lựa chọn"
   const t = byId(s, targetId);
   if (!t || !t.alive || t.role === 'wolf') return false; // wolves never eat their own
   wolf.wolfPick = targetId; wolf.wolfPickTs = Date.now();
+  return true;
+}
+
+/** Wolves-only night chat: only living wolves, only during the night.
+ *  Villagers never receive these messages (privateState gates on role). */
+export function wolfChatMsg(s: GameState, wolf: Player, text: string): boolean {
+  if (s.phase !== 'night') return false;
+  if (!wolf.alive || wolf.role !== 'wolf') return false;
+  const clean = text.replace(/[<>]/g, '').trim().slice(0, 300);
+  if (!clean) return false;
+  s.wolfChat.push({ fromId: wolf.id, fromName: wolf.name, text: clean, ts: Date.now() });
+  return true;
+}
+
+/** Lock a wolf's pick ("Chốt lựa chọn"): a locked pick cannot be changed
+ *  afterwards. Requires a pick first — confirming nothing is meaningless. */
+export function wolfConfirm(s: GameState, wolf: Player): boolean {
+  if (s.phase !== 'night' || s.nightStep !== 'wolves') return false;
+  if (!wolf.alive || wolf.role !== 'wolf') return false;
+  if (!wolf.wolfPick) return false;
+  if (!s.wolfConfirmed.includes(wolf.id)) s.wolfConfirmed.push(wolf.id);
   return true;
 }
 
@@ -293,5 +324,9 @@ export function privateState(s: GameState, me: Player) {
     wolfPicks: me.role === 'wolf'
       ? s.players.filter(p => p.role === 'wolf' && p.alive && p.wolfPick).map(p => ({ id: p.id, targetId: p.wolfPick! }))
       : [],
+    // Wolves-only night chat + whether I locked my pick. Both are empty
+    // / false for everyone who is not a wolf.
+    wolfChat: me.role === 'wolf' ? s.wolfChat : [],
+    wolfConfirmed: me.role === 'wolf' ? s.wolfConfirmed.includes(me.id) : false,
   };
 }

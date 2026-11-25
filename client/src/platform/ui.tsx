@@ -10,10 +10,10 @@ export function TopBar({ d, lang, muted, onToggleMuted, onHelp, onToggleLang, vo
   const chip = tone === 'navy'
     ? 'bg-[#23233F] border-2 border-[#3D3D63] text-[#EDEDF7]'
     : 'bg-[#FFFBef] hard-xs text-[#2B2016]';
-  const chipCls = `rounded-xl px-2.5 py-1.5 text-base leading-none ${chip} push`;
+  const chipCls = `rounded-xl px-2 sm:px-2.5 py-1.5 text-base leading-none ${chip} push`;
   return (
     <div className="flex items-center justify-between gap-2 mb-2 relative z-20">
-      <div className={`disp font-extrabold text-lg flex items-center gap-1.5 ${tone === 'navy' ? 'text-[#FFF3CF]' : 'text-[#2B2016]'}`}>{logo} {d.title}</div>
+      <div className={`disp font-extrabold text-lg flex items-center gap-1.5 whitespace-nowrap shrink-0 ${tone === 'navy' ? 'text-[#FFF3CF]' : 'text-[#2B2016]'}`}>{logo} {d.title}</div>
       <div className="flex gap-1.5 items-center">
         {voice && (voice.speaker === 'off'
           ? <button title={d.voiceListen} className={chipCls} onClick={voice.onSpeaker}>🎧</button>

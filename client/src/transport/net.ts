@@ -26,6 +26,8 @@ export interface Net {
   // 'wolfPick' in Ma Sói, …): the transports forward it verbatim.
   nightAction(kind: string, targetId?: string): void;
   chat(text: string): void; toVoting(): void;
+  /** Ma Sói only: a message to the wolves' private night chat. */
+  wolfChat(text: string): void;
   vote(targetId: string): void; playAgain(): void; leave(): void;
   kick(targetId: string): void;
   setDiscussion(ms: number): void;
@@ -165,6 +167,7 @@ export function createPeerNet(h: Handlers, gameId = 'cheese-thief'): Net {
     readyVote: () => intent('readyVote'),
     nightAction: (kind, targetId) => intent(kind, { targetId }),
     chat: (text) => intent('chat', { text }),
+    wolfChat: (text) => intent('wolfChat', { text }),
     toVoting: () => intent('toVoting'),
     vote: (targetId) => intent('vote', { targetId }),
     playAgain: () => intent('playAgain'),
@@ -209,6 +212,7 @@ export function createSocketNet(serverUrl: string, h: Handlers, gameId = 'cheese
     readyVote: () => socket.emit('readyVote'),
     nightAction: (kind, targetId) => socket.emit('nightAction', { kind, targetId }),
     chat: (text) => socket.emit('chat', { text }),
+    wolfChat: (text) => socket.emit('wolfChat', { text }),
     toVoting: () => socket.emit('toVoting'),
     vote: (targetId) => socket.emit('vote', { targetId }),
     playAgain: () => socket.emit('playAgain'),

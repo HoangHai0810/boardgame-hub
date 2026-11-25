@@ -5,6 +5,7 @@ import { t, Lang } from './i18n';
 import { sfx, ensureCtx } from '../../transport/sound';
 import { joinVoice, VoiceHandle } from '../../transport/voice';
 import { TopBar, ChatPanel, ChatSheet, chatPreview } from '../../platform/ui';
+import { WolfAvatar, MouseAvatar, RoleIcon, ROLE_STRONG, MoonVillage } from '../../platform/avatars';
 import { roleTable, MIN_PLAYERS } from '../../../../games/ma-soi/logic';
 import type { Role } from '../../../../games/ma-soi/logic';
 
@@ -13,62 +14,6 @@ const WOLF_REACTIONS = ['👀', '🐺', '😱', '🤔', '👍', '👎', '😂', 
 
 const AVATAR_BG = ['bg-rose-100', 'bg-sky-100', 'bg-lime-100', 'bg-violet-100', 'bg-amber-100', 'bg-teal-100', 'bg-pink-100', 'bg-indigo-100'];
 const avatarBg = (id: string) => AVATAR_BG[[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_BG.length];
-const FACE_COLORS: [string, string][] = [
-  ['#F8CD9E', '#EDA45F'], ['#ACCDF6', '#7FA8E6'], ['#DEC4F4', '#BB94E4'], ['#B4E0C2', '#85C79B'],
-  ['#F6AC8D', '#E67F57'], ['#F8E08C', '#E9C04C'], ['#F7BDD6', '#EA93B8'], ['#C9CED8', '#9AA3B2'],
-];
-const faceFor = (id: string) => FACE_COLORS[[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % FACE_COLORS.length];
-
-/** Flat SVG face in the platform's style. Wolf = pointed ears + grey fur +
- *  fangs; dead = X eyes; asleep = closed eyes. */
-export function WolfAvatar({ seed, size = 48, state = 'villager', halo }: { seed: string; size?: number; state?: 'villager' | 'wolf' | 'dead' | 'asleep'; halo?: string }) {
-  const [skin, shade] = state === 'wolf' ? ['#8A8F9C', '#6B7080'] : faceFor(seed);
-  const dead = state === 'dead';
-  const asleep = state === 'asleep';
-  return (
-    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden>
-      {halo && <circle cx="50" cy="50" r="47" fill={halo} />}
-      {state === 'wolf' ? (
-        <>
-          <path d="M22 34 L14 8 L40 22 Z" fill={shade} stroke="#2B2016" strokeWidth="3" strokeLinejoin="round" />
-          <path d="M78 34 L86 8 L60 22 Z" fill={shade} stroke="#2B2016" strokeWidth="3" strokeLinejoin="round" />
-        </>
-      ) : (
-        <>
-          <circle cx="24" cy="30" r="11" fill={skin} stroke="#2B2016" strokeWidth="3" />
-          <circle cx="76" cy="30" r="11" fill={skin} stroke="#2B2016" strokeWidth="3" />
-        </>
-      )}
-      <circle cx="50" cy="54" r="34" fill={skin} stroke="#2B2016" strokeWidth="3.5" />
-      <ellipse cx="50" cy="72" rx="13" ry="9" fill={shade} opacity="0.55" />
-      <circle cx="50" cy="68" r="4.5" fill="#2B2016" />
-      {dead ? (
-        <>
-          <path d="M32 44 L44 56 M44 44 L32 56" stroke="#2B2016" strokeWidth="4" strokeLinecap="round" />
-          <path d="M56 44 L68 56 M68 44 L56 56" stroke="#2B2016" strokeWidth="4" strokeLinecap="round" />
-          <path d="M40 82 Q50 76 60 82" stroke="#2B2016" strokeWidth="3.5" fill="none" strokeLinecap="round" />
-        </>
-      ) : asleep ? (
-        <>
-          <path d="M32 50 Q38 54 44 50" stroke="#2B2016" strokeWidth="3.5" fill="none" strokeLinecap="round" />
-          <path d="M56 50 Q62 54 68 50" stroke="#2B2016" strokeWidth="3.5" fill="none" strokeLinecap="round" />
-          <path d="M42 82 Q50 86 58 82" stroke="#2B2016" strokeWidth="3.5" fill="none" strokeLinecap="round" />
-        </>
-      ) : (
-        <>
-          <circle cx="38" cy="50" r={state === 'wolf' ? 4.5 : 4} fill={state === 'wolf' ? '#D63A2F' : '#2B2016'} />
-          <circle cx="62" cy="50" r={state === 'wolf' ? 4.5 : 4} fill={state === 'wolf' ? '#D63A2F' : '#2B2016'} />
-          {state === 'wolf' ? (
-            <path d="M40 78 L46 88 L52 78 L58 88 L64 78" stroke="#FFF3CF" strokeWidth="3" fill="none" strokeLinejoin="round" strokeLinecap="round" />
-          ) : (
-            <path d="M42 80 Q50 87 58 80" stroke="#2B2016" strokeWidth="3.5" fill="none" strokeLinecap="round" />
-          )}
-        </>
-      )}
-    </svg>
-  );
-}
-
 function TimerPill({ secs, dark = false }: { secs: number | null; dark?: boolean }) {
   if (secs === null || secs === undefined) return null;
   const label = secs >= 60 ? `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` : `${secs}s`;
@@ -125,6 +70,16 @@ export default function MaSoiApp() {
   const [chatSheet, setChatSheet] = useState(false);
   const [myRecord, setMyRecord] = useState<{ w: number; l: number; roles: Record<string, { w: number; g: number }> }>({ w: 0, l: 0, roles: {} });
   const [shareCopied, setShareCopied] = useState(false);
+  // Local pick highlight for the night grid (reset each step); the
+  // authoritative pick lives in priv (wolves) / the peek list (seer).
+  const [nightPick, setNightPick] = useState<string | null>(null);
+  useEffect(() => { setNightPick(null); }, [pub?.nightStep]);
+  // Unread chat count for the mobile preview bar: everything since the
+  // player last opened the chat sheet or entered a new phase.
+  const [seenChat, setSeenChat] = useState(0);
+  const unreadChat = Math.max(0, (pub?.chat.length ?? 0) - seenChat);
+  useEffect(() => { setSeenChat(pub?.chat.length ?? 0); }, [pub?.phase]);
+  const [wolfChatText, setWolfChatText] = useState('');
   const recordedRounds = useRef<Set<string>>(new Set());
   const netRef = useRef<Net | null>(null);
   const voiceRef = useRef<VoiceHandle | null>(null);
@@ -311,42 +266,83 @@ export default function MaSoiApp() {
   /* ---------- shared bits ---------- */
   const tone = phase === 'night' || phase === 'roleReveal' || phase === 'results' ? 'navy' : 'cream';
   const connected = pub?.players.filter(p => p.connected).length ?? 0;
-  const avatarState = (p: any): 'villager' | 'wolf' | 'dead' | 'asleep' => {
-    if (!p.alive) return 'dead';
-    if (phase === 'night') return 'asleep';
-    if (phase === 'results') return p.role === 'wolf' ? 'wolf' : 'villager';
-    if (p.id === joined?.playerId && priv?.myRole === 'wolf') return 'wolf';
-    return 'villager';
-  };
   const playerName = (id?: string | null) => pub?.players.find(p => p.id === id)?.name ?? '';
 
-  function PlayerGrid({ pickable, onPick, compact = false }: { pickable?: (p: any) => boolean; onPick?: (id: string) => void; compact?: boolean }) {
+  // One grid, five faces (mockup): lobby = small mouse cards + empty
+  // slots; pick = night picker (wolves see wolf faces, others mice);
+  // day = compact mouse cards; vote = big 2-col cards with a status line;
+  // results = horizontal rows (wolf = pink tint, dead = grey + strike).
+  function PlayerGrid({ variant = 'day', pickable, onPick, selectedId }: {
+    variant?: 'lobby' | 'pick' | 'day' | 'vote' | 'results';
+    pickable?: (p: any) => boolean; onPick?: (id: string) => void; selectedId?: string | null;
+  }) {
+    const players = pub?.players ?? [];
+    const cols = variant === 'vote' ? 'grid-cols-2 lg:grid-cols-4'
+      : variant === 'results' ? 'grid-cols-2 lg:grid-cols-3'
+      : variant === 'lobby' ? 'grid-cols-4'
+      : variant === 'pick' ? 'grid-cols-4 lg:grid-cols-5'
+      : 'grid-cols-4 lg:grid-cols-5';
+    const emptySlots = variant === 'lobby' ? Math.max(0, 12 - players.length) : 0;
     return (
-      <div className={`grid grid-cols-2 sm:grid-cols-3 ${compact ? 'gap-2 my-2' : 'gap-3 my-3'}`}>
-        {(pub?.players ?? []).map(p => {
+      <div className={`grid ${cols} gap-2 my-3`}>
+        {players.map(p => {
           const canPick = onPick && pickable ? pickable(p) : false;
           const dead = !p.alive;
+          const isMe = p.id === joined?.playerId;
+          const isWolfCard = (variant === 'pick' || variant === 'results')
+            && ((variant === 'results' && p.role === 'wolf')
+              || (variant === 'pick' && priv?.wolfTeam.some(w => w.id === p.id)));
+          const selected = selectedId === p.id;
+          const avSize = variant === 'lobby' ? 48 : 52;
+          if (variant === 'results') {
+            const bg = p.role === 'wolf' ? 'bg-[#FBE3E0]' : dead ? 'bg-[#E5E5E5]' : 'bg-[#FFFBef]';
+            return (
+              <div key={p.id} className={`flex items-center gap-2.5 rounded-2xl px-3 py-2.5 hard-xs ${bg}`}>
+                <span className="flex-none">{isWolfCard ? <WolfAvatar seed={p.id} size={44} state="dead" /> : <MouseAvatar seed={p.id} size={44} state={dead ? 'dead' : 'awake'} />}</span>
+                <span className="min-w-0">
+                  <span className={`block font-extrabold truncate ${dead ? 'line-through text-[#6B6257]' : 'text-[#2B2016]'}`}>{p.name}{isMe ? ` (${d.you})` : ''}</span>
+                  {p.role && <span className={`block text-sm font-extrabold ${roleColor(p.role)}`}>{ROLE_EMOJI[p.role]} {roleLabel(d, p.role)}</span>}
+                </span>
+              </div>
+            );
+          }
+          if (variant === 'vote') {
+            return (
+              <button key={p.id} disabled={!canPick}
+                onClick={() => onPick?.(p.id)}
+                className={`rounded-[20px] p-3 text-center hard-sm ${dead ? 'bg-[#EFEFEF] opacity-70' : isMe ? 'bg-[#EFE7D3]' : 'bg-white'} ${canPick ? 'hover:scale-[1.03] transition cursor-pointer' : 'cursor-default'}`}>
+                <span className="mx-auto block w-fit">{isWolfCard ? <WolfAvatar seed={p.id} size={56} state="wolf" /> : <MouseAvatar seed={p.id} size={56} state={dead ? 'dead' : 'awake'} />}</span>
+                <span className={`block font-extrabold text-lg mt-1 ${dead ? 'line-through text-gray-500' : 'text-[#2B2016]'}`}>{p.name}{isMe ? ` (${d.you})` : ''}</span>
+                <span className="block text-sm font-bold text-[#8A7B63] mt-0.5">
+                  {isMe ? d.cantSelfVote : dead ? '' : p.hasVoted ? d.votedAlready : d.thinking}
+                </span>
+              </button>
+            );
+          }
           return (
             <button key={p.id} disabled={onPick ? !canPick : true}
-              onClick={() => onPick?.(p.id)}
-              className={`relative rounded-2xl text-[#2B2016] ${compact ? 'p-2' : 'p-2.5'} text-center shadow ${dead ? 'bg-gray-100 opacity-80' : p.id === joined?.playerId ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'} ${onPick ? 'hover:scale-105 transition cursor-pointer' : 'cursor-default'} disabled:opacity-60 disabled:hover:scale-100`}>
+              onClick={() => { onPick?.(p.id); }}
+              className={`relative rounded-2xl text-[#2B2016] p-2 text-center hard-xs ${selected ? 'bg-[#FFE3E0] ring-4 ring-[#D63A2F]' : dead ? 'bg-[#D8D8D8]' : isMe ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'} ${onPick ? 'hover:scale-105 transition cursor-pointer' : 'cursor-default'} disabled:opacity-70 disabled:hover:scale-100`}>
               {speakingIds.has(p.id) && <span className="absolute -bottom-2 -left-2 bg-green-500 text-white text-xs rounded-full px-1.5 py-0.5 shadow anim-pulse-soft">🎙️</span>}
-              <div className="mx-auto w-fit"><WolfAvatar seed={p.id} size={compact ? 44 : 56} state={avatarState(p)} /></div>
-              <div className={`font-bold truncate ${compact ? 'text-sm' : ''} ${dead ? 'line-through text-gray-500' : ''}`}>{p.name} {p.id === joined?.playerId && <span className="text-amber-600">({d.you})</span>}</div>
-              <div className="text-xs">{p.isHost && <span className="bg-purple-500 text-white rounded-full px-2 py-0.5">👑 {d.host}</span>} {!p.connected && <span className="text-red-500">• {d.offline}</span>}</div>
-              {(p.wins ?? 0) > 0 && <div className="text-xs mt-1 font-extrabold text-amber-600">🏆 ×{p.wins}</div>}
-              {phase === 'lobby' && joined?.isHost && p.id !== joined.playerId && (
-                <div className="mt-1">
-                  <span role="button" title={d.kick}
-                    onClick={(e) => { e.stopPropagation(); getNet().kick(p.id); }}
-                    className="inline-block text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-0.5 cursor-pointer hover:bg-red-200">✖ {d.kick}</span>
-                </div>)}
-              {dead && p.role && phase !== 'results' && <div className={`text-sm mt-1 font-extrabold ${roleColor(p.role)}`}>{ROLE_EMOJI[p.role]} {roleLabel(d, p.role)}</div>}
-              {phase === 'voting' && p.alive && <div className="text-xs mt-1">{p.hasVoted ? '✅ voted' : '🤔 …'}</div>}
-              {phase === 'results' && p.role && <div className={`text-sm mt-1 font-extrabold ${roleColor(p.role)}`}>{ROLE_EMOJI[p.role]} {roleLabel(d, p.role)}</div>}
+              <span className="mx-auto block w-fit">
+                {isWolfCard ? <WolfAvatar seed={p.id} size={avSize} state={dead ? 'dead' : 'wolf'} />
+                  : <MouseAvatar seed={p.id} size={avSize} state={dead ? 'dead' : phase === 'night' ? 'asleep' : 'awake'} />}
+              </span>
+              <span className={`block font-bold truncate text-sm mt-0.5 ${dead ? 'line-through text-gray-500' : ''}`}>{p.name}{isMe ? ` (${d.you})` : ''}</span>
+              {variant === 'lobby' && p.isHost && <span className="text-amber-600 text-xs font-extrabold whitespace-nowrap">👑 {d.host}</span>}
+              {variant === 'lobby' && !p.connected && <span className="text-red-500 text-xs font-bold"> • {d.offline}</span>}
+              {variant === 'lobby' && joined?.isHost && !isMe && (
+                <span role="button" title={d.kick}
+                  onClick={(e) => { e.stopPropagation(); getNet().kick(p.id); }}
+                  className="inline-block text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-0.5 mt-1 cursor-pointer hover:bg-red-200">✖ {d.kick}</span>)}
+              {selected && variant === 'pick' && <span className="block text-xs font-extrabold text-[#D63A2F] mt-0.5">{lang === 'vi' ? 'đã chọn' : 'picked'}</span>}
+              {dead && p.role && variant === 'pick' && <span className={`block text-xs font-extrabold mt-0.5 ${roleColor(p.role)}`}>{roleLabel(d, p.role)}</span>}
             </button>
           );
         })}
+        {Array.from({ length: emptySlots }).map((_, i) => (
+          <div key={'empty-' + i} className="rounded-2xl border-2 border-dashed border-[#C9BFA5] p-2 text-center text-[#8A7B63] font-bold text-xs hidden lg:flex items-center justify-center min-h-[86px]">{lang === 'vi' ? 'Đang chờ…' : 'Waiting…'}</div>
+        ))}
       </div>
     );
   }
@@ -369,26 +365,38 @@ export default function MaSoiApp() {
   const amWitch = priv?.myRole === 'witch' && me?.alive;
   const amHunter = !!priv?.canShoot;
 
-  /* ---------- landing ---------- */
+  /* ---------- landing (mockup "Ma Sói 1": moon + village hero, cream form) ---------- */
   if (!joined) {
     return (
-      <div className="min-h-dvh bg-[#14142B] text-[#2B2016] transition-colors duration-1000">
-        <div className="max-w-3xl mx-auto px-3 py-4">
-          <TopBar logo={<span className="text-2xl">🐺</span>} d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })} />
-          <button className="disp font-extrabold text-[#FFB020] text-sm mb-2" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
-          <div className="relative bg-[#171731] px-5 pt-6 pb-6 text-center overflow-hidden rounded-[28px] hard">
-            <div className="stars" style={{ position: 'absolute' }} />
-            <p className="disp relative text-[#FFB020] font-extrabold tracking-[0.22em] text-[11px] sm:text-xs">{d.kicker}</p>
-            <h1 className="disp relative text-[#FFF3CF] font-extrabold text-5xl leading-none mt-2">🐺 {d.title}</h1>
-            <p className="relative text-[#B9BCE0] font-bold mt-3 max-w-md mx-auto leading-snug">{d.subtitle}</p>
+      <div className="min-h-dvh bg-[#14142B] text-[#2B2016]">
+        <div className="max-w-md lg:max-w-lg mx-auto">
+          <div className="flex items-center gap-2 px-3 pt-3">
+            <button className="disp font-extrabold text-[#FFF3CF] text-sm bg-[#23233F] border-2 border-[#3D3D63] rounded-full px-3 py-1.5" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
+            <span className="flex-1" />
+            <button title={muted ? '🔇' : '🔊'} className="w-10 h-10 rounded-full bg-[#23233F] border-2 border-[#3D3D63] text-lg flex items-center justify-center" onClick={toggleMuted}>{muted ? '🔇' : '🔊'}</button>
+            <span className="inline-flex rounded-full overflow-hidden border-2 border-[#3D3D63] text-sm font-black">
+              <button className={`px-2.5 py-1 ${lang === 'vi' ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#23233F] text-[#B9BCE0]'}`} onClick={() => { localStorage.setItem('ct_lang', 'vi'); setLang('vi'); }}>VI</button>
+              <button className={`px-2.5 py-1 ${lang === 'en' ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#23233F] text-[#B9BCE0]'}`} onClick={() => { localStorage.setItem('ct_lang', 'en'); setLang('en'); }}>EN</button>
+            </span>
           </div>
-          <div className={`${CARD} mt-4`}>
+          <div className="text-center px-4 pt-4">
+            <p className="disp text-[#FFB020] font-extrabold tracking-[0.22em] text-[11px]">{d.kicker}</p>
+            <h1 className="disp text-[#FFF3CF] font-extrabold text-5xl leading-none mt-2">{d.title}</h1>
+            <p className="text-[#B9BCE0] font-bold mt-2 leading-snug">{d.subtitle}</p>
+          </div>
+          <MoonVillage width={390} />
+          <div className="bg-[#FFF3CF] rounded-t-[28px] px-4 pt-4 pb-6 -mt-1">
             <label className="disp font-extrabold text-sm">{d.name}</label>
             <input className="inp w-full px-4 py-3 font-bold mt-1" placeholder="VD: Hoàng"
               value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
             <button className={`${BTN} btn-amber w-full mt-3`} disabled={!name.trim() || !!status}
               onClick={() => { setError(''); getNet().createRoom(name.trim()); }}>🌙 {d.create}</button>
-            <div className="flex gap-2 mt-3">
+            <div className="flex items-center gap-3 mt-4 mb-3">
+              <span className="flex-1 border-t-2 border-[#E5DCC0]" />
+              <span className="disp font-extrabold text-xs text-[#8A7B63] tracking-wide">{d.orJoinFriend}</span>
+              <span className="flex-1 border-t-2 border-[#E5DCC0]" />
+            </div>
+            <div className="flex gap-2">
               <input className="inp flex-1 min-w-0 px-4 py-3 font-bold uppercase" placeholder={d.codePh}
                 value={roomCodeInput} maxLength={5} onChange={e => setRoomCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
                 onKeyDown={e => { if (e.key === 'Enter' && roomCodeInput.trim() && name.trim()) getNet().joinRoom(roomCodeInput.trim(), name.trim()); }} />
@@ -397,9 +405,11 @@ export default function MaSoiApp() {
             </div>
             {status && <p className="text-center font-bold mt-3">{status} <button className="text-red-500 font-extrabold ml-1" onClick={() => { try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } try { getNet().leave(); } catch { /* ignore */ } location.href = location.pathname; }}>{d.cancelConnect}</button></p>}
             {error && <p className="text-center font-bold text-red-600 mt-3">{error}</p>}
-            {!status && !error && <p className="text-center text-[#8A7B63] font-bold text-sm mt-3">6–12 {d.players} · {d.discussionTime} 2:00</p>}
+            {!status && !error && <p className="text-center text-[#8A7B63] font-bold text-sm mt-4">{d.landingFoot}</p>}
+            <p className="text-center mt-3">
+              <button className="font-bold text-sm text-[#8A7B63] underline" onClick={() => setShowHelp(true)}>{d.how}</button>
+            </p>
           </div>
-          <p className="text-center text-[#B9BCE0] font-bold text-sm mt-4">🎙️ {d.voiceListen} · {d.voiceMicOn}</p>
           {showHelp && <HelpModal d={d} onClose={() => setShowHelp(false)} />}
         </div>
       </div>
@@ -407,33 +417,56 @@ export default function MaSoiApp() {
   }
 
   const secretBar = priv?.myRole && phase !== 'lobby' && (
-    <div className="bg-[#23233F] border-2 border-[#3D3D63] rounded-2xl px-3 py-2 mb-2 flex items-center gap-2 flex-wrap">
-      <span className="disp font-extrabold text-[#FFF3CF]">{ROLE_EMOJI[priv.myRole]} {d.yourRole}: <span className={priv.myRole === 'wolf' ? 'text-[#FF8A80]' : 'text-[#FFB020]'}>{roleLabel(d, priv.myRole)}</span></span>
-      {priv.myRole === 'wolf' && priv.wolfTeam.length > 1 && (
-        <span className="text-[#B9BCE0] font-bold text-sm">{d.wolfTeammates}: {priv.wolfTeam.filter(w => w.id !== joined.playerId).map(w => w.name).join(', ')}</span>
-      )}
+    <div className="bg-[#23233F] border-2 border-[#3D3D63] rounded-2xl px-3 py-2 mb-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="disp font-extrabold text-[#FFB020] text-sm tracking-wide">BÍ MẬT</span>
+        <span className="font-extrabold text-[#FFF3CF]">{d.roleWord}: <span className={priv.myRole === 'wolf' ? 'text-[#FF8A80]' : 'text-[#FFB020]'}>{roleLabel(d, priv.myRole)}</span></span>
+        {priv.myRole === 'wolf' && priv.wolfTeam.length > 1 && (
+          <span className="text-[#B9BCE0] font-bold text-sm">{d.wolfTeammates}: {priv.wolfTeam.filter(w => w.id !== joined.playerId).map(w => w.name).join(', ')}</span>
+        )}
+        {amDead && <span className="text-red-300 font-bold text-sm">💀 {lang === 'vi' ? 'Bạn đã chết — đang theo dõi' : 'You are dead — watching'}</span>}
+      </div>
       {priv.myRole === 'witch' && (
-        <span className="text-[#B9BCE0] font-bold text-sm">🧪 {priv.witchSaveLeft ? '💚' : '—'} {priv.witchKillLeft ? '☠️' : '—'}</span>
+        <div className="text-[#B9BCE0] font-bold text-sm mt-0.5">{d.witchPotions(priv.witchSaveLeft ? 1 : 0, priv.witchKillLeft ? 1 : 0)}</div>
       )}
       {priv.myRole === 'seer' && priv.seerPeeks.length > 0 && (
-        <span className="text-[#B9BCE0] font-bold text-sm">🔮 {priv.seerPeeks.length} {lang === 'vi' ? 'đã soi' : 'peeked'}</span>
+        <div className="text-[#B9BCE0] font-bold text-sm mt-0.5">🔮 {priv.seerPeeks.length} {lang === 'vi' ? 'đã soi' : 'peeked'}</div>
       )}
-      {amDead && <span className="text-red-300 font-bold text-sm">💀 {lang === 'vi' ? 'Bạn đã chết — đang theo dõi' : 'You are dead — watching'}</span>}
     </div>
   );
 
-  const chatAside = pub && (phase === 'lobby' || phase === 'day' || phase === 'results') && (
+  // Night step tabs (mockup): only the steps this game actually has, in
+  // night order; the current step is filled with its role color.
+  const nightSteps = (): { key: string; label: string; color: string }[] => {
+    const steps: { key: string; label: string; color: string }[] = [];
+    if (pub?.pendingHunterShot || pub?.nightStep === 'hunter') steps.push({ key: 'hunter', label: d.stepHunterShort, color: '#B45309' });
+    steps.push({ key: 'wolves', label: d.stepWolfShort, color: '#D63A2F' });
+    steps.push({ key: 'seer', label: d.stepSeerShort, color: '#2E7CD6' });
+    steps.push({ key: 'guardian', label: d.stepGuardShort, color: '#0E9F6E' });
+    if (roleTable(pub?.players.length ?? 0).some(t => t.role === 'witch')) steps.push({ key: 'witch', label: d.stepWitchShort, color: '#7C4DBD' });
+    return steps;
+  };
+
+  const chatAside = pub && phase === 'day' && (
     <aside className="hidden lg:flex flex-col min-h-0">
       <div className="card-cream p-3 flex flex-col flex-1 min-h-0">
-        <div className="disp font-extrabold text-lg mb-2">💬 {d.chatTitle}</div>
+        <div className="disp font-extrabold text-lg mb-2">💬 {d.villageChat}</div>
         <ChatPanel chat={pub.chat} myId={joined.playerId} d={d} height="flex" onChat={onChat} reactions={WOLF_REACTIONS} />
+        <button className={`${BTN} btn-dark w-full mt-3`} onClick={() => { pendingRef.current.readyVote = { kind: 'readyVote' }; getNet().readyVote(); }}>
+          {d.readyVoteBtn}
+        </button>
+        <p className="text-center font-bold text-[#8A7B63] text-sm mt-2">{d.readyVoteOf(pub!.dayReady.length, pub!.players.filter(p => p.connected && p.alive).length)}</p>
+        {joined.isHost && (
+          <button className="disp w-full text-center font-extrabold text-sm text-[#D63A2F] mt-1" onClick={() => getNet().toVoting()}>{d.toVote}</button>
+        )}
       </div>
     </aside>
   );
   const chatPreviewBar = pub && lastChat && (phase === 'lobby' || phase === 'day' || phase === 'results') && (
-    <button className="lg:hidden w-full text-left bg-[#FFFBef] hard-sm rounded-2xl px-3 py-2 mb-2" onClick={() => setChatSheet(true)}>
-      <span className="font-bold text-sm text-[#5C4B33]">💬 {lastChat.fromName}: </span>
-      <span className="font-bold text-sm">{chatPreview(d, lastChat.text, WOLF_REACTIONS)}</span>
+    <button className="lg:hidden w-full text-left bg-[#FFFBef] hard-sm rounded-2xl px-3 py-2 mb-2 flex items-center gap-2" onClick={() => { setSeenChat(pub.chat.length); setChatSheet(true); }}>
+      <span className="font-bold text-sm text-[#5C4B33] shrink-0">💬 {lastChat.fromName}: </span>
+      <span className="font-bold text-sm truncate flex-1">{chatPreview(d, lastChat.text, WOLF_REACTIONS)}</span>
+      {unreadChat > 0 && <span className="flex-none bg-[#D63A2F] text-white text-xs font-extrabold rounded-full min-w-6 h-6 px-1.5 flex items-center justify-center">{unreadChat}</span>}
     </button>
   );
 
@@ -447,70 +480,140 @@ export default function MaSoiApp() {
         {error && <div className="bg-red-100 border-2 border-red-400 rounded-2xl px-3 py-2 mb-2 font-bold text-red-700 text-center">{error}</div>}
 
         {phase === 'lobby' && (
-          <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-4">
-            <div>
-              <div className={`${CARD}`}>
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <h2 className="disp font-extrabold text-2xl">🐺 {d.lobby} · <span className="text-[#FFB020]">{pub!.roomCode}</span></h2>
-                  <button className="disp font-extrabold text-sm bg-white hard-xs rounded-full px-3 py-1.5" onClick={async () => { try { await navigator.clipboard.writeText(location.href.split('?')[0] + `?game=ma-soi&room=${pub!.roomCode}`); } catch { /* ignore */ } }}>{d.copyLink}</button>
+          <div>
+            <div className="flex items-center gap-3 mb-3">
+              <button className="w-11 h-11 flex-none rounded-2xl bg-[#FFFBef] hard-xs font-extrabold text-xl text-[#2B2016]" onClick={() => { location.href = location.pathname; }}>‹</button>
+              <div className="min-w-0">
+                <h2 className="disp font-extrabold text-2xl leading-none">🐺 {d.title} · {d.lobby}</h2>
+                <p className="font-bold text-[#8A7B63] text-sm mt-1">{d.waiting}</p>
+              </div>
+            </div>
+            {/* room code bar: dark navy, tiles + copy link (mockup "Ma Sói 2") */}
+            <div className="bg-[#14142B] rounded-[20px] px-4 py-3 flex items-center gap-3 hard">
+              <div className="min-w-0">
+                <div className="disp text-[#FFB020] font-extrabold text-[11px] tracking-[0.18em]">{d.roomCode}</div>
+                <div className="flex gap-1.5 mt-1" data-testid="room-code">
+                  {pub!.roomCode.split('').map((c, i) => (
+                    <span key={i} className="w-8 h-9 sm:w-9 sm:h-10 rounded-lg bg-[#FFFBef] text-[#2B2016] font-extrabold text-xl flex items-center justify-center">{c}</span>
+                  ))}
                 </div>
-                <PlayerGrid />
-                <div className="mt-2">
-                  <div className="disp font-extrabold text-sm">{d.rolesPreview} ({connected} {d.players}):</div>
-                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+              </div>
+              <span className="flex-1" />
+              <button className="disp flex-none px-3 py-2 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] text-sm" onClick={async () => { try { await navigator.clipboard.writeText(location.href.split('?')[0] + `?game=ma-soi&room=${pub!.roomCode}`); } catch { /* ignore */ } }}>🔗 {d.copyLink}</button>
+            </div>
+            <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-4 mt-4">
+              <div className="lg:card-cream lg:p-5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h3 className="disp font-extrabold text-xl">{d.players}</h3>
+                  <span className="font-bold text-[#8A7B63] text-sm">{connected}/12 · {d.needAtLeast(MIN_PLAYERS)}</span>
+                </div>
+                <PlayerGrid variant="lobby" />
+                {joined.isHost && <p className="font-bold text-[#8A7B63] text-sm hidden lg:block">{d.kickHint}</p>}
+                <div className="mt-4 lg:hidden">
+                  <div className="disp font-extrabold">{d.rolesPreview} ({connected} {d.players.toLowerCase()}):</div>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
                     {roleTable(connected).map(t => (
-                      <span key={t.role} className="inline-flex items-center gap-1 bg-white hard-xs rounded-full px-2.5 py-1 text-xs font-extrabold">{ROLE_EMOJI[t.role]} {roleLabel(d, t.role)} ×{t.count}</span>
+                      <span key={t.role} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-extrabold border-2 border-[#2B2016] bg-white">{ROLE_EMOJI[t.role]} {roleLabel(d, t.role)} ×{t.count}</span>
                     ))}
                   </div>
                 </div>
+                {joined.isHost && (
+                  <div className="flex items-center gap-2 mt-4 flex-wrap lg:hidden">
+                    <span className="font-extrabold text-sm">{d.discussionTime}:</span>
+                    {[60000, 120000, 180000].map(ms => (
+                      <button key={ms} onClick={() => getNet().setDiscussion(ms)}
+                        className={`disp px-3 py-1.5 rounded-full font-extrabold text-sm push ${pub!.discussionMs === ms ? 'bg-[#2B2016] text-[#FFF3CF] hard-xs' : 'bg-white hard-xs'}`}>
+                        {ms / 60000}:00
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="mt-4 lg:mt-0">
+                <div className="hidden lg:block lg:card-cream lg:p-5">
+                  <div className="disp font-extrabold text-xl">{d.rolesPreview}</div>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {roleTable(connected).map(t => (
+                      <span key={t.role} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-extrabold text-white" style={{ background: t.role === 'villager' ? '#E8DCC0' : ROLE_STRONG[t.role], color: t.role === 'villager' ? '#2B2016' : '#FFF3CF' }}>{ROLE_EMOJI[t.role]} {roleLabel(d, t.role)} ×{t.count}</span>
+                    ))}
+                  </div>
+                  {joined.isHost && (
+                    <div className="hidden lg:block mt-4">
+                      <span className="font-extrabold text-sm">{d.discussionTime}:</span>
+                      <div className="flex gap-2 mt-2">
+                        {[60000, 120000, 180000].map(ms => (
+                          <button key={ms} onClick={() => getNet().setDiscussion(ms)}
+                            className={`disp px-3 py-1.5 rounded-full font-extrabold text-sm push ${pub!.discussionMs === ms ? 'bg-[#FFB020] text-[#2B2016] hard-xs' : 'bg-white hard-xs'}`}>
+                            {ms / 60000}:00
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
                 {joined.isHost ? (
                   <>
-                    <div className="flex items-center gap-2 mt-4 flex-wrap">
-                      <span className="font-extrabold text-sm">{d.discussionTime}:</span>
-                      {[60000, 120000, 180000].map(ms => (
-                        <button key={ms} onClick={() => getNet().setDiscussion(ms)}
-                          className={`disp px-3 py-1.5 rounded-full font-extrabold text-sm push ${pub!.discussionMs === ms ? 'bg-[#FFB020] text-[#2B2016] hard-xs' : 'bg-white hard-xs'}`}>
-                          {ms / 60000}:00
-                        </button>
-                      ))}
-                    </div>
-                    <button className={`${BTN} btn-green w-full mt-3`} disabled={connected < MIN_PLAYERS}
+                    <button className={`${BTN} btn-amber w-full mt-4`} disabled={connected < MIN_PLAYERS}
                       onClick={() => { setError(''); getNet().startGame(); }}>▶ {d.start}</button>
                     {connected < MIN_PLAYERS && <p className="text-center font-bold text-red-600 text-sm mt-2">{d.need6}</p>}
                   </>
                 ) : (
                   <p className="text-center font-bold text-[#8A7B63] mt-4">{d.waiting}</p>
                 )}
-                <button className="disp font-extrabold text-sm text-red-500 mt-3" onClick={() => { try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } getNet().leave(); setJoined(null); setPub(null); setPriv(null); }}>{d.leave}</button>
+                <button className="disp font-extrabold text-sm text-red-500 mt-3 w-full text-center" onClick={() => { try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } getNet().leave(); setJoined(null); setPub(null); setPriv(null); }}>{d.leave}</button>
               </div>
             </div>
-            {chatAside}
+            {chatPreviewBar}
           </div>
         )}
 
         {phase === 'roleReveal' && (
-          <div className="max-w-xl mx-auto">
-            <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-5 text-center">
-              <div className="text-7xl mb-2">{ROLE_EMOJI[priv?.myRole ?? 'villager']}</div>
-              <div className="disp font-extrabold text-3xl text-[#FFF3CF]">{roleLabel(d, priv?.myRole)}</div>
-              <p className="text-[#B9BCE0] font-bold leading-snug mt-3">{priv?.myRole ? d[priv.myRole + 'Desc' as keyof typeof d] as string : ''}</p>
+          <div className="max-w-md mx-auto text-center">
+            <p className="disp text-[#FFB020] font-extrabold tracking-[0.22em] text-xs">{d.revealKicker}</p>
+            <p className="text-[#B9BCE0] font-bold mt-1">{d.revealHide}</p>
+            <div className="card-cream !rounded-[28px] p-5 mt-4">
+              <RoleIcon role={priv?.myRole ?? 'villager'} size={112} />
+              <div className="mt-3">
+                <span className="inline-block disp font-extrabold text-xl tracking-wide text-white rounded-full px-5 py-1.5" style={{ background: ROLE_STRONG[priv?.myRole ?? 'villager'] }}>{roleLabel(d, priv?.myRole)}</span>
+              </div>
+              <div className="mt-2">
+                <span className="inline-block font-extrabold text-sm border-2 border-[#2B2016] rounded-full px-3 py-1">{priv?.myRole === 'wolf' ? d.factionWolves : d.factionVillagers}</span>
+              </div>
+              <p className="font-bold leading-snug mt-3 text-[#2B2016]">{priv?.myRole ? d[priv.myRole + 'Desc' as keyof typeof d] as string : ''}</p>
               {priv?.myRole === 'wolf' && priv.wolfTeam.length > 1 && (
-                <p className="text-[#FFB020] font-bold mt-3">{d.wolfTeammates}: {priv.wolfTeam.filter(w => w.id !== joined.playerId).map(w => w.name).join(', ')}</p>
+                <p className="text-[#D63A2F] font-bold mt-3">{d.wolfTeammates}: {priv.wolfTeam.filter(w => w.id !== joined.playerId).map(w => w.name).join(', ')}</p>
               )}
-              <button className={`${BTN} btn-amber w-full mt-5`} onClick={() => { pendingRef.current.ready = { kind: 'ready' }; getNet().ready(); }}>
-                {d.imReady}
-              </button>
-              <p className="text-[#B9BCE0] font-bold text-sm mt-2">{d.readyOf(pub!.revealReady.length, connected)}</p>
-              {joined.isHost && <button className="disp font-extrabold text-sm text-[#FFB020] mt-1" onClick={() => getNet().beginNight()}>{d.forceNight}</button>}
             </div>
+            <button className={`${BTN} btn-amber w-full mt-5`} onClick={() => { pendingRef.current.ready = { kind: 'ready' }; getNet().ready(); }}>
+              {d.imReady}
+            </button>
+            <div className="flex items-center justify-center gap-1.5 mt-3">
+              {Array.from({ length: connected }).map((_, i) => (
+                <span key={i} className={`w-3 h-3 rounded-full ${i < pub!.revealReady.length ? 'bg-[#FFB020]' : 'bg-[#3D3D63]'}`} />
+              ))}
+              <span className="text-[#B9BCE0] font-bold text-sm ml-2">{d.readyOf(pub!.revealReady.length, connected)}</span>
+            </div>
+            {joined.isHost && <button className="disp font-extrabold text-sm text-[#FFB020] mt-2 underline" onClick={() => getNet().beginNight()}>{d.forceNight}</button>}
           </div>
         )}
 
         {phase === 'night' && (
-          <div className="max-w-3xl mx-auto">
-            <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-              <h2 className="disp font-extrabold text-2xl text-[#FFF3CF]">🌙 {d.night} {pub!.round > 1 ? `#${pub!.night}` : ''} · {nightStepTitle}</h2>
+          <div className="lg:max-w-6xl mx-auto">
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div>
+                <h2 className="disp font-extrabold text-3xl text-[#FFF3CF] leading-none">{d.night} {pub!.night}</h2>
+                <p className="text-[#B9BCE0] font-bold mt-1">{nightStepTitle}</p>
+              </div>
               <TimerPill secs={secsLeft(pub!.nightEndsAt, now)} dark />
+            </div>
+            <div className="flex gap-2 flex-wrap mb-3">
+              {nightSteps().map(st => {
+                const active = pub!.nightStep === st.key;
+                return (
+                  <span key={st.key} className={`disp px-3 py-1.5 rounded-full font-extrabold text-sm border-2 ${active ? 'text-white' : 'bg-transparent border-[#3D3D63] text-[#B9BCE0]'}`}
+                    style={active ? { background: st.color, borderColor: st.color } : undefined}>{st.label}</span>
+                );
+              })}
             </div>
             {pub!.lastVoteOut && (
               <div className="bg-[#23233F] border-2 border-[#3D3D63] rounded-2xl px-3 py-2 mb-2 font-bold text-[#FFF3CF] text-sm">
@@ -520,128 +623,179 @@ export default function MaSoiApp() {
             {pub!.voteTie && (
               <div className="bg-[#23233F] border-2 border-[#3D3D63] rounded-2xl px-3 py-2 mb-2 font-bold text-[#FFF3CF] text-sm">{d.voteTieNote}</div>
             )}
-
-            {amDead ? (
-              <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-5 text-center">
-                <div className="text-6xl mb-2">💀</div>
-                <p className="text-[#B9BCE0] font-bold">{lang === 'vi' ? 'Bạn đã chết — đang theo dõi ván đấu.' : 'You are dead — watching the game.'}</p>
-                <PlayerGrid compact />
-              </div>
-            ) : pub!.nightStep === 'wolves' && amWolf ? (
-              <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-4">
-                <p className="font-extrabold text-[#FFF3CF] text-lg">{d.wolfPrompt}</p>
-                {priv!.wolfTeam.filter(w => w.id !== joined.playerId && w.alive).length > 0 && (
-                  <p className="text-[#B9BCE0] font-bold text-sm mt-1">{d.wolfTeammates}: {priv!.wolfTeam.filter(w => w.id !== joined.playerId && w.alive).map(w => {
-                    const pick = priv!.wolfPicks.find(x => x.id === w.id);
-                    return pick ? `${w.name} → ${playerName(pick.targetId)}` : `${w.name} (${d.looking})`;
-                  }).join(' · ')}</p>
-                )}
-                <PlayerGrid
-                  pickable={p => p.alive && p.id !== joined.playerId && !priv!.wolfTeam.some(w => w.id === p.id)}
-                  onPick={id => doNight('wolfPick', id)}
-                />
-                <div className="text-center font-bold text-[#FFF3CF] text-sm mb-2">
-                  {priv!.wolfPick ? d.wolfPickMade(playerName(priv!.wolfPick)) : d.wolfWaiting}
-                </div>
-                <button className="disp w-full px-5 py-2.5 rounded-2xl font-extrabold hard push bg-[#23233F] text-[#B9BCE0] border-2 border-[#3D3D63]" onClick={() => doNight('wolfPass')}>{d.passNoKill}</button>
-              </div>
-            ) : pub!.nightStep === 'seer' && amSeer ? (
-              <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-4">
-                <p className="font-extrabold text-[#FFF3CF] text-lg">{d.seerPrompt}</p>
-                <PlayerGrid
-                  pickable={p => p.alive && p.id !== joined.playerId && !priv!.seerPeeks.some(x => x.targetId === p.id)}
-                  onPick={id => doNight('seerPeek', id)}
-                />
-                {priv!.seerPeeks.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    {priv!.seerPeeks.map(pk => (
-                      <div key={pk.targetId} className="font-bold text-sm text-[#FFF3CF] bg-[#23233F] rounded-xl px-3 py-2">
-                        {d.seerResult(playerName(pk.targetId), pk.isWolf)}
+            <div className={amWolf ? 'lg:grid lg:grid-cols-[1fr_340px] lg:gap-4' : 'max-w-3xl mx-auto'}>
+              <div>
+                {amDead ? (
+                  <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-5 text-center">
+                    <div className="text-6xl mb-2">💀</div>
+                    <p className="text-[#B9BCE0] font-bold">{lang === 'vi' ? 'Bạn đã chết — đang theo dõi ván đấu.' : 'You are dead — watching the game.'}</p>
+                    <PlayerGrid variant="day" />
+                  </div>
+                ) : pub!.nightStep === 'wolves' && amWolf ? (
+                  <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-4">
+                    <p className="font-extrabold text-[#FFF3CF] text-lg">{d.wolfPrompt}</p>
+                    {priv!.wolfTeam.filter(w => w.id !== joined.playerId && w.alive).length > 0 && (
+                      <p className="text-[#B9BCE0] font-bold text-sm mt-1">{priv!.wolfTeam.filter(w => w.id !== joined.playerId && w.alive).map(w => {
+                        const pick = priv!.wolfPicks.find(x => x.id === w.id);
+                        return pick ? d.matePicking(w.name, playerName(pick.targetId)) : `${w.name} (${d.looking})`;
+                      }).join(' · ')}</p>
+                    )}
+                    <PlayerGrid variant="pick"
+                      pickable={p => p.alive && p.id !== joined.playerId && !priv!.wolfTeam.some(w => w.id === p.id)}
+                      onPick={id => { setNightPick(id); doNight('wolfPick', id); }}
+                      selectedId={nightPick ?? priv!.wolfPick}
+                    />
+                    <div className="text-center font-bold text-[#FFF3CF] text-sm mb-3">
+                      {priv!.wolfPick ? <>Bạn đã chọn <span className="text-[#FF8A80]">{playerName(priv!.wolfPick)}</span></> : d.wolfWaiting}
+                    </div>
+                    <div className="flex gap-2">
+                      <button className="disp flex-1 px-4 py-2.5 rounded-2xl font-extrabold hard push bg-[#23233F] text-[#B9BCE0] border-2 border-[#3D3D63]" onClick={() => { setNightPick(null); doNight('wolfPass'); }}>{d.passNoKill}</button>
+                      <button className="hidden lg:block disp flex-1 px-4 py-2.5 rounded-2xl font-extrabold hard push bg-[#D63A2F] text-white disabled:opacity-40" disabled={!priv!.wolfPick || priv!.wolfConfirmed} onClick={() => getNet().nightAction('wolfConfirm')}>{priv!.wolfConfirmed ? d.pickLocked : d.confirmPick}</button>
+                    </div>
+                    <p className="text-center text-[#B9BCE0] font-bold text-xs mt-3">{d.wolfTimeoutNote}</p>
+                  </div>
+                ) : pub!.nightStep === 'seer' && amSeer ? (
+                  <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-4">
+                    <p className="font-extrabold text-[#FFF3CF] text-lg">{d.seerPrompt}</p>
+                    <PlayerGrid variant="pick"
+                      pickable={p => p.alive && p.id !== joined.playerId && !priv!.seerPeeks.some(x => x.targetId === p.id)}
+                      onPick={id => { setNightPick(id); doNight('seerPeek', id); }}
+                      selectedId={nightPick ?? priv!.seerPeeks[priv!.seerPeeks.length - 1]?.targetId}
+                    />
+                    {priv!.seerPeeks.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {priv!.seerPeeks.map(pk => (
+                          <div key={pk.targetId} className="font-bold text-sm text-[#FFF3CF] bg-[#23233F] rounded-xl px-3 py-2">
+                            {d.seerResult(playerName(pk.targetId), pk.isWolf)}
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
+                    <button className="disp w-full px-5 py-2.5 rounded-2xl font-extrabold hard push bg-[#23233F] text-[#B9BCE0] border-2 border-[#3D3D63] mt-3" onClick={() => doNight('seerPass')}>{d.seerPass}</button>
+                  </div>
+                ) : pub!.nightStep === 'guardian' && amGuardian ? (
+                  <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-4">
+                    <p className="font-extrabold text-[#FFF3CF] text-lg">{d.guardPrompt}</p>
+                    {priv!.guardianLastTarget && <p className="text-[#FFB020] font-bold text-sm mt-1">{d.guardLast(playerName(priv!.guardianLastTarget))}</p>}
+                    <PlayerGrid variant="pick"
+                      pickable={p => p.alive && p.id !== priv!.guardianLastTarget}
+                      onPick={id => { setNightPick(id); doNight('guardProtect', id); }}
+                      selectedId={nightPick}
+                    />
+                    {nightPick && <p className="text-center font-bold text-[#0E9F6E] text-sm mb-2">{d.guardDone(playerName(nightPick))}</p>}
+                    <button className="disp w-full px-5 py-2.5 rounded-2xl font-extrabold hard push bg-[#23233F] text-[#B9BCE0] border-2 border-[#3D3D63]" onClick={() => doNight('guardPass')}>{d.guardPass}</button>
+                  </div>
+                ) : pub!.nightStep === 'witch' && amWitch ? (
+                  <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-4">
+                    <div className="bg-[#2B2140] border-2 border-[#7C4DBD] rounded-2xl p-3 flex items-center gap-3">
+                      <MouseAvatar seed={priv!.nightVictim ?? 'witch-none'} size={48} state="dead" />
+                      <div className="min-w-0">
+                        <div className="text-[#B9BCE0] font-bold text-sm">{d.witchVictimTitle}</div>
+                        <div className="disp font-extrabold text-xl text-[#FFF3CF] truncate">{priv!.nightVictim ? playerName(priv!.nightVictim) : d.witchVictimNone}</div>
+                      </div>
+                    </div>
+                    {priv!.witchSaveLeft && priv!.nightVictim && (
+                      <button className={`${BTN} btn-green w-full mt-3`} onClick={() => doNight('witchSave')}>{d.witchSaveBtn}</button>
+                    )}
+                    {priv!.witchKillLeft && (
+                      <>
+                        <p className="font-extrabold text-[#FFF3CF] mt-4 mb-1">{d.witchKillBtn}</p>
+                        <PlayerGrid variant="pick"
+                          pickable={p => p.alive && p.id !== joined.playerId}
+                          onPick={id => { setNightPick(id); doNight('witchKill', id); }}
+                          selectedId={nightPick}
+                        />
+                      </>
+                    )}
+                    {!priv!.witchSaveLeft && !priv!.witchKillLeft && (
+                      <p className="text-[#B9BCE0] font-bold mt-3">{d.witchNoPotions}</p>
+                    )}
+                    <button className="disp w-full px-5 py-2.5 rounded-2xl font-extrabold hard push bg-[#23233F] text-[#B9BCE0] border-2 border-[#3D3D63] mt-3" onClick={() => doNight('witchPass')}>{d.witchPass}</button>
+                  </div>
+                ) : pub!.nightStep === 'hunter' && amHunter ? (
+                  <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-4">
+                    <p className="font-extrabold text-[#FFF3CF] text-lg">{d.hunterPrompt}</p>
+                    <PlayerGrid variant="pick"
+                      pickable={p => p.alive}
+                      onPick={id => { setNightPick(id); doNight('hunterShoot', id); }}
+                      selectedId={nightPick}
+                    />
+                    <button className="disp w-full px-5 py-2.5 rounded-2xl font-extrabold hard push bg-[#23233F] text-[#B9BCE0] border-2 border-[#3D3D63]" onClick={() => doNight('hunterPass')}>{d.hunterPass}</button>
+                  </div>
+                ) : (
+                  <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-6 text-center">
+                    <div className="text-7xl mb-3">🌙</div>
+                    <p className="text-[#FFF3CF] font-extrabold text-xl">{d.sleeping}</p>
+                    <p className="text-[#B9BCE0] font-bold mt-2">{d.nightWaiting}</p>
+                    <p className="text-[#B9BCE0] font-bold text-sm mt-1">{d.nightActing}</p>
                   </div>
                 )}
-                <button className="disp w-full px-5 py-2.5 rounded-2xl font-extrabold hard push bg-[#23233F] text-[#B9BCE0] border-2 border-[#3D3D63] mt-3" onClick={() => doNight('seerPass')}>{lang === 'vi' ? 'Bỏ qua đêm nay' : 'Skip tonight'}</button>
               </div>
-            ) : pub!.nightStep === 'guardian' && amGuardian ? (
-              <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-4">
-                <p className="font-extrabold text-[#FFF3CF] text-lg">{d.guardPrompt}</p>
-                {priv!.guardianLastTarget && <p className="text-[#FFB020] font-bold text-sm mt-1">{d.guardLast(playerName(priv!.guardianLastTarget))}</p>}
-                <PlayerGrid
-                  pickable={p => p.alive && p.id !== priv!.guardianLastTarget}
-                  onPick={id => doNight('guardProtect', id)}
-                />
-                <button className="disp w-full px-5 py-2.5 rounded-2xl font-extrabold hard push bg-[#23233F] text-[#B9BCE0] border-2 border-[#3D3D63]" onClick={() => doNight('guardPass')}>{lang === 'vi' ? 'Không bảo vệ ai' : 'Protect no one'}</button>
-              </div>
-            ) : pub!.nightStep === 'witch' && amWitch ? (
-              <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-4">
-                <p className="font-extrabold text-[#FFF3CF] text-lg">{d.witchPrompt} <span className="text-[#FFB020]">{priv!.nightVictim ? playerName(priv!.nightVictim) : d.witchVictimNone}</span></p>
-                {priv!.witchSaveLeft && priv!.nightVictim && (
-                  <button className={`${BTN} btn-green w-full mt-3`} onClick={() => doNight('witchSave')}>{d.witchSaveBtn}</button>
-                )}
-                {priv!.witchKillLeft && (
-                  <>
-                    <p className="font-extrabold text-[#FFF3CF] mt-4 mb-1">{d.witchKillBtn}</p>
-                    <PlayerGrid
-                      pickable={p => p.alive && p.id !== joined.playerId}
-                      onPick={id => doNight('witchKill', id)}
-                    />
-                  </>
-                )}
-                {!priv!.witchSaveLeft && !priv!.witchKillLeft && (
-                  <p className="text-[#B9BCE0] font-bold mt-3">{d.witchNoPotions}</p>
-                )}
-                <button className="disp w-full px-5 py-2.5 rounded-2xl font-extrabold hard push bg-[#23233F] text-[#B9BCE0] border-2 border-[#3D3D63] mt-3" onClick={() => doNight('witchPass')}>{d.witchPass}</button>
-              </div>
-            ) : pub!.nightStep === 'hunter' && amHunter ? (
-              <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-4">
-                <p className="font-extrabold text-[#FFF3CF] text-lg">{d.hunterPrompt}</p>
-                <PlayerGrid
-                  pickable={p => p.alive}
-                  onPick={id => doNight('hunterShoot', id)}
-                />
-                <button className="disp w-full px-5 py-2.5 rounded-2xl font-extrabold hard push bg-[#23233F] text-[#B9BCE0] border-2 border-[#3D3D63]" onClick={() => doNight('hunterPass')}>{d.hunterPass}</button>
-              </div>
-            ) : (
-              <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-6 text-center">
-                <div className="text-7xl mb-3">🌙</div>
-                <p className="text-[#FFF3CF] font-extrabold text-xl">{d.sleeping}</p>
-                <p className="text-[#B9BCE0] font-bold mt-2">{d.nightWaiting}</p>
-                <p className="text-[#B9BCE0] font-bold text-sm mt-1">{d.nightActing}</p>
-              </div>
-            )}
+              {amWolf && (
+                <aside className="hidden lg:flex flex-col min-h-0 mt-4 lg:mt-0">
+                  <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-4 flex flex-col flex-1 min-h-0">
+                    <div className="disp font-extrabold text-lg text-[#FFF3CF] mb-2">🐺 {d.wolfChatTitle}</div>
+                    <div className="flex-1 min-h-[200px] overflow-auto space-y-2">
+                      {(priv?.wolfChat ?? []).map((m, i) => (
+                        <div key={i} className={`max-w-[88%] rounded-2xl px-3 py-2 font-bold text-sm leading-snug ${m.fromId === joined.playerId ? 'ml-auto bg-[#D63A2F] text-white' : 'bg-[#3D3D63] text-[#FFF3CF]'}`}>
+                          {m.fromId !== joined.playerId && <span className="text-[#FFB020]">{m.fromName}: </span>}{m.text}
+                        </div>
+                      ))}
+                      {!(priv?.wolfChat?.length) && <p className="text-[#B9BCE0] font-bold text-sm">{lang === 'vi' ? 'Bàn với đồng bọn xem tối nay ăn ai…' : 'Plan tonight’s victim with your fellow wolves…'}</p>}
+                    </div>
+                    <div className="flex gap-2 mt-3">
+                      <input className="flex-1 min-w-0 px-3 py-2.5 font-bold bg-[#23233F] border-2 border-[#3D3D63] rounded-2xl text-[#FFF3CF] placeholder:text-[#7C83B8] outline-none" placeholder={d.wolfChatPh}
+                        value={wolfChatText} maxLength={300} onChange={e => setWolfChatText(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter' && wolfChatText.trim()) { getNet().wolfChat(wolfChatText.trim()); setWolfChatText(''); } }} />
+                      <button className="disp px-3.5 py-2.5 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016]" onClick={() => { if (wolfChatText.trim()) { getNet().wolfChat(wolfChatText.trim()); setWolfChatText(''); } }}>➤</button>
+                    </div>
+                  </div>
+                </aside>
+              )}
+            </div>
           </div>
         )}
 
         {phase === 'day' && (
           <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-4">
             <div>
-              <div className={`${CARD}`}>
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <h2 className="disp font-extrabold text-2xl">🌅 {d.day} {pub!.round > 1 ? `#${pub!.night}` : ''}</h2>
-                  <TimerPill secs={secsLeft(pub!.discussionEndsAt, now)} />
+              <div className="flex items-center gap-3 mb-3">
+                <span className="w-12 h-12 flex-none rounded-full bg-[#FFB020] hard-xs flex items-center justify-center">
+                  <svg width="30" height="30" viewBox="0 0 100 100" aria-hidden>
+                    <circle cx="50" cy="50" r="22" fill="#2B2016" />
+                    <g stroke="#2B2016" strokeWidth="7" strokeLinecap="round">
+                      <path d="M50 8 V20 M50 80 V92 M8 50 H20 M80 50 H92 M20 20 L28 28 M72 72 L80 80 M80 20 L72 28 M28 72 L20 80" />
+                    </g>
+                  </svg>
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="disp font-extrabold text-2xl leading-none">{d.day} · {d.dayNum(pub!.night)}</h2>
+                  <p className="font-bold text-[#8A7B63] text-sm mt-1">{d.discussSub}</p>
                 </div>
-                {pub!.nightDeaths.length > 0 ? (
-                  <div className="mt-3">
-                    <p className="font-extrabold">{d.diedLastNight}</p>
-                    <div className="space-y-2 mt-2">
-                      {pub!.nightDeaths.map(x => (
-                        <div key={x.id} className="flex items-center gap-2 bg-white hard-sm rounded-2xl px-3 py-2">
-                          <WolfAvatar seed={x.id} size={40} state="dead" />
-                          <div className="font-bold">
-                            {x.name} — <span className={roleColor(x.role)}>{ROLE_EMOJI[x.role]} {roleLabel(d, x.role)}</span>
-                            <span className="text-[#8A7B63] text-sm"> · {d.diedBy(x.cause)}</span>
-                          </div>
+                <TimerPill secs={secsLeft(pub!.discussionEndsAt, now)} />
+              </div>
+              {pub!.nightDeaths.length > 0 ? (
+                <div className={`${CARD}`}>
+                  <p className="font-extrabold">{d.diedLastNight}</p>
+                  <div className="grid sm:grid-cols-2 gap-2 mt-2">
+                    {pub!.nightDeaths.map(x => (
+                      <div key={x.id} className="flex items-center gap-2 bg-white hard-sm rounded-2xl px-3 py-2">
+                        <MouseAvatar seed={x.id} size={40} state="dead" />
+                        <div className="font-bold min-w-0">
+                          <div className="truncate">{x.name} — <span className={roleColor(x.role)}>{ROLE_EMOJI[x.role]} {roleLabel(d, x.role)}</span></div>
+                          <div className="text-[#8A7B63] text-sm">{d.diedBy(x.cause)}</div>
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    ))}
                   </div>
-                ) : (
-                  <p className="font-extrabold mt-3 text-[#0E9F6E]">{d.peacefulNight}</p>
-                )}
-                <p className="font-extrabold text-lg mt-4">{d.discuss}</p>
-                <PlayerGrid compact />
-                <button className={`${BTN} btn-amber w-full mt-2`} onClick={() => { pendingRef.current.readyVote = { kind: 'readyVote' }; getNet().readyVote(); }}>
+                </div>
+              ) : (
+                <p className="font-extrabold mt-1 text-[#0E9F6E]">{d.peacefulNight}</p>
+              )}
+              <p className="font-extrabold text-lg mt-4">{d.discuss}</p>
+              <PlayerGrid variant="day" />
+              <div className="lg:hidden">
+                <button className={`${BTN} btn-dark w-full mt-2`} onClick={() => { pendingRef.current.readyVote = { kind: 'readyVote' }; getNet().readyVote(); }}>
                   {d.readyVoteBtn}
                 </button>
                 <p className="text-center font-bold text-[#8A7B63] text-sm mt-2">{d.readyVoteOf(pub!.dayReady.length, pub!.players.filter(p => p.connected && p.alive).length)}</p>
@@ -657,44 +811,71 @@ export default function MaSoiApp() {
 
         {phase === 'voting' && (
           <div className="max-w-3xl mx-auto">
-            <div className={`${CARD}`}>
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <h2 className="disp font-extrabold text-2xl">🗳️ {d.voting}</h2>
-                <TimerPill secs={secsLeft(pub!.voteEndsAt, now)} />
+            <div className="flex items-center gap-3 mb-3">
+              <span className="w-12 h-12 flex-none rounded-full bg-[#D63A2F] hard-xs flex items-center justify-center overflow-hidden">
+                <WolfAvatar seed="vote-icon" size={44} state="wolf" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2 className="disp font-extrabold text-2xl leading-none">{d.voting}</h2>
+                <p className="font-bold text-[#8A7B63] text-xs sm:text-sm mt-1 whitespace-nowrap">{d.votedCount(pub!.players.filter(p => p.alive && p.hasVoted).length, pub!.players.filter(p => p.alive).length)}</p>
               </div>
-              <p className="font-bold text-[#8A7B63] mt-1">{d.voteHint}</p>
-              <PlayerGrid
+              <TimerPill secs={secsLeft(pub!.voteEndsAt, now)} />
+            </div>
+            <div className={`${CARD}`}>
+              <p className="font-bold text-[#8A7B63]">{d.voteHint}</p>
+              <PlayerGrid variant="vote"
                 pickable={p => p.alive && p.id !== joined.playerId}
                 onPick={id => doVote(id)}
               />
               {me?.hasVoted && priv?.myVote && <p className="text-center font-extrabold text-[#0E9F6E]">{d.votedFor(playerName(priv.myVote))}</p>}
             </div>
+            <p className="text-center font-bold text-[#8A7B63] text-sm mt-3">{d.voteFoot}</p>
           </div>
         )}
 
         {phase === 'results' && (
-          <div className="max-w-3xl mx-auto flex flex-col min-h-0">
-            <div className="flex-1 min-h-0 flex flex-col">
-              <p className="disp text-center font-extrabold tracking-[0.22em] text-[#FFB020] text-xs mt-1">{d.results.toUpperCase()}</p>
-              <h2 className="disp font-extrabold text-3xl text-center text-[#FFF3CF] leading-snug">
-                {pub!.winner === 'wolves' ? d.wolvesWin : d.villagersWin}
-              </h2>
-              <PlayerGrid compact />
-              {myRecord.w + myRecord.l > 0 && (
-                <div className="text-center"><span className="font-extrabold text-[13px] text-[#B9BCE0]">{d.recordTitle}: </span><span className="font-bold text-teal-300 text-[13px]">{d.recordLine(myRecord.w, myRecord.l)}</span></div>
-              )}
-              <div className="flex gap-2 mt-3">
-                <button className="disp flex-1 px-3 py-2.5 rounded-2xl font-extrabold hard push bg-[#FFFBef] text-[#2B2016] whitespace-nowrap" onClick={doShare}>
-                  {shareCopied ? '✓ ' + d.copied : '📣 ' + d.shareResults}
-                </button>
-                {joined.isHost ? (
-                  <button className="disp flex-1 px-3 py-2.5 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] whitespace-nowrap" onClick={() => getNet().playAgain()}>🔄 {d.playAgain}</button>
-                ) : (
-                  <p className="flex-1 text-center font-bold text-[#B9BCE0] self-center text-[13px] leading-tight">{d.waiting}</p>
+          <div className="lg:max-w-6xl mx-auto">
+            <p className="disp text-center font-extrabold tracking-[0.22em] text-[#FFB020] text-xs mt-1">{d.results.toUpperCase()}</p>
+            <h2 className="disp font-extrabold text-4xl text-center text-[#FFF3CF] leading-tight">
+              {pub!.winner === 'wolves' ? d.wolvesWin : d.villagersWin}
+            </h2>
+            <p className="text-center text-[#B9BCE0] font-bold mt-1">{pub!.winner === 'wolves' ? d.wolvesWinSub : d.villagersWinSub}</p>
+            <div className="lg:grid lg:grid-cols-[1fr_320px] lg:gap-4 mt-4">
+              <PlayerGrid variant="results" />
+              <div className="grid grid-cols-2 lg:grid-cols-1 gap-3 mt-3 lg:mt-0">
+                {pub!.players.some(p => (p.wins ?? 0) > 0) && (
+                  <div className="card-cream p-4 text-[#2B2016]">
+                    <div className="font-extrabold text-sm">{d.standings}</div>
+                    <div className="mt-2 space-y-1">
+                      {[...pub!.players].filter(p => (p.wins ?? 0) > 0).sort((a, b) => (b.wins ?? 0) - (a.wins ?? 0)).map(p => (
+                        <div key={p.id} className="flex items-center justify-between font-bold text-sm">
+                          <span className="truncate">{p.name}</span>
+                          <span className="font-extrabold">{p.wins}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
+                {myRecord.w + myRecord.l > 0 && (
+                  <div className="rounded-[20px] border-2 border-[#2B2016] bg-[#FBE3E0] p-4 hard-sm">
+                    <div className="font-extrabold text-sm text-[#D63A2F]">{d.recordTitle}</div>
+                    <div className="disp font-extrabold text-2xl text-[#2B2016] mt-1">{d.recordLine(myRecord.w, myRecord.l)}</div>
+                    {priv?.myRole && <div className="font-bold text-sm text-[#D63A2F] mt-1">{d.recordAs(roleLabel(d, priv.myRole))}</div>}
+                  </div>
+                )}
+                <div className="col-span-2 lg:col-span-1 flex gap-2 lg:flex-col">
+                  <button className="disp flex-1 px-3 py-2.5 rounded-2xl font-extrabold hard push bg-[#FFFBef] text-[#2B2016] whitespace-nowrap" onClick={doShare}>
+                    {shareCopied ? '✓ ' + d.copied : '📣 ' + d.shareResults}
+                  </button>
+                  {joined.isHost ? (
+                    <button className="disp flex-1 px-3 py-2.5 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] whitespace-nowrap" onClick={() => getNet().playAgain()}>🔄 {d.playAgain}</button>
+                  ) : (
+                    <p className="flex-1 text-center font-bold text-[#B9BCE0] self-center text-[13px] leading-tight">{d.waiting}</p>
+                  )}
+                </div>
               </div>
-              {chatPreviewBar}
             </div>
+            {chatPreviewBar}
           </div>
         )}
       </div>

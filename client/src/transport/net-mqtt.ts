@@ -461,6 +461,7 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
     readyVote: () => intent('readyVote'),
     nightAction: (kind, targetId) => intent(kind, { targetId }),
     chat: (text) => intent('chat', { text }),
+    wolfChat: (text) => intent('wolfChat', { text }),
     toVoting: () => intent('toVoting'),
     vote: (targetId) => intent('vote', { targetId }),
     playAgain: () => intent('playAgain'),
