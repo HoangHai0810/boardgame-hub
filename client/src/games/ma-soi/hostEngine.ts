@@ -199,7 +199,9 @@ export class HostEngine {
   startNight() {
     const s = this.state;
     s.night++; s.phase = 'night';
-    s.nightDeaths = []; s.voteTie = false;
+    s.nightDeaths = [];
+    // NOTE: voteTie is NOT reset here — the morning announcement shows
+    // yesterday's tie. It is reset in startVoting instead.
     s.wolfTarget = null; s.guardianTarget = null; s.witchKillTarget = null; s.witchSaved = false;
     s.players.forEach(p => { p.wolfPick = null; p.hasVoted = false; p.vote = null; });
     s.wolfChat = []; s.wolfConfirmed = [];
@@ -297,7 +299,7 @@ export class HostEngine {
   }
   startVoting() {
     this.clear(); const s = this.state;
-    s.phase = 'voting'; s.voteEndsAt = Date.now() + VOTE_MS; this.broadcast();
+    s.phase = 'voting'; s.voteTie = false; s.voteEndsAt = Date.now() + VOTE_MS; this.broadcast();
     this.later(VOTE_MS, () => { if (s.phase === 'voting') this.finishVoting(); });
   }
   finishVoting() {
@@ -307,8 +309,14 @@ export class HostEngine {
     if (w) { this.finishGame(w); return; }
     this.startNight();
   }
-  private finishGame(w: 'wolves' | 'villagers') {
+  private finishGame(_w: 'wolves' | 'villagers') {
     this.clear(); const s = this.state;
+    // Re-derive the winner from who is actually alive right now — the
+    // caller passes a checkWin() taken just before, but the winner must
+    // never contradict the live board (a wolves-win with zero wolves alive
+    // was reported live). If nothing is decided yet, don't finish at all.
+    const w = checkWin(s);
+    if (!w) return;
     s.winner = w; s.phase = 'results';
     for (const p of s.players) {
       const won = w === 'wolves' ? p.role === 'wolf' : p.role !== 'wolf';

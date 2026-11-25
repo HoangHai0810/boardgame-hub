@@ -59,6 +59,7 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
   let makeExtra: (() => mqtt.IClientOptions) | null = null;
   let bindCurrent: (() => void) | null = null;
   let joinTimer: ReturnType<typeof setTimeout> | null = null;
+  let joinTried = new Set<number>(); // broker indices already tried for this join
   let order: string[] = [];
   let brokerIdx = 0;
   let failoverTimer: ReturnType<typeof setTimeout> | null = null;
@@ -402,9 +403,11 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
     myName = name;
     h.onStatus('STATUS_CONNECTING:' + roomCode);
     myKeys = await generateKeys();
-    joinTimer = setTimeout(() => {
-      if (att === attemptSeq && !joinedFired) notifyError('HOST_UNREACHABLE');
-    }, 45000);
+    // The join clock starts AFTER the broker walk, not before: the walk
+    // itself can take ~20s on a bad network, and the old 45s timer fired
+    // while the guest was still walking — or sat on one broker for 45s
+    // while the host was on another (split-broker: host and guest on
+    // different networks can reach different brokers first).
     makeExtra = () => {
       willConn = nonce();
       return { clientId: 'ct-c-' + myId + '-' + Math.random().toString(36).slice(2, 7),
@@ -415,8 +418,36 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
     const rc = await connectMqttSequential(order, 0, makeExtra());
     if (att !== attemptSeq) { try { rc.client.end(true); } catch { /* noop */ } return; } // cancelled mid-walk
     client = rc.client; brokerIdx = rc.idx;
+    joinTried = new Set([rc.idx]);
     watchLifecycle(client);
     bindCurrent();
+    armJoinTimer(att);
+  }
+
+  /** (Re)arm the host-reply clock: 12s on this broker with no 'joined'
+   *  reply, then hop to the next broker in the room's order instead of
+   *  erroring at once. Up to 3 distinct brokers, then HOST_UNREACHABLE. */
+  function armJoinTimer(att: number) {
+    if (joinTimer) { clearTimeout(joinTimer); joinTimer = null; }
+    joinTimer = setTimeout(() => { void hopJoinBroker(att); }, 12000);
+  }
+  async function hopJoinBroker(att: number) {
+    if (att !== attemptSeq || joinedFired || left) return;
+    joinTried.add(brokerIdx);
+    if (joinTried.size >= 3) { notifyError('HOST_UNREACHABLE'); return; }
+    const old = client; client = null;
+    try { old?.removeAllListeners(); old?.end(true); } catch { /* noop */ }
+    const extra = makeExtra;
+    if (!extra) { notifyError('NET_UNREACHABLE'); return; }
+    try {
+      const rc = await connectMqttSequential(order, (brokerIdx + 1) % order.length, extra());
+      if (att !== attemptSeq || joinedFired || left) { try { rc.client.end(true); } catch { /* noop */ } return; }
+      if (joinTried.has(rc.idx)) { try { rc.client.end(true); } catch { /* noop */ } notifyError('HOST_UNREACHABLE'); return; }
+      client = rc.client; brokerIdx = rc.idx;
+      watchLifecycle(client);
+      bindCurrent?.();
+      armJoinTimer(att);
+    } catch { notifyError('NET_UNREACHABLE'); }
   }
 
   const intent = (action: string, extra: object = {}) => {

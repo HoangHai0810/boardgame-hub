@@ -296,8 +296,11 @@ export function resolveNight(s: GameState): Death[] {
   }
   const wk = s.witchKillTarget ? byId(s, s.witchKillTarget) : null;
   if (wk && wk.alive) deaths.push(kill(s, wk, 'witch'));
-  s.nightDeaths = deaths;
-  return deaths;
+  // Append, don't overwrite: the hunter's shot (first step of the night)
+  // already pushed its victim into nightDeaths — overwriting here dropped
+  // it from the dawn announcement (live: 2 dead, 1 announced).
+  s.nightDeaths = [...s.nightDeaths, ...deaths];
+  return s.nightDeaths;
 }
 
 /* ---------- voting ---------- */

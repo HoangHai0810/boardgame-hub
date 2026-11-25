@@ -40,12 +40,12 @@ function cardSymbol(card: Card): string {
 }
 function UnoCardFace({ card, size = 'md' }: { card: Card; size?: 'sm' | 'md' | 'lg' }) {
   const box = size === 'lg' ? 'w-[76px] h-[110px]' : size === 'sm' ? 'w-[52px] h-[76px]' : 'w-[62px] h-[90px]';
-  const sym = size === 'sm' ? 'text-xl' : size === 'lg' ? 'text-3xl' : 'text-2xl';
+  const sym = size === 'sm' ? 'text-base' : size === 'lg' ? (card.color === 'wild' ? 'text-2xl' : 'text-3xl') : (card.color === 'wild' ? 'text-xl' : 'text-2xl');
   const pip = size === 'sm' ? 'text-[10px]' : 'text-xs';
   const bg = CARD_COLORS[card.color];
   const symColor = card.color === 'wild' ? '#2B2016' : bg;
   return (
-    <span className={`relative inline-flex flex-none items-center justify-center rounded-xl border-[3px] border-[#2B2016] ${box}`} style={{ background: bg }}>
+    <span className={`relative inline-flex flex-none items-center justify-center rounded-xl border-[3px] border-[#2B2016] overflow-hidden ${box}`} style={{ background: bg }}>
       {card.color === 'wild' ? (
         <span className="absolute inset-[7px] rounded-[10px] overflow-hidden grid grid-cols-2 grid-rows-2 rotate-[-18deg] scale-110">
           <span style={{ background: '#D63A2F' }} /><span style={{ background: '#FFB020' }} />
@@ -142,7 +142,7 @@ export default function UnoApp() {
             ROOM_FULL: d.errRoomFull, GAME_STARTED: d.errGameStarted, ROOM_NOT_FOUND: d.errRoomNotFound,
             HOST_GONE: d.errHostGone, KICKED: d.kickedMsg, HOST_DISCONNECTED: d.errHostDisconnected,
             PEER_BLOCKED: d.errPeerBlocked, SERVER_UNREACHABLE: d.errServerUnreachable,
-            GAME_NOT_SUPPORTED: d.errGameNotSupported,
+            GAME_NOT_SUPPORTED: d.errGameNotSupported, HOST_UNREACHABLE: d.errHostUnreachable,
           };
           if (m.startsWith('CONN_ERROR:')) setError(d.errConnError(m.slice('CONN_ERROR:'.length)));
           else if (m === 'NET_LOST') setConnLost(true);
@@ -351,9 +351,11 @@ export default function UnoApp() {
             <p className="text-[#B9BCE0] font-bold mt-2 leading-snug">{d.subtitle}</p>
           </div>
           <div className="flex justify-center items-end mt-5 -space-x-3">
-            <span className="rotate-[-14deg] translate-y-1"><UnoCardFace card={{ id: 'fan-r', color: 'red', kind: 'number', value: 7 }} size="lg" /></span>
-            <span className="z-10 -translate-y-2"><UnoCardFace card={{ id: 'fan-w', color: 'wild', kind: 'wild' }} size="lg" /></span>
-            <span className="rotate-[14deg] translate-y-1"><UnoCardFace card={{ id: 'fan-b', color: 'blue', kind: 'number', value: 3 }} size="lg" /></span>
+            <span className="rotate-[-18deg] translate-y-2"><UnoCardFace card={{ id: 'fan-b2', color: 'blue', kind: 'number', value: 2 }} size="lg" /></span>
+            <span className="rotate-[-9deg] translate-y-1"><UnoCardFace card={{ id: 'fan-g7', color: 'green', kind: 'number', value: 7 }} size="lg" /></span>
+            <span className="z-10 -translate-y-1"><UnoCardFace card={{ id: 'fan-r9', color: 'red', kind: 'number', value: 9 }} size="lg" /></span>
+            <span className="rotate-[9deg] translate-y-1"><UnoCardFace card={{ id: 'fan-y2', color: 'yellow', kind: 'draw2' }} size="lg" /></span>
+            <span className="rotate-[18deg] translate-y-2"><UnoCardFace card={{ id: 'fan-b5', color: 'blue', kind: 'number', value: 5 }} size="lg" /></span>
           </div>
           <div className="bg-[#FFF3CF] rounded-t-[28px] px-4 pt-4 pb-6 mt-5">
             <label className="disp font-extrabold text-sm">{d.name}</label>

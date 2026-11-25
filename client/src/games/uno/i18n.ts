@@ -4,7 +4,7 @@
 export type Lang = 'en' | 'vi';
 const dict = {
   vi: {
-    title: 'Uno', subtitle: 'Đánh hết bài trước — và nhớ hô UNO khi còn 1 lá!',
+    title: 'Uno', subtitle: 'Đánh hết bài trước, nhớ hô UNO khi còn một lá.',
     backToHub: '← Sảnh game',
     kicker: 'TRÒ CHƠI BÀI · 2–10 NGƯỜI',
     name: 'Tên của bạn', create: 'Tạo Phòng', join: 'Vào Phòng', codePh: 'Mã phòng (VD: K7QX2)',
@@ -75,7 +75,7 @@ const dict = {
     ],
   },
   en: {
-    title: 'Uno', subtitle: 'Shed all your cards first — and remember to call UNO with 1 card left!',
+    title: 'Uno', subtitle: 'Shed all your cards first — and remember to call UNO with one card left!',
     backToHub: '← Game hub',
     kicker: 'CARD GAME · 2–10 PLAYERS',
     name: 'Your name', create: 'Create Room', join: 'Join Room', codePh: 'Room code (e.g. K7QX2)',

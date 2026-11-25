@@ -119,7 +119,7 @@ export default function MaSoiApp() {
             ROOM_FULL: d.errRoomFull, GAME_STARTED: d.errGameStarted, ROOM_NOT_FOUND: d.errRoomNotFound,
             HOST_GONE: d.errHostGone, KICKED: d.kickedMsg, HOST_DISCONNECTED: d.errHostDisconnected,
             PEER_BLOCKED: d.errPeerBlocked, SERVER_UNREACHABLE: d.errServerUnreachable,
-            GAME_NOT_SUPPORTED: d.errGameNotSupported,
+            GAME_NOT_SUPPORTED: d.errGameNotSupported, HOST_UNREACHABLE: d.errHostUnreachable,
           };
           if (m.startsWith('CONN_ERROR:')) setError(d.errConnError(m.slice('CONN_ERROR:'.length)));
           else if (m === 'NET_LOST') setConnLost(true);
@@ -309,14 +309,16 @@ export default function MaSoiApp() {
             );
           }
           if (variant === 'vote') {
+            const voted = !dead && p.hasVoted;
             return (
               <button key={p.id} disabled={!canPick}
                 onClick={() => onPick?.(p.id)}
-                className={`rounded-[20px] p-3 text-center hard-sm ${dead ? 'bg-[#EFEFEF] opacity-70' : isMe ? 'bg-[#EFE7D3]' : 'bg-white'} ${canPick ? 'hover:scale-[1.03] transition cursor-pointer' : 'cursor-default'}`}>
+                className={`relative rounded-[20px] p-3 text-center hard-sm ${dead ? 'bg-[#EFEFEF] opacity-70' : voted ? 'bg-[#DFF5E3]' : isMe ? 'bg-[#EFE7D3]' : 'bg-white'} ${canPick ? 'hover:scale-[1.03] transition cursor-pointer' : 'cursor-default'}`}>
+                {voted && <span className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-[#0E9F6E] text-white disp font-extrabold text-sm flex items-center justify-center border-2 border-[#2B2016]">✓</span>}
                 <span className="mx-auto block w-fit">{isWolfCard ? <WolfAvatar seed={p.id} size={56} state="wolf" /> : <MouseAvatar seed={p.id} size={56} state={dead ? 'dead' : 'awake'} />}</span>
                 <span className={`block font-extrabold text-lg mt-1 ${dead ? 'line-through text-gray-500' : 'text-[#2B2016]'}`}>{p.name}{isMe ? ` (${d.you})` : ''}</span>
                 <span className="block text-sm font-bold text-[#8A7B63] mt-0.5">
-                  {isMe ? d.cantSelfVote : dead ? '' : p.hasVoted ? d.votedAlready : d.thinking}
+                  {dead ? '' : p.hasVoted ? d.votedAlready : isMe ? d.cantSelfVote : d.thinking}
                 </span>
               </button>
             );
@@ -673,14 +675,6 @@ export default function MaSoiApp() {
                 );
               })}
             </div>
-            {pub!.lastVoteOut && (
-              <div className="bg-[#23233F] border-2 border-[#3D3D63] rounded-2xl px-3 py-2 mb-2 font-bold text-[#FFF3CF] text-sm">
-                {d.voteOutNote(pub!.lastVoteOut.name)}
-              </div>
-            )}
-            {pub!.voteTie && (
-              <div className="bg-[#23233F] border-2 border-[#3D3D63] rounded-2xl px-3 py-2 mb-2 font-bold text-[#FFF3CF] text-sm">{d.voteTieNote}</div>
-            )}
             <div className={amWolf ? 'lg:grid lg:grid-cols-[1fr_340px] lg:gap-4' : 'max-w-3xl mx-auto'}>
               <div>
                 {amDead ? (
@@ -832,20 +826,23 @@ export default function MaSoiApp() {
                 </div>
                 <TimerPill secs={secsLeft(pub!.discussionEndsAt, now)} />
               </div>
-              {pub!.nightDeaths.length > 0 ? (
+              {(pub!.nightDeaths.length > 0 || pub!.lastVoteOut || pub!.voteTie) ? (
                 <div className={`${CARD}`}>
-                  <p className="font-extrabold">{d.diedLastNight}</p>
-                  <div className="grid sm:grid-cols-2 gap-2 mt-2">
-                    {pub!.nightDeaths.map(x => (
-                      <div key={x.id} className="flex items-center gap-2 bg-white hard-sm rounded-2xl px-3 py-2">
-                        <MouseAvatar seed={x.id} size={40} state="dead" />
-                        <div className="font-bold min-w-0">
-                          <div className="truncate">{x.name}</div>
-                          <div className="text-[#8A7B63] text-sm">{d.diedBy(x.cause)}</div>
+                  {pub!.nightDeaths.length > 0 ? (<>
+                    <p className="font-extrabold">{d.diedLastNight}</p>
+                    <div className="grid sm:grid-cols-2 gap-2 mt-2">
+                      {pub!.nightDeaths.map(x => (
+                        <div key={x.id} className="flex items-center gap-2 bg-white hard-sm rounded-2xl px-3 py-2">
+                          <MouseAvatar seed={x.id} size={40} state="dead" />
+                          <div className="font-bold min-w-0 truncate">{x.name}</div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  </>) : (
+                    <p className="font-extrabold text-[#0E9F6E]">{d.peacefulNight}</p>
+                  )}
+                  {pub!.lastVoteOut && <p className="font-bold text-[#8A7B63] mt-2">{d.votedOutYesterday(pub!.lastVoteOut.name)}</p>}
+                  {pub!.voteTie && <p className="font-bold text-[#8A7B63] mt-2">{d.voteTieYesterday}</p>}
                 </div>
               ) : (
                 <p className="font-extrabold mt-1 text-[#0E9F6E]">{d.peacefulNight}</p>

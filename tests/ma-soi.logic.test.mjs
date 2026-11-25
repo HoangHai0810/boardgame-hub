@@ -98,6 +98,16 @@ t('hunter shoots on death, then is spent', () => {
   assert.equal(s.pendingHunterShot, null);
   assert.equal(hunterShoot(s, s.players[0], 'p2'), false); // no longer pending
 });
+t('night resolution: hunter shot survives resolveNight (2 dead, 2 announced)', () => {
+  const s = mk(['hunter', 'wolf', 'witch', 'villager', 'villager']);
+  night(s, 'hunter');
+  s.players[0].alive = false; s.pendingHunterShot = 'p0';
+  assert.equal(hunterShoot(s, s.players[0], 'p1'), true); // hunter takes a wolf
+  night(s, 'witch'); s.wolfTarget = 'p3'; // wolves eat a villager
+  const deaths = resolveNight(s);
+  assert.deepEqual(deaths.map(d => [d.id, d.cause]), [['p1', 'hunter'], ['p3', 'wolves']]);
+  assert.equal(s.nightDeaths.length, 2);
+});
 t('vote: no self-vote, tie eliminates nobody', () => {
   const s = mk(['wolf', 'villager', 'villager', 'villager']); s.phase = 'voting';
   assert.equal(castVote(s, s.players[1], 'p1'), false);

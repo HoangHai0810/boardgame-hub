@@ -61,13 +61,17 @@ const faceFor = (id: string) => FACE_COLORS[hashId(id) % FACE_COLORS.length];
 /** Flat SVG face in the platform's style. Wolf = pointed ears + grey fur +
  *  fangs; dead = X eyes; asleep = closed eyes. */
 export function WolfAvatar({ seed, size = 48, state = 'villager', halo }: { seed: string; size?: number; state?: 'villager' | 'wolf' | 'dead' | 'asleep'; halo?: string }) {
-  const [skin, shade] = state === 'wolf' ? ['#8A8F9C', '#6B7080'] : faceFor(seed);
+  // A dead wolf is still a wolf: pointed ears, grey fur, muzzle — plus X
+  // eyes. (Before, state="dead" fell into the round-ear mouse branch, so
+  // the results screen showed dead wolves as mice.)
+  const isWolf = state === 'wolf' || state === 'dead';
+  const [skin, shade] = isWolf ? ['#8A8F9C', '#6B7080'] : faceFor(seed);
   const dead = state === 'dead';
   const asleep = state === 'asleep';
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden>
       {halo && <circle cx="50" cy="50" r="47" fill={halo} />}
-      {state === 'wolf' ? (
+      {isWolf ? (
         <>
           <path d="M20 38 L10 4 L44 20 Z" fill={skin} stroke="#2B2016" strokeWidth="3" strokeLinejoin="round" />
           <path d="M80 38 L90 4 L56 20 Z" fill={skin} stroke="#2B2016" strokeWidth="3" strokeLinejoin="round" />
@@ -81,14 +85,14 @@ export function WolfAvatar({ seed, size = 48, state = 'villager', halo }: { seed
         </>
       )}
       <circle cx="50" cy="54" r="34" fill={skin} stroke="#2B2016" strokeWidth="3.5" />
-      {state === 'wolf' && (
+      {isWolf && (
         <>
           <path d="M17 62 L10 70 L19 69 Z" fill={skin} stroke="#2B2016" strokeWidth="2.5" strokeLinejoin="round" />
           <path d="M83 62 L90 70 L81 69 Z" fill={skin} stroke="#2B2016" strokeWidth="2.5" strokeLinejoin="round" />
           <ellipse cx="50" cy="70" rx="15" ry="11" fill="#B9BEC9" />
         </>
       )}
-      {state !== 'wolf' && <ellipse cx="50" cy="72" rx="13" ry="9" fill={shade} opacity="0.55" />}
+      {!isWolf && <ellipse cx="50" cy="72" rx="13" ry="9" fill={shade} opacity="0.55" />}
       <circle cx="50" cy="68" r="4.5" fill="#2B2016" />
       {dead ? (
         <>

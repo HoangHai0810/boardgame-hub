@@ -50,7 +50,7 @@ const dict = {
     qc3: 'Đừng Tấn công tôi mà! 😱', qc4: 'Lượt tôi, chờ tí 🤔',
     // Lobby rule toggles (design MN2)
     rulesTitle: 'Luật chơi',
-    ruleNope: 'Cho phép Không!',
+    ruleNope: 'Cho phép dùng Nope',
     ruleNopeSub: 'Người khác có thể chặn lá bạn vừa đánh',
     ruleCounts: 'Hiện số lá của mọi người',
     ruleCountsSub: 'Ai cũng thấy ai đang còn bao nhiêu lá',
