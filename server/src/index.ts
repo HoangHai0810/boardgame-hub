@@ -11,7 +11,7 @@ import {
   autoInspectIdle, applyDefaultVotes,
   chooseFollower, autoResolveFollowerChoice, recruitCount, followers, recordHour,
   MIN_PLAYERS, MAX_PLAYERS, HOUR_MS, RECRUIT_MS, DISCUSSION_MS, VOTE_MS,
-} from '../../shared/logic.js';
+} from '../../games/cheese-thief/logic.js';
 
 const app = express();
 app.use(cors());
@@ -19,14 +19,19 @@ app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size }));
 const http = createServer(app);
 const io = new Server(http, { cors: { origin: '*' } });
 
-interface Room { state: GameState; timers: NodeJS.Timeout[]; sockets: Map<string, string>; /* playerId -> socketId */ }
+// Platform rule: one server can host many games; a room is (game, code).
+// The engine for each game lives in games/<id>/ — only cheese-thief has
+// one today, so the registry is a single-entry set until the next game lands.
+const GAME_IDS = new Set(['cheese-thief']);
+const roomKey = (game: string, code: string) => `${game}:${code}`;
+interface Room { game: string; state: GameState; timers: NodeJS.Timeout[]; sockets: Map<string, string>; /* playerId -> socketId */ }
 const rooms = new Map<string, Room>();
 
 function clearTimers(room: Room) { room.timers.forEach(clearTimeout); room.timers = []; }
 function later(room: Room, ms: number, fn: () => void) { room.timers.push(setTimeout(fn, ms)); }
 
 function broadcast(room: Room) {
-  io.to(room.state.roomCode).emit('state', publicState(room.state));
+  io.to(roomKey(room.game, room.state.roomCode)).emit('state', publicState(room.state));
   // private snapshots, point-to-point
   for (const p of room.state.players) {
     const sid = room.sockets.get(p.id);
@@ -120,30 +125,32 @@ io.on('connection', (socket: Socket) => {
   let room: Room | null = null;
   let player: Player | null = null;
 
-  socket.on('createRoom', ({ name, clientId }: { name: string; clientId: string }, cb: (r: unknown) => void) => {
+  socket.on('createRoom', ({ game, name, clientId }: { game: string; name: string; clientId: string }, cb: (r: unknown) => void) => {
+    const g = String(game || 'cheese-thief');
+    if (!GAME_IDS.has(g)) return cb?.({ ok: false, error: 'GAME_NOT_SUPPORTED' });
     let code = makeRoomCode();
-    while (rooms.has(code)) code = makeRoomCode();
+    while (rooms.has(roomKey(g, code))) code = makeRoomCode();
     const state = createGame(code);
     state.discussionMs = DISC; // env override (tests) seeds the room option
-    room = { state, timers: [], sockets: new Map() };
-    rooms.set(code, room);
+    room = { game: g, state, timers: [], sockets: new Map() };
+    rooms.set(roomKey(g, code), room);
     player = { id: String(clientId), name: cleanName(name), isHost: true, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, peeks: [], wins: 0 };
     state.players.push(player);
     room.sockets.set(player.id, socket.id);
-    socket.join(code);
+    socket.join(roomKey(g, code));
     cb?.({ ok: true, code, playerId: player.id });
     broadcast(room);
   });
 
-  socket.on('joinRoom', ({ code, name, clientId }: { code: string; name: string; clientId: string }, cb: (r: unknown) => void) => {
-    const r = rooms.get(String(code || '').toUpperCase().trim());
+  socket.on('joinRoom', ({ game, code, name, clientId }: { game: string; code: string; name: string; clientId: string }, cb: (r: unknown) => void) => {
+    const r = rooms.get(roomKey(String(game || 'cheese-thief'), String(code || '').toUpperCase().trim()));
     if (!r) return cb?.({ ok: false, error: 'ROOM_NOT_FOUND' });
     room = r;
     const existing = r.state.players.find(p => p.id === String(clientId));
     if (existing) { // reconnection / session recovery
       player = existing; player.connected = true;
       r.sockets.set(player.id, socket.id);
-      socket.join(r.state.roomCode);
+      socket.join(roomKey(r.game, r.state.roomCode));
       cb?.({ ok: true, code: r.state.roomCode, playerId: player.id, rejoined: true });
       broadcast(r); return;
     }
@@ -152,7 +159,7 @@ io.on('connection', (socket: Socket) => {
     player = { id: String(clientId), name: cleanName(name), isHost: false, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, peeks: [], wins: 0 };
     r.state.players.push(player);
     r.sockets.set(player.id, socket.id);
-    socket.join(r.state.roomCode);
+    socket.join(roomKey(r.game, r.state.roomCode));
     cb?.({ ok: true, code: r.state.roomCode, playerId: player.id });
     broadcast(r);
   });
@@ -281,7 +288,7 @@ io.on('connection', (socket: Socket) => {
       if (next) { s.players.forEach(p => { p.isHost = p.id === next.id; }); }
     }
     if (s.players.every(p => !p.connected)) {
-      clearTimers(room); rooms.delete(s.roomCode); return;
+      clearTimers(room); rooms.delete(roomKey(room.game, s.roomCode)); return;
     }
     // If everyone still in the game has voted, finish even with a disconnected player pending.
     if (s.phase === 'voting' && s.players.filter(p => p.connected).every(p => p.hasVoted)) finishVoting(room);
@@ -294,7 +301,7 @@ setInterval(() => {
   for (const [code, r] of rooms) if (r.state.players.every(p => !p.connected)) { clearTimers(r); rooms.delete(code); }
 }, 60000);
 
-// Test hooks: allow fast timers via env (production defaults come from shared/logic).
+// Test hooks: allow fast timers via env (production defaults come from the game's logic).
 const HOUR = Number(process.env.CT_HOUR_MS || HOUR_MS);
 const RECRUIT = Number(process.env.CT_RECRUIT_MS || RECRUIT_MS);
 const DISC = Number(process.env.CT_DISCUSSION_MS || DISCUSSION_MS);
