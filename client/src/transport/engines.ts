@@ -5,6 +5,7 @@
 // transport never inspects their shape).
 import { HostEngine as CheeseThiefEngine } from '../games/cheese-thief/hostEngine';
 import { HostEngine as MaSoiEngine } from '../games/ma-soi/hostEngine';
+import { HostEngine as UnoEngine } from '../games/uno/hostEngine';
 
 export interface EngineLike {
   state: any;
@@ -22,6 +23,7 @@ export type EngineCtor = new (code: string, hooks: any) => EngineLike;
 export const ENGINES: Record<string, EngineCtor> = {
   'cheese-thief': CheeseThiefEngine as unknown as EngineCtor,
   'ma-soi': MaSoiEngine as unknown as EngineCtor,
+  'uno': UnoEngine as unknown as EngineCtor,
 };
 
 export function engineFor(gameId: string): EngineCtor | null {

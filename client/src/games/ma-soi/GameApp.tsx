@@ -6,7 +6,8 @@ import { sfx, ensureCtx } from '../../transport/sound';
 import { joinVoice, VoiceHandle } from '../../transport/voice';
 import { TopBar, ChatPanel, ChatSheet, chatPreview } from '../../platform/ui';
 import { WolfAvatar, MouseAvatar, RoleIcon, ROLE_STRONG, MoonVillage } from '../../platform/avatars';
-import { roleTable, MIN_PLAYERS } from '../../../../games/ma-soi/logic';
+import { roleTable, effectiveRoleConfig, MIN_PLAYERS, MAX_PLAYERS } from '../../../../games/ma-soi/logic';
+import type { RoleConfig } from '../../../../games/ma-soi/logic';
 import type { Role } from '../../../../games/ma-soi/logic';
 
 const SESSION_KEY = 'ct_guest_session:ma-soi';
@@ -67,6 +68,7 @@ export default function MaSoiApp() {
   const [connLost, setConnLost] = useState(false);
   const [muted, setMuted] = useState(() => localStorage.getItem('ct_muted') === '1');
   const [showHelp, setShowHelp] = useState(false);
+  const [roleSettingsOpen, setRoleSettingsOpen] = useState(false);
   const [chatSheet, setChatSheet] = useState(false);
   const [myRecord, setMyRecord] = useState<{ w: number; l: number; roles: Record<string, { w: number; g: number }> }>({ w: 0, l: 0, roles: {} });
   const [shareCopied, setShareCopied] = useState(false);
@@ -293,7 +295,7 @@ export default function MaSoiApp() {
             && ((variant === 'results' && p.role === 'wolf')
               || (variant === 'pick' && priv?.wolfTeam.some(w => w.id === p.id)));
           const selected = selectedId === p.id;
-          const avSize = variant === 'lobby' ? 48 : 52;
+          const avSize = variant === 'lobby' ? 40 : 52;
           if (variant === 'results') {
             const bg = p.role === 'wolf' ? 'bg-[#FBE3E0]' : dead ? 'bg-[#E5E5E5]' : 'bg-[#FFFBef]';
             return (
@@ -322,19 +324,20 @@ export default function MaSoiApp() {
           return (
             <button key={p.id} disabled={onPick ? !canPick : true}
               onClick={() => { onPick?.(p.id); }}
-              className={`relative rounded-2xl text-[#2B2016] p-2 text-center hard-xs ${selected ? 'bg-[#FFE3E0] ring-4 ring-[#D63A2F]' : dead ? 'bg-[#D8D8D8]' : isMe ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'} ${onPick ? 'hover:scale-105 transition cursor-pointer' : 'cursor-default'} disabled:opacity-70 disabled:hover:scale-100`}>
+              className={`relative rounded-2xl text-[#2B2016] p-1.5 text-center hard-xs ${selected ? 'bg-[#FFE3E0] ring-4 ring-[#D63A2F]' : dead ? 'bg-[#D8D8D8]' : isMe ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'} ${onPick ? 'hover:scale-105 transition cursor-pointer' : 'cursor-default'} disabled:opacity-70 disabled:hover:scale-100`}>
               {speakingIds.has(p.id) && <span className="absolute -bottom-2 -left-2 bg-green-500 text-white text-xs rounded-full px-1.5 py-0.5 shadow anim-pulse-soft">🎙️</span>}
               <span className="mx-auto block w-fit">
                 {isWolfCard ? <WolfAvatar seed={p.id} size={avSize} state={dead ? 'dead' : 'wolf'} />
                   : <MouseAvatar seed={p.id} size={avSize} state={dead ? 'dead' : phase === 'night' ? 'asleep' : 'awake'} />}
               </span>
               <span className={`block font-bold truncate text-sm mt-0.5 ${dead ? 'line-through text-gray-500' : ''}`}>{p.name}{isMe ? ` (${d.you})` : ''}</span>
+              {variant === 'lobby' && (p as any).isBot && <span className="text-xs font-extrabold bg-[#23233F] text-[#FFB020] rounded-full px-2 py-0.5 mt-0.5 inline-block">🤖 {d.botTag}</span>}
               {variant === 'lobby' && p.isHost && <span className="text-amber-600 text-xs font-extrabold whitespace-nowrap">👑 {d.host}</span>}
               {variant === 'lobby' && !p.connected && <span className="text-red-500 text-xs font-bold"> • {d.offline}</span>}
               {variant === 'lobby' && joined?.isHost && !isMe && (
-                <span role="button" title={d.kick}
-                  onClick={(e) => { e.stopPropagation(); getNet().kick(p.id); }}
-                  className="inline-block text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-0.5 mt-1 cursor-pointer hover:bg-red-200">✖ {d.kick}</span>)}
+                <span role="button" title={(p as any).isBot ? d.removeBot : d.kick}
+                  onClick={(e) => { e.stopPropagation(); if ((p as any).isBot) getNet().nightAction('removeBot', p.id); else getNet().kick(p.id); }}
+                  className="inline-block text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-0.5 mt-1 cursor-pointer hover:bg-red-200 whitespace-nowrap">✖ {(p as any).isBot ? d.removeBot : d.kick}</span>)}
               {selected && variant === 'pick' && <span className="block text-xs font-extrabold text-[#D63A2F] mt-0.5">{lang === 'vi' ? 'đã chọn' : 'picked'}</span>}
               {dead && p.role && variant === 'pick' && <span className={`block text-xs font-extrabold mt-0.5 ${roleColor(p.role)}`}>{roleLabel(d, p.role)}</span>}
             </button>
@@ -387,7 +390,7 @@ export default function MaSoiApp() {
           <MoonVillage width={390} />
           <div className="bg-[#FFF3CF] rounded-t-[28px] px-4 pt-4 pb-6 -mt-1">
             <label className="disp font-extrabold text-sm">{d.name}</label>
-            <input className="inp w-full px-4 py-3 font-bold mt-1" placeholder="VD: Hoàng"
+            <input className="inp w-full px-4 py-3 font-bold mt-1" placeholder="VD: An"
               value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
             <button className={`${BTN} btn-amber w-full mt-3`} disabled={!name.trim() || !!status}
               onClick={() => { setError(''); getNet().createRoom(name.trim()); }}>🌙 {d.create}</button>
@@ -435,6 +438,71 @@ export default function MaSoiApp() {
     </div>
   );
 
+  /* ---------- lobby role setup (host only): wolves 2/3, witch +
+   *  hunter toggles. A toggle is disabled when the table would have no
+   *  villager left — the engine would silently drop it, so the UI says
+   *  so first. The role preview underneath updates live. */
+  function RoleSettings({ showSummary, showDiscussion, collapsible, open, onToggle }: { showSummary?: boolean; showDiscussion?: boolean; collapsible?: boolean; open?: boolean; onToggle?: () => void }) {
+    if (!joined?.isHost || !pub) return null;
+    const n = connected;
+    const o = pub.roleOverrides ?? {};
+    const eff = effectiveRoleConfig(n, o);
+    const canSet = (patch: Partial<RoleConfig>) => {
+      const t = roleTable(n, { ...o, ...patch });
+      if (patch.witch === true) return t.some(x => x.role === 'witch' && x.count === 1);
+      if (patch.hunter === true) return t.some(x => x.role === 'hunter' && x.count === 1);
+      if (patch.wolves === 3) return (t.find(x => x.role === 'villager')?.count ?? 0) >= 1;
+      return true;
+    };
+    const set = (patch: Partial<RoleConfig>) => getNet().nightAction('setRoles', undefined, { overrides: patch });
+    const pillStyle = (on: boolean, color: string) => on ? { background: color, color: '#FFF3CF' } : { background: '#FFFBef', color: '#2B2016' };
+    return (
+      <div className="mt-2 rounded-2xl border-2 border-dashed border-[#C9BFA5] p-1.5 text-[#2B2016]">
+        {collapsible ? (
+          <button className="disp font-extrabold text-sm w-full text-left flex items-center justify-between" onClick={onToggle}>
+            <span>⚙️ {d.rolesSettings}</span><span>{open ? '▾' : '▸'}</span>
+          </button>
+        ) : (
+          <div className="disp font-extrabold text-sm">⚙️ {d.rolesSettings}</div>
+        )}
+        {showSummary && (
+          <div className="font-bold text-[#8A7B63] text-xs mt-1">
+            {roleTable(n, o).map(x => `${roleLabel(d, x.role)} ×${x.count}`).join(' · ')}
+          </div>
+        )}
+        {(!collapsible || open) && (<>
+        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+          <span className="font-extrabold text-sm">🐺 {d.wolvesCount}:</span>
+          {[2, 3].map(v => (
+            <button key={v} disabled={v === 3 && !canSet({ wolves: 3 })}
+              onClick={() => set({ wolves: v as 2 | 3 })}
+              className={`disp px-2.5 py-1 rounded-full font-extrabold text-sm push ${eff.wolves === v ? 'bg-[#D63A2F] text-white hard-xs' : 'bg-white hard-xs'} disabled:opacity-30`}>
+              {v}
+            </button>
+          ))}
+          <button disabled={!eff.witch && !canSet({ witch: true })} onClick={() => set({ witch: !eff.witch })}
+            className="disp px-2.5 py-1 rounded-full font-extrabold text-sm push hard-xs border-2 border-[#2B2016] disabled:opacity-30"
+            style={pillStyle(eff.witch, '#7C4DBD')}>🧪 {d.witch}</button>
+          <button disabled={!eff.hunter && !canSet({ hunter: true })} onClick={() => set({ hunter: !eff.hunter })}
+            className="disp px-2.5 py-1 rounded-full font-extrabold text-sm push hard-xs border-2 border-[#2B2016] disabled:opacity-30"
+            style={pillStyle(eff.hunter, '#B45309')}>🏹 {d.hunter}</button>
+        </div>
+        {showDiscussion && (
+          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+            <span className="font-extrabold text-sm">{d.discussionTime}:</span>
+            {[60000, 120000, 180000].map(ms => (
+              <button key={ms} onClick={() => getNet().setDiscussion(ms)}
+                className={`disp px-2.5 py-1 rounded-full font-extrabold text-sm push ${pub!.discussionMs === ms ? 'bg-[#2B2016] text-[#FFF3CF] hard-xs' : 'bg-white hard-xs'}`}>
+                {ms / 60000}:00
+              </button>
+            ))}
+          </div>
+        )}
+        </>)}
+      </div>
+    );
+  }
+
   // Night step tabs (mockup): only the steps this game actually has, in
   // night order; the current step is filled with its role color.
   const nightSteps = (): { key: string; label: string; color: string }[] => {
@@ -443,7 +511,7 @@ export default function MaSoiApp() {
     steps.push({ key: 'wolves', label: d.stepWolfShort, color: '#D63A2F' });
     steps.push({ key: 'seer', label: d.stepSeerShort, color: '#2E7CD6' });
     steps.push({ key: 'guardian', label: d.stepGuardShort, color: '#0E9F6E' });
-    if (roleTable(pub?.players.length ?? 0).some(t => t.role === 'witch')) steps.push({ key: 'witch', label: d.stepWitchShort, color: '#7C4DBD' });
+    if (roleTable(pub?.players.length ?? 0, pub?.roleOverrides ?? {}).some(t => t.role === 'witch')) steps.push({ key: 'witch', label: d.stepWitchShort, color: '#7C4DBD' });
     return steps;
   };
 
@@ -481,7 +549,7 @@ export default function MaSoiApp() {
 
         {phase === 'lobby' && (
           <div>
-            <div className="flex items-center gap-3 mb-3">
+            <div className="flex items-center gap-3 mb-2">
               <button className="w-11 h-11 flex-none rounded-2xl bg-[#FFFBef] hard-xs font-extrabold text-xl text-[#2B2016]" onClick={() => { location.href = location.pathname; }}>‹</button>
               <div className="min-w-0">
                 <h2 className="disp font-extrabold text-2xl leading-none">🐺 {d.title} · {d.lobby}</h2>
@@ -489,19 +557,19 @@ export default function MaSoiApp() {
               </div>
             </div>
             {/* room code bar: dark navy, tiles + copy link (mockup "Ma Sói 2") */}
-            <div className="bg-[#14142B] rounded-[20px] px-4 py-3 flex items-center gap-3 hard">
+            <div className="bg-[#14142B] rounded-[20px] px-4 py-2 flex items-center gap-3 hard">
               <div className="min-w-0">
                 <div className="disp text-[#FFB020] font-extrabold text-[11px] tracking-[0.18em]">{d.roomCode}</div>
                 <div className="flex gap-1.5 mt-1" data-testid="room-code">
                   {pub!.roomCode.split('').map((c, i) => (
-                    <span key={i} className="w-8 h-9 sm:w-9 sm:h-10 rounded-lg bg-[#FFFBef] text-[#2B2016] font-extrabold text-xl flex items-center justify-center">{c}</span>
+                    <span key={i} className="w-7 h-8 sm:w-9 sm:h-10 rounded-lg bg-[#FFFBef] text-[#2B2016] font-extrabold text-lg sm:text-xl flex items-center justify-center">{c}</span>
                   ))}
                 </div>
               </div>
               <span className="flex-1" />
               <button className="disp flex-none px-3 py-2 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] text-sm" onClick={async () => { try { await navigator.clipboard.writeText(location.href.split('?')[0] + `?game=ma-soi&room=${pub!.roomCode}`); } catch { /* ignore */ } }}>🔗 {d.copyLink}</button>
             </div>
-            <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-4 mt-4">
+            <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-4 mt-3">
               <div className="lg:card-cream lg:p-5">
                 <div className="flex items-baseline justify-between gap-2">
                   <h3 className="disp font-extrabold text-xl">{d.players}</h3>
@@ -509,34 +577,25 @@ export default function MaSoiApp() {
                 </div>
                 <PlayerGrid variant="lobby" />
                 {joined.isHost && <p className="font-bold text-[#8A7B63] text-sm hidden lg:block">{d.kickHint}</p>}
-                <div className="mt-4 lg:hidden">
-                  <div className="disp font-extrabold">{d.rolesPreview} ({connected} {d.players.toLowerCase()}):</div>
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {roleTable(connected).map(t => (
-                      <span key={t.role} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-extrabold border-2 border-[#2B2016] bg-white">{ROLE_EMOJI[t.role]} {roleLabel(d, t.role)} ×{t.count}</span>
-                    ))}
-                  </div>
-                </div>
-                {joined.isHost && (
-                  <div className="flex items-center gap-2 mt-4 flex-wrap lg:hidden">
-                    <span className="font-extrabold text-sm">{d.discussionTime}:</span>
-                    {[60000, 120000, 180000].map(ms => (
-                      <button key={ms} onClick={() => getNet().setDiscussion(ms)}
-                        className={`disp px-3 py-1.5 rounded-full font-extrabold text-sm push ${pub!.discussionMs === ms ? 'bg-[#2B2016] text-[#FFF3CF] hard-xs' : 'bg-white hard-xs'}`}>
-                        {ms / 60000}:00
-                      </button>
-                    ))}
+                {joined.isHost && pub!.players.length < MAX_PLAYERS && (
+                  <div className="mt-2">
+                    <button className={`${BTN} btn-dark w-full`} onClick={() => getNet().nightAction('addBot')}>🤖 {d.addBot}</button>
+                    <p className="font-bold text-[#8A7B63] text-sm text-center mt-1.5">{d.botHint}</p>
                   </div>
                 )}
+                <div className="mt-2 lg:hidden">
+                  <RoleSettings showSummary showDiscussion collapsible open={roleSettingsOpen} onToggle={() => setRoleSettingsOpen(o => !o)} />
+                </div>
               </div>
-              <div className="mt-4 lg:mt-0">
+              <div className="mt-3 lg:mt-0">
                 <div className="hidden lg:block lg:card-cream lg:p-5">
                   <div className="disp font-extrabold text-xl">{d.rolesPreview}</div>
                   <div className="flex flex-wrap gap-1.5 mt-2">
-                    {roleTable(connected).map(t => (
+                    {roleTable(connected, pub?.roleOverrides ?? {}).map(t => (
                       <span key={t.role} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-extrabold text-white" style={{ background: t.role === 'villager' ? '#E8DCC0' : ROLE_STRONG[t.role], color: t.role === 'villager' ? '#2B2016' : '#FFF3CF' }}>{ROLE_EMOJI[t.role]} {roleLabel(d, t.role)} ×{t.count}</span>
                     ))}
                   </div>
+                  <RoleSettings />
                   {joined.isHost && (
                     <div className="hidden lg:block mt-4">
                       <span className="font-extrabold text-sm">{d.discussionTime}:</span>
@@ -555,12 +614,12 @@ export default function MaSoiApp() {
                   <>
                     <button className={`${BTN} btn-amber w-full mt-4`} disabled={connected < MIN_PLAYERS}
                       onClick={() => { setError(''); getNet().startGame(); }}>▶ {d.start}</button>
-                    {connected < MIN_PLAYERS && <p className="text-center font-bold text-red-600 text-sm mt-2">{d.need6}</p>}
+                    {connected < MIN_PLAYERS && <p className="hidden lg:block text-center font-bold text-red-600 text-sm mt-2">{d.need6}</p>}
                   </>
                 ) : (
                   <p className="text-center font-bold text-[#8A7B63] mt-4">{d.waiting}</p>
                 )}
-                <button className="disp font-extrabold text-sm text-red-500 mt-3 w-full text-center" onClick={() => { try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } getNet().leave(); setJoined(null); setPub(null); setPriv(null); }}>{d.leave}</button>
+                <button className={`${BTN} bg-[#FFFBef] text-[#D63A2F] w-full mt-2`} onClick={() => { try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } getNet().leave(); setJoined(null); setPub(null); setPriv(null); }}>🚪 {d.leave}</button>
               </div>
             </div>
             {chatPreviewBar}

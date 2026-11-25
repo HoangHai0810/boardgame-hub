@@ -13,10 +13,11 @@ import {
   wolfPick, resolveWolfTarget, seerPeek, guardianProtect,
   witchSave, witchKill, hunterShoot, resolveNight,
   castVote, resolveVotes, applyDefaultVotes, checkWin,
-  wolfChatMsg, wolfConfirm,
+  wolfChatMsg, wolfConfirm, addBot, removeBot,
   MIN_PLAYERS, MAX_PLAYERS, NIGHT_STEP_MS, DISCUSSION_MS, VOTE_MS,
 } from '../../../../games/ma-soi/logic';
-import type { NightStep } from '../../../../games/ma-soi/logic';
+import type { NightStep, RoleConfig } from '../../../../games/ma-soi/logic';
+import { botWolfPick, botSeerPeek, botGuardPick, botWitch, botHunterShot, botVote } from '../../../../games/ma-soi/bots';
 
 export type Pub = ReturnType<typeof publicState>;
 export type Priv = ReturnType<typeof privateState>;
@@ -39,14 +40,148 @@ export class HostEngine {
   /** Wolves who explicitly passed this night (a pass is not a pick, so it
    *  must never reach resolveWolfTarget as a fake victim id). */
   private wolfPassed = new Set<string>();
+  /** Bot actions already scheduled (one key per decision). driveBots()
+   *  re-runs after every broadcast, so without this a bot would collect
+   *  a new timer on every state change. Keys are scoped to the phase /
+   *  step / night / round, so a fresh decision always gets a fresh key. */
+  private botPending = new Set<string>();
+  private botPhaseKey = '';
+  /** Night number of each bot seer's last peek (the logic stores peeks
+   *  without a night stamp, so the engine tracks "peeked this night"). */
+  private seerPeekNight = new Map<string, number>();
   constructor(code: string, private hooks: EngineHooks) { this.state = createGame(code); }
   private later(ms: number, fn: () => void) { this.timers.push(setTimeout(fn, ms)); }
   private clear() { this.timers.forEach(clearTimeout); this.timers = []; }
   broadcast() {
     const pub = publicState(this.state);
     this.hooks.sendPub(pub);
-    for (const p of this.state.players) this.hooks.sendPriv(p.id, privateState(this.state, p));
+    // Bots live inside the engine — they read the state directly and have
+    // no connection to send a private snapshot to.
+    for (const p of this.state.players) if (!p.isBot) this.hooks.sendPriv(p.id, privateState(this.state, p));
+    this.driveBots();
   }
+  /** Schedule one bot decision (guarded by botPending). The delay is
+   *  human-like on purpose: an instant bot betrays that it is a bot. */
+  private scheduleBot(key: string, ms: number, fn: () => void) {
+    if (this.botPending.has(key)) return;
+    this.botPending.add(key);
+    this.later(ms, () => { this.botPending.delete(key); fn(); });
+  }
+  private botDelay(min: number, spread: number) { return min + Math.random() * spread; }
+
+  /** Make sure every bot that owes an action has one scheduled. Called
+   *  after every broadcast, so a bot whose timer was wiped by a phase
+   *  transition is simply re-scheduled. */
+  private driveBots() {
+    const s = this.state;
+    const phaseKey = `${s.phase}:${s.nightStep ?? ''}:${s.night}:${s.round}`;
+    if (phaseKey !== this.botPhaseKey) { this.botPhaseKey = phaseKey; this.botPending.clear(); }
+    const bots = s.players.filter(p => p.isBot && p.connected);
+    if (!bots.length) return;
+    if (s.phase === 'roleReveal') {
+      for (const b of bots) {
+        if (s.revealReady.includes(b.id)) continue;
+        this.scheduleBot(`reveal:${s.round}:${b.id}`, this.botDelay(1000, 1500), () => {
+          if (this.state.phase !== 'roleReveal' || this.state.revealReady.includes(b.id)) return;
+          this.state.revealReady.push(b.id);
+          if (this.state.players.filter(p => p.connected).every(p => this.state.revealReady.includes(p.id))) { this.clear(); this.startNight(); }
+          else this.broadcast();
+        });
+      }
+      return;
+    }
+    if (s.phase === 'night') {
+      if (s.nightStep === 'hunter' && s.pendingHunterShot) {
+        const b = bots.find(p => p.id === s.pendingHunterShot);
+        if (b) this.scheduleBot(`hunter:${s.night}:${b.id}`, this.botDelay(1500, 1500), () => this.botHunter(b));
+      } else if (s.nightStep === 'wolves') {
+        for (const b of bots.filter(p => p.alive && p.role === 'wolf')) {
+          if (b.wolfPick || this.wolfPassed.has(b.id)) continue;
+          this.scheduleBot(`wolves:${s.night}:${b.id}`, this.botDelay(1500, 2000), () => this.botWolf(b));
+        }
+      } else if (s.nightStep === 'seer') {
+        const b = bots.find(p => p.alive && p.role === 'seer');
+        if (b && this.seerPeekNight.get(b.id) !== s.night) this.scheduleBot(`seer:${s.night}:${b.id}`, this.botDelay(1500, 2000), () => this.botSeer(b));
+      } else if (s.nightStep === 'guardian') {
+        const b = bots.find(p => p.alive && p.role === 'guardian');
+        if (b && !s.guardianTarget) this.scheduleBot(`guardian:${s.night}:${b.id}`, this.botDelay(1500, 2000), () => this.botGuardian(b));
+      } else if (s.nightStep === 'witch') {
+        const b = bots.find(p => p.alive && p.role === 'witch');
+        if (b && b.witchActedNight !== s.night) this.scheduleBot(`witch:${s.night}:${b.id}`, this.botDelay(1500, 2500), () => this.botWitchAct(b));
+      }
+      return;
+    }
+    if (s.phase === 'day') {
+      // Bots let the humans talk first: they only ready after 20–40s.
+      for (const b of bots.filter(p => p.alive)) {
+        if (s.dayReady.includes(b.id)) continue;
+        this.scheduleBot(`day:${s.round}:${b.id}`, this.botDelay(20000, 20000), () => {
+          if (this.state.phase !== 'day' || this.state.dayReady.includes(b.id)) return;
+          this.state.dayReady.push(b.id);
+          if (this.state.players.filter(p => p.connected && p.alive).every(p => this.state.dayReady.includes(p.id))) this.startVoting();
+          else this.broadcast();
+        });
+      }
+      return;
+    }
+    if (s.phase === 'voting') {
+      for (const b of bots.filter(p => p.alive)) {
+        if (b.hasVoted) continue;
+        this.scheduleBot(`vote:${s.round}:${b.id}`, this.botDelay(3000, 5000), () => this.botVoteCast(b));
+      }
+    }
+  }
+
+  /** One bot's night action, run through the same validated logic a
+   *  human's tap goes through. */
+  private botWolf(b: Player) {
+    const s = this.state;
+    if (s.phase !== 'night' || s.nightStep !== 'wolves' || !b.alive) return;
+    const target = botWolfPick(s, b);
+    if (target && wolfPick(s, b, target)) { this.maybeAdvance('wolves'); this.broadcast(); }
+  }
+  private botSeer(b: Player) {
+    const s = this.state;
+    if (s.phase !== 'night' || s.nightStep !== 'seer' || !b.alive) return;
+    const target = botSeerPeek(s, b);
+    if (target && seerPeek(s, b, target)) { this.seerPeekNight.set(b.id, s.night); this.maybeAdvance('seer'); this.broadcast(); }
+    else { this.seerPeekNight.set(b.id, s.night); this.clear(); this.advanceNightStep(); } // nobody left to inspect: pass
+  }
+  private botGuardian(b: Player) {
+    const s = this.state;
+    if (s.phase !== 'night' || s.nightStep !== 'guardian' || !b.alive) return;
+    const target = botGuardPick(s, b);
+    if (target && guardianProtect(s, b, target)) { this.maybeAdvance('guardian'); this.broadcast(); }
+    else { this.clear(); this.advanceNightStep(); }
+  }
+  private botWitchAct(b: Player) {
+    const s = this.state;
+    if (s.phase !== 'night' || s.nightStep !== 'witch' || !b.alive) return;
+    const d = botWitch(s, b);
+    if (d.action === 'save' && witchSave(s, b)) { this.clear(); this.advanceNightStep(); }
+    else if (d.action === 'kill' && d.targetId && witchKill(s, b, d.targetId)) { this.clear(); this.advanceNightStep(); }
+    else { this.clear(); this.advanceNightStep(); } // pass: no potion tonight
+  }
+  private botHunter(b: Player) {
+    const s = this.state;
+    if (s.phase !== 'night' || s.nightStep !== 'hunter' || s.pendingHunterShot !== b.id) return;
+    const target = botHunterShot(s, b);
+    if (target && hunterShoot(s, b, target)) {
+      const w = checkWin(s);
+      if (w) { this.finishGame(w); return; }
+      this.clear(); this.advanceNightStep();
+    } else { this.clear(); this.advanceNightStep(); }
+  }
+  private botVoteCast(b: Player) {
+    const s = this.state;
+    if (s.phase !== 'voting' || !b.alive || b.hasVoted) return;
+    const target = botVote(s, b);
+    if (target && castVote(s, b, target)) {
+      this.broadcast();
+      if (s.players.every(p => !p.connected || !p.alive || p.hasVoted)) this.finishVoting();
+    }
+  }
+
   addPlayer(id: string, name: string, isHost: boolean): Player {
     let p = this.state.players.find(x => x.id === id);
     if (p) { p.connected = true; return p; }
@@ -280,6 +415,29 @@ export class HostEngine {
         if (!player.isHost || s.phase !== 'lobby') break;
         if (![60000, 120000, 180000].includes(msg.ms)) break;
         s.discussionMs = msg.ms;
+        this.broadcast();
+        break;
+      }
+      // Lobby setup (host only): bots fill the table when humans are
+      // short, and the role table is configurable instead of fixed.
+      case 'addBot': {
+        if (!player.isHost || s.phase !== 'lobby') break;
+        if (addBot(s)) this.broadcast();
+        break;
+      }
+      case 'removeBot': {
+        if (!player.isHost || s.phase !== 'lobby' || !msg.targetId) break;
+        if (removeBot(s, msg.targetId)) this.broadcast();
+        break;
+      }
+      case 'setRoles': {
+        if (!player.isHost || s.phase !== 'lobby' || !msg.overrides) break;
+        const o = msg.overrides as Partial<RoleConfig>;
+        const next: Partial<RoleConfig> = { ...s.roleOverrides };
+        if (o.wolves === 2 || o.wolves === 3) next.wolves = o.wolves;
+        if (typeof o.witch === 'boolean') next.witch = o.witch;
+        if (typeof o.hunter === 'boolean') next.hunter = o.hunter;
+        s.roleOverrides = next;
         this.broadcast();
         break;
       }

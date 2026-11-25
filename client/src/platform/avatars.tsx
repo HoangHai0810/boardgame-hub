@@ -69,8 +69,10 @@ export function WolfAvatar({ seed, size = 48, state = 'villager', halo }: { seed
       {halo && <circle cx="50" cy="50" r="47" fill={halo} />}
       {state === 'wolf' ? (
         <>
-          <path d="M22 34 L14 8 L40 22 Z" fill={shade} stroke="#2B2016" strokeWidth="3" strokeLinejoin="round" />
-          <path d="M78 34 L86 8 L60 22 Z" fill={shade} stroke="#2B2016" strokeWidth="3" strokeLinejoin="round" />
+          <path d="M20 38 L10 4 L44 20 Z" fill={skin} stroke="#2B2016" strokeWidth="3" strokeLinejoin="round" />
+          <path d="M80 38 L90 4 L56 20 Z" fill={skin} stroke="#2B2016" strokeWidth="3" strokeLinejoin="round" />
+          <path d="M22 30 L17 12 L34 20 Z" fill="#4A4F5E" />
+          <path d="M78 30 L83 12 L66 20 Z" fill="#4A4F5E" />
         </>
       ) : (
         <>
@@ -79,7 +81,14 @@ export function WolfAvatar({ seed, size = 48, state = 'villager', halo }: { seed
         </>
       )}
       <circle cx="50" cy="54" r="34" fill={skin} stroke="#2B2016" strokeWidth="3.5" />
-      <ellipse cx="50" cy="72" rx="13" ry="9" fill={shade} opacity="0.55" />
+      {state === 'wolf' && (
+        <>
+          <path d="M17 62 L10 70 L19 69 Z" fill={skin} stroke="#2B2016" strokeWidth="2.5" strokeLinejoin="round" />
+          <path d="M83 62 L90 70 L81 69 Z" fill={skin} stroke="#2B2016" strokeWidth="2.5" strokeLinejoin="round" />
+          <ellipse cx="50" cy="70" rx="15" ry="11" fill="#B9BEC9" />
+        </>
+      )}
+      {state !== 'wolf' && <ellipse cx="50" cy="72" rx="13" ry="9" fill={shade} opacity="0.55" />}
       <circle cx="50" cy="68" r="4.5" fill="#2B2016" />
       {dead ? (
         <>
@@ -93,15 +102,21 @@ export function WolfAvatar({ seed, size = 48, state = 'villager', halo }: { seed
           <path d="M56 50 Q62 54 68 50" stroke="#2B2016" strokeWidth="3.5" fill="none" strokeLinecap="round" />
           <path d="M42 82 Q50 86 58 82" stroke="#2B2016" strokeWidth="3.5" fill="none" strokeLinecap="round" />
         </>
+      ) : state === 'wolf' ? (
+        <>
+          <circle cx="37" cy="50" r="5" fill="#D63A2F" />
+          <circle cx="63" cy="50" r="5" fill="#D63A2F" />
+          <path d="M29 41 L45 46" stroke="#2B2016" strokeWidth="3.5" strokeLinecap="round" />
+          <path d="M71 41 L55 46" stroke="#2B2016" strokeWidth="3.5" strokeLinecap="round" />
+          <path d="M50 72 L50 77 M50 77 Q44 82 40 79 M50 77 Q56 82 60 79" stroke="#2B2016" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+          <path d="M42 75 L45.5 75 L43.8 82 Z" fill="#FFF3CF" stroke="#2B2016" strokeWidth="1" strokeLinejoin="round" />
+          <path d="M54.5 75 L58 75 L56.2 82 Z" fill="#FFF3CF" stroke="#2B2016" strokeWidth="1" strokeLinejoin="round" />
+        </>
       ) : (
         <>
-          <circle cx="38" cy="50" r={state === 'wolf' ? 4.5 : 4} fill={state === 'wolf' ? '#D63A2F' : '#2B2016'} />
-          <circle cx="62" cy="50" r={state === 'wolf' ? 4.5 : 4} fill={state === 'wolf' ? '#D63A2F' : '#2B2016'} />
-          {state === 'wolf' ? (
-            <path d="M40 78 L46 88 L52 78 L58 88 L64 78" stroke="#FFF3CF" strokeWidth="3" fill="none" strokeLinejoin="round" strokeLinecap="round" />
-          ) : (
-            <path d="M42 80 Q50 87 58 80" stroke="#2B2016" strokeWidth="3.5" fill="none" strokeLinecap="round" />
-          )}
+          <circle cx="38" cy="50" r="4" fill="#2B2016" />
+          <circle cx="62" cy="50" r="4" fill="#2B2016" />
+          <path d="M42 80 Q50 87 58 80" stroke="#2B2016" strokeWidth="3.5" fill="none" strokeLinecap="round" />
         </>
       )}
     </svg>
@@ -170,14 +185,23 @@ export function MoonVillage({ width = 390 }: { width?: number }) {
       <g transform={`translate(${195 - 52}, 62)`}>
         <WolfAvatar seed="moon-wolf" size={104} state="wolf" />
       </g>
-      {/* village rooftops */}
-      <g fill="#0D0D20">
-        <path d="M0 168 L0 202 L34 202 L34 176 L48 168 L62 176 L62 202 L96 202 L96 172 L116 160 L136 172 L136 202 L168 202 L168 178 L186 168 L204 178 L204 202 L238 202 L238 170 L258 158 L278 170 L278 202 L312 202 L312 176 L330 166 L348 176 L348 202 L390 202 L390 168 L390 202 L0 202 Z" />
+      {/* Village: one explicit house per shape — body + roof + window
+       *  drawn together, so a window can never drift off its house. */}
+      <g fill="#232344" stroke="#2B2016" strokeWidth="2" strokeLinejoin="round">
+        <path d="M4 202 L4 176 L32 158 L60 176 L60 202 Z" />
+        <path d="M68 202 L68 170 L93 150 L118 170 L118 202 Z" />
+        <path d="M126 202 L126 178 L154 160 L182 178 L182 202 Z" />
+        <path d="M190 202 L190 168 L216 148 L242 168 L242 202 Z" />
+        <path d="M250 202 L250 176 L278 158 L306 176 L306 202 Z" />
+        <path d="M314 202 L314 172 L343 152 L372 172 L372 202 Z" />
       </g>
       <g fill="#FFB020">
-        <rect x="18" y="184" width="8" height="10" /><rect x="106" y="180" width="8" height="10" />
-        <rect x="176" y="186" width="8" height="10" /><rect x="248" y="178" width="8" height="10" />
-        <rect x="322" y="184" width="8" height="10" /><rect x="366" y="186" width="8" height="10" />
+        <rect x="27" y="182" width="10" height="12" />
+        <rect x="88" y="176" width="10" height="12" />
+        <rect x="149" y="184" width="10" height="12" />
+        <rect x="211" y="174" width="10" height="12" />
+        <rect x="273" y="182" width="10" height="12" />
+        <rect x="338" y="178" width="10" height="12" />
       </g>
     </svg>
   );

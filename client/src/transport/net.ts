@@ -24,7 +24,7 @@ export interface Net {
   startGame(): void; beginNight(): void; ready(): void; readyVote(): void;
   // kind IS the action name on the wire ('steal' in Cheese Thief,
   // 'wolfPick' in Ma Sói, …): the transports forward it verbatim.
-  nightAction(kind: string, targetId?: string): void;
+  nightAction(kind: string, targetId?: string, extra?: Record<string, unknown>): void;
   chat(text: string): void; toVoting(): void;
   /** Ma Sói only: a message to the wolves' private night chat. */
   wolfChat(text: string): void;
@@ -165,7 +165,7 @@ export function createPeerNet(h: Handlers, gameId = 'cheese-thief'): Net {
     beginNight: () => intent('beginNight'),
     ready: () => intent('ready'),
     readyVote: () => intent('readyVote'),
-    nightAction: (kind, targetId) => intent(kind, { targetId }),
+    nightAction: (kind, targetId, extra) => intent(kind, { targetId, ...extra }),
     chat: (text) => intent('chat', { text }),
     wolfChat: (text) => intent('wolfChat', { text }),
     toVoting: () => intent('toVoting'),
@@ -210,7 +210,7 @@ export function createSocketNet(serverUrl: string, h: Handlers, gameId = 'cheese
     beginNight: () => socket.emit('beginNight'),
     ready: () => socket.emit('ready'),
     readyVote: () => socket.emit('readyVote'),
-    nightAction: (kind, targetId) => socket.emit('nightAction', { kind, targetId }),
+    nightAction: (kind, targetId, extra) => socket.emit('nightAction', { kind, targetId, ...extra }),
     chat: (text) => socket.emit('chat', { text }),
     wolfChat: (text) => socket.emit('wolfChat', { text }),
     toVoting: () => socket.emit('toVoting'),

@@ -476,9 +476,9 @@ export default function App() {
       return <span key={role} className="bg-white hard-xs rounded-full px-2 py-0.5 text-[12px] font-bold">{emoji} {label} {r.w}/{r.g}</span>;
     };
     return (
-      <div className="bg-[#DFF5E3] hard-sm rounded-3xl p-2.5 text-[#2B2016]">
+      <div className="bg-[#DFF5E3] hard-sm rounded-3xl p-2 text-[#2B2016]">
         <div className="text-center"><span className="font-extrabold text-[13px]">{d.recordTitle}: </span><span className="font-bold text-teal-700 text-[13px]">{d.recordLine(myRecord.w, myRecord.l)}</span></div>
-        <div className="flex flex-wrap justify-center gap-1.5 mt-1">
+        <div className="flex flex-wrap justify-center gap-1.5 mt-1 max-h-[58px] overflow-y-auto">
           {roleChip('sleepyhead', '🐭', d.sleepy)}
           {roleChip('thief', '😈', d.thief)}
           {roleChip('fallmouse', '💀', d.fall)}
@@ -493,9 +493,9 @@ export default function App() {
     if (!scored.length) return null;
     const top = (scored[0] as any).wins ?? 0;
     return (
-      <div className="bg-[#FFFBef] hard-sm rounded-3xl p-2.5 text-left text-[#2B2016]">
+      <div className="bg-[#FFFBef] hard-sm rounded-3xl p-2 text-left text-[#2B2016]">
         <div className="font-extrabold text-center text-[13px] mb-1">{d.standings}</div>
-        <div className="flex flex-wrap gap-1.5 justify-center">
+        <div className="flex flex-wrap gap-1.5 justify-center max-h-[58px] overflow-y-auto">
           {scored.map(p => (
             <span key={p.id} className="bg-white hard-xs rounded-full px-2 py-0.5 text-[12px] font-bold">{mouseFor(p.id)} {p.name} {((p as any).wins === top) && '👑'} 🏆×{(p as any).wins}</span>))}
         </div>
@@ -959,7 +959,7 @@ export default function App() {
         {phase === 'results' && (
           <div className="anim-pop flex-1 min-h-0 flex flex-col">
             <div className="card-cream overflow-hidden !rounded-[28px] flex-1 min-h-0 flex flex-col">
-              <div className="relative bg-[#171731] px-4 pt-3 pb-9 text-center overflow-hidden flex-none">
+              <div className="relative bg-[#171731] px-4 pt-3 pb-6 text-center overflow-hidden flex-none">
                 <Confetti />
                 <p className="disp relative text-[#FFB020] font-extrabold tracking-[0.22em] text-[11px]">{d.resultsKicker(pub.round)}</p>
                 <h2 className="disp relative text-[#FFF3CF] font-extrabold text-[20px] leading-snug sm:text-3xl sm:leading-tight mt-1">{pub.winner === 'sleepyheads' ? d.sleepyWin : pub.winner === 'fallmouse' ? d.fallWin : d.thiefWin}</h2>
@@ -984,7 +984,7 @@ export default function App() {
               </div>
               <div className="bg-[#FFF3CF] px-3.5 pt-3 pb-3.5 flex-1 min-h-0 flex flex-col">
                 <h3 className="disp font-extrabold text-base text-[#2B2016]">{d.rolesTitle}</h3>
-                <div className="grid grid-cols-2 gap-1.5 mt-1.5 flex-none">
+                <div className="grid grid-cols-2 gap-1.5 mt-1 flex-none">
                   {[...pub.players].sort((a, b) => {
                     const w = (p: any) => p.id === pub.thiefId ? 0 : p.id === joined.playerId ? 1 : 2;
                     return w(a) - w(b);
@@ -994,7 +994,7 @@ export default function App() {
                     const winnerSide = pub.winner === 'sleepyheads' ? 'village' : pub.winner === 'fallmouse' ? 'fallmouse' : 'thief';
                     const votes = pub.voteCounts?.find(v => v.id === p.id)?.count ?? 0;
                     return (
-                    <div key={p.id} className={`relative flex items-center gap-2 rounded-2xl hard-sm px-2.5 py-1 ${role === 'thief' ? 'bg-[#FDE3E0]' : p.id === joined.playerId ? 'bg-[#FFE9B8]' : 'bg-[#FFFBef]'}`}>
+                    <div key={p.id} className={`relative flex items-center gap-2 rounded-2xl hard-sm px-2.5 py-0.5 ${role === 'thief' ? 'bg-[#FDE3E0]' : p.id === joined.playerId ? 'bg-[#FFE9B8]' : 'bg-[#FFFBef]'}`}>
                       <span className="absolute -top-2 right-2 bg-[#2B2016] text-white text-[10px] font-black rounded-full px-1.5 py-px">{votes} {d.votes}</span>
                       <MouseAvatar seed={p.id} size={30} halo="#FFFBef" state={role === 'thief' ? 'thief' : role === 'fallmouse' ? 'dead' : 'awake'} />
                       <div className="flex-1 min-w-0">
@@ -1010,12 +1010,12 @@ export default function App() {
                     </div>);
                   })}
                 </div>
-                <div className="results-standings grid grid-cols-2 gap-2 mt-2.5 items-start flex-none">
+                <div className="results-standings grid grid-cols-2 gap-2 mt-2 items-start flex-none">
                   <Standings />
                   <MyRecord />
                 </div>
                 {(pub as any).recap?.length > 0 && (
-                  <div className="results-recap bg-[#1D1D38] rounded-3xl hard p-3.5 mt-2.5 text-left flex-1 min-h-0 overflow-y-auto">
+                  <div className="results-recap bg-[#1D1D38] rounded-3xl hard p-3 mt-2 text-left flex-1 min-h-0 overflow-y-auto">
                     <div className="disp font-extrabold text-[#FFF3CF] text-center mb-0.5">{d.recapTitle}</div>
                     <div className="lg:grid lg:grid-cols-2 lg:gap-x-5">
                     {[1, 2, 3, 4, 5, 6].map(h => {
@@ -1050,19 +1050,19 @@ export default function App() {
                       </div>)}
                     </div>
                   </div>)}
-                <button className="w-full bg-[#FFFBef] hard-sm push rounded-2xl px-3.5 py-2.5 mt-2.5 flex items-center gap-2 text-left flex-none" onClick={() => setChatSheet(true)}>
+                <button className="w-full bg-[#FFFBef] hard-sm push rounded-2xl px-3.5 py-2 mt-2 flex items-center gap-2 text-left flex-none" onClick={() => setChatSheet(true)}>
                   <span className="text-lg">💬</span>
                   <span className="flex-1 min-w-0 truncate font-bold text-[#5C4B33]">
                     {lastChat ? <><span className="font-extrabold text-[#2B2016]">{lastChat.fromName}:</span> {chatPreview(d, lastChat.text)}</> : d.chatEmpty}
                   </span>
                   {pub.chat.length > chatSeen && <span className="bg-[#D63A2F] text-white text-xs font-black rounded-full min-w-6 h-6 px-1 flex items-center justify-center flex-none">{pub.chat.length - chatSeen}</span>}
                 </button>
-                <div className="flex gap-2 mt-2.5 flex-none">
-                  <button className={`${BTN} flex-1 !bg-[#DCEBFB] text-[#2B2016] !py-2.5 !px-3 whitespace-nowrap text-[15px]`} onClick={shareResult}>
+                <div className="flex gap-2 mt-2 flex-none">
+                  <button className={`${BTN} flex-1 !bg-[#DCEBFB] text-[#2B2016] !py-2 !px-3 whitespace-nowrap text-[15px]`} onClick={shareResult}>
                     {shared ? '✅ ' + d.shareCopied : '📋 ' + d.shareResults}
                   </button>
                   {isHost
-                    ? <button className={`${BTN} btn-amber flex-1 !py-2.5 !px-3 whitespace-nowrap text-[15px]`} onClick={() => getNet().playAgain()}>🔁 {d.playAgain}</button>
+                    ? <button className={`${BTN} btn-amber flex-1 !py-2 !px-3 whitespace-nowrap text-[15px]`} onClick={() => getNet().playAgain()}>🔁 {d.playAgain}</button>
                     : <p className="flex-1 text-center font-bold text-[#8A7B63] self-center text-[13px] leading-tight line-clamp-2">{d.waiting}</p>}
                 </div>
               </div>

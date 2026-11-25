@@ -231,7 +231,7 @@ io.on('connection', (socket: Socket) => {
     else broadcast(room!);
   });
 
-  socket.on('nightAction', ({ kind, targetId }: { kind: string; targetId?: string }) => {
+  socket.on('nightAction', ({ kind, targetId, ...extra }: { kind: string; targetId?: string; [k: string]: unknown }) => {
     if (!guard()) return;
     if (kind === 'steal') doSteal(room!.state, player!);
     else if (kind === 'inspect' && targetId) doInspect(room!.state, player!, targetId);

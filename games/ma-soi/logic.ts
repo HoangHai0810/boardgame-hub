@@ -24,8 +24,14 @@ export interface ChatMsg { fromId: string; fromName: string; text: string; ts: n
 export interface Death { id: string; name: string; role: Role; cause: 'wolves' | 'witch' | 'vote' | 'hunter' }
 export interface Peek { targetId: string; isWolf: boolean }
 
+/** Host-configurable roles (lobby). `null` / missing fields mean "auto"
+ *  for the current player count — the defaults below. */
+export interface RoleConfig { wolves: number; witch: boolean; hunter: boolean }
+
 export interface Player {
   id: string; name: string; isHost: boolean; connected: boolean;
+  /** Engine-side bot player (no network connection, driven by the host). */
+  isBot?: boolean;
   role?: Role; alive: boolean;
   hasVoted: boolean; vote: string | null;
   wins: number;
@@ -49,6 +55,8 @@ export interface GameState {
   voteEndsAt: number | null;
   revealReady: string[];
   dayReady: string[];
+  /** Host's role wishes (partial — unset fields follow the auto table). */
+  roleOverrides: Partial<RoleConfig>;
   chat: ChatMsg[];
   // This night's working data (private parts are stripped from publicState).
   wolfTarget?: string | null;
@@ -74,31 +82,79 @@ export function createGame(code: string): GameState {
     roomCode: code, phase: 'lobby', round: 1, night: 0, players: [],
     discussionMs: DISCUSSION_MS, nightStep: null,
     nightEndsAt: null, discussionEndsAt: null, voteEndsAt: null,
-    revealReady: [], dayReady: [], chat: [],
+    revealReady: [], dayReady: [], roleOverrides: {}, chat: [],
     nightDeaths: [], lastVoteOut: null, voteTie: false, winner: null,
     wolfChat: [], wolfConfirmed: [],
   };
 }
 
+/** The auto role table for a player count (the default when the host has
+ *  not overridden anything). */
+export function defaultRoleConfig(n: number): RoleConfig {
+  return { wolves: n >= 9 ? 3 : 2, witch: n >= 8, hunter: n >= 10 };
+}
+
+/** Merge the host's wishes over the auto table and clamp them so the game
+ *  stays valid: 2–3 wolves, and at least 1 villager must remain (special
+ *  roles are dropped in the order hunter → witch → wolves to make room). */
+export function effectiveRoleConfig(n: number, overrides: Partial<RoleConfig>): RoleConfig {
+  const base = defaultRoleConfig(n);
+  let wolves = Math.max(2, Math.min(3, overrides.wolves ?? base.wolves));
+  let witch = overrides.witch ?? base.witch;
+  let hunter = overrides.hunter ?? base.hunter;
+  const specials = () => wolves + 2 + (witch ? 1 : 0) + (hunter ? 1 : 0);
+  if (specials() > n - 1 && hunter) hunter = false;
+  if (specials() > n - 1 && witch) witch = false;
+  while (specials() > n - 1 && wolves > 2) wolves--;
+  return { wolves, witch, hunter };
+}
+
 /** Role distribution for a player count — shown in the lobby so the table
  *  knows exactly what it is signing up for. */
-export function roleTable(n: number): { role: Role; count: number }[] {
-  const wolves = n >= 9 ? 3 : 2;
+export function roleTable(n: number, overrides: Partial<RoleConfig> = {}): { role: Role; count: number }[] {
+  const c = effectiveRoleConfig(n, overrides);
   const table: { role: Role; count: number }[] = [
-    { role: 'wolf', count: wolves },
+    { role: 'wolf', count: c.wolves },
     { role: 'seer', count: 1 },
     { role: 'guardian', count: 1 },
   ];
-  if (n >= 8) table.push({ role: 'witch', count: 1 });
-  if (n >= 10) table.push({ role: 'hunter', count: 1 });
+  if (c.witch) table.push({ role: 'witch', count: 1 });
+  if (c.hunter) table.push({ role: 'hunter', count: 1 });
   const special = table.reduce((a, t) => a + t.count, 0);
-  table.push({ role: 'villager', count: n - special });
+  table.push({ role: 'villager', count: Math.max(0, n - special) });
   return table;
+}
+
+/** Bot names (Vietnamese first names — the UI prefixes them with 🤖). */
+export const BOT_NAMES = ['An', 'Bình', 'Chi', 'Dũng', 'Hà', 'Khánh', 'Linh', 'Minh', 'Ngọc', 'Phúc', 'Quân', 'Trang'];
+
+/** Add an engine-side bot to the lobby (host only). Returns the bot, or
+ *  null when the room is full. Bots are always "connected" and count
+ *  toward the minimum player count, so a table can start short-handed. */
+export function addBot(s: GameState, rng: () => number = Math.random): Player | null {
+  if (s.players.length >= MAX_PLAYERS) return null;
+  const used = new Set(s.players.map(p => p.name));
+  const name = BOT_NAMES.find(n => !used.has(`Bot ${n}`)) ?? `Bot ${s.players.length + 1}`;
+  const bot: Player = {
+    id: `bot-${Math.floor(rng() * 1e9).toString(36)}${Date.now().toString(36)}`,
+    name: `Bot ${name}`, isHost: false, connected: true, isBot: true,
+    alive: true, hasVoted: false, vote: null, wins: 0,
+    seerPeeks: [], witchSaveLeft: true, witchKillLeft: true, witchActedNight: 0,
+  };
+  s.players.push(bot);
+  return bot;
+}
+
+export function removeBot(s: GameState, id: string): boolean {
+  const p = s.players.find(x => x.id === id);
+  if (!p || !p.isBot) return false;
+  s.players = s.players.filter(x => x.id !== id);
+  return true;
 }
 
 export function assignRoles(s: GameState, rng: () => number = Math.random): void {
   const roles: Role[] = [];
-  for (const t of roleTable(s.players.length)) for (let i = 0; i < t.count; i++) roles.push(t.role);
+  for (const t of roleTable(s.players.length, s.roleOverrides)) for (let i = 0; i < t.count; i++) roles.push(t.role);
   for (let i = roles.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1));[roles[i], roles[j]] = [roles[j], roles[i]]; }
   s.players.forEach((p, i) => {
     p.role = roles[i]; p.alive = true; p.hasVoted = false; p.vote = null;
@@ -293,8 +349,9 @@ export function publicState(s: GameState) {
     nightDeaths: s.nightDeaths, lastVoteOut: s.lastVoteOut, voteTie: s.voteTie,
     pendingHunterShot: s.pendingHunterShot,
     winner: s.winner,
+    roleOverrides: s.roleOverrides,
     players: s.players.map(p => ({
-      id: p.id, name: p.name, isHost: p.isHost, connected: p.connected,
+      id: p.id, name: p.name, isHost: p.isHost, connected: p.connected, isBot: !!p.isBot,
       alive: p.alive, hasVoted: p.hasVoted, wins: p.wins,
       // A dead player's role is public knowledge — the table learns it
       // the moment the body is found (or the vote lands). At results,

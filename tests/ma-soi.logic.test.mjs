@@ -1,10 +1,10 @@
 // Ma Sói engine unit tests. Run: esbuild games/ma-soi/logic.ts, then node this file.
 import { strict as assert } from 'node:assert';
 import {
-  createGame, assignRoles, roleTable, publicState, privateState,
+  createGame, assignRoles, roleTable, effectiveRoleConfig, publicState, privateState,
   wolfPick, resolveWolfTarget, seerPeek, guardianProtect, witchSave, witchKill,
   hunterShoot, resolveNight, castVote, resolveVotes, applyDefaultVotes, checkWin,
-  wolfChatMsg, wolfConfirm,
+  wolfChatMsg, wolfConfirm, addBot, removeBot,
   MIN_PLAYERS, MAX_PLAYERS,
 } from '../games/ma-soi/logic.mjs';
 
@@ -168,4 +168,45 @@ t('dead players reveal their role in publicState', () => {
   assert.equal(publicState(s).players[0].role, 'wolf');
 });
 
-console.log(`\n== ${n} ma-soi logic tests, exit ${process.exitCode ? 'FAIL' : 'PASS'}`);
+
+t('role config: defaults unchanged', () => {
+  assert.deepEqual(effectiveRoleConfig(6, {}), { wolves: 2, witch: false, hunter: false });
+  assert.deepEqual(effectiveRoleConfig(10, {}), { wolves: 3, witch: true, hunter: true });
+});
+t('role config: host overrides apply', () => {
+  assert.deepEqual(roleTable(6, { wolves: 3 }).map(x => x.count), [3, 1, 1, 1]);
+  assert.deepEqual(roleTable(6, { witch: true }).map(x => x.count), [2, 1, 1, 1, 1]);
+  assert.deepEqual(roleTable(6, { hunter: true }).map(x => x.count), [2, 1, 1, 1, 1]);
+});
+t('role config: clamps to keep >= 1 villager', () => {
+  // 6 players, everything on: 3 wolves + seer + guardian + witch + hunter
+  // = 7 specials > 5 slots -> hunter dropped, then witch.
+  assert.deepEqual(effectiveRoleConfig(6, { wolves: 3, witch: true, hunter: true }), { wolves: 3, witch: false, hunter: false });
+  for (let n = 6; n <= 12; n++) assert.equal(roleTable(n, { wolves: 3, witch: true, hunter: true }).reduce((a, x) => a + x.count, 0), n);
+});
+t('assignRoles respects the host config', () => {
+  const s = createGame('X');
+  for (let i = 0; i < 6; i++) s.players.push({ id: 'p' + i, name: 'P' + i, isHost: false, connected: true, alive: true, hasVoted: false, vote: null, wins: 0, seerPeeks: [], witchSaveLeft: true, witchKillLeft: true, witchActedNight: 0 });
+  s.roleOverrides = { witch: true };
+  assignRoles(s, () => 0.5);
+  const counts = {};
+  s.players.forEach(p => { counts[p.role] = (counts[p.role] || 0) + 1; });
+  assert.deepEqual(counts, { wolf: 2, seer: 1, guardian: 1, witch: 1, villager: 1 });
+});
+t('bots: add/remove', () => {
+  const s = createGame('X');
+  const b = addBot(s, () => 0.5);
+  assert.ok(b && b.isBot && b.connected && b.name.startsWith('Bot '));
+  assert.equal(s.players.length, 1);
+  assert.equal(removeBot(s, b.id), true);
+  assert.equal(s.players.length, 0);
+  assert.equal(removeBot(s, 'nope'), false);
+  s.players.push({ id: 'h', name: 'H', isHost: true, connected: true, alive: true, hasVoted: false, vote: null, wins: 0, seerPeeks: [], witchSaveLeft: true, witchKillLeft: true, witchActedNight: 0 });
+  assert.equal(removeBot(s, 'h'), false); // humans cannot be removed as bots
+});
+t('bots: publicState marks them', () => {
+  const s = createGame('X'); addBot(s, () => 0.5);
+  assert.equal(publicState(s).players[0].isBot, true);
+});
+
+console.log(`== ${n} ma-soi logic tests, exit ${process.exitCode ? 'FAIL' : 'PASS'}`);

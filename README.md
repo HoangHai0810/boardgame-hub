@@ -7,16 +7,19 @@ A multi-boardgame platform that runs in the browser — no install, works on mob
 ## Games
 - 🧀 **Chuột Phô Mai (Cheese Mouse)** — LIVE. Real-time multiplayer social deduction for **4–8 players** (see below).
 - 🐺 **Ma Sói (Werewolf)** — LIVE. Classic Werewolf for **6–12 players**: wolves hunt at night, the village votes by day (see below).
-- 🃏 **Uno** — coming soon.
+- 🃏 **Uno** — LIVE. Classic Uno for **2–10 players** (see below).
+- 🐱 **Mèo Nổ (Exploding Kittens)** — in design, next game.
 - 🕵️ **Ai là Gián Điệp? (Who's the Spy?)** — coming soon.
 
 ## Layout
 - `client/src/platform/` — the shell: hub (`Hub.tsx`), game registry (`games.ts`), routing (`PlatformApp.tsx`, `?game=<id>`).
 - `client/src/games/cheese-thief/` — the Cheese Thief game (UI, engine host, i18n).
-- `client/src/games/ma-soi/` — the Ma Sói game (UI, engine host, i18n, wolf avatars).
+- `client/src/games/ma-soi/` — the Ma Sói game (UI, engine host, i18n, wolf avatars, bots).
+- `client/src/games/uno/` — the Uno game (UI, engine host, i18n).
 - `client/src/transport/` — the shared multiplayer transport (MQTT default, PeerJS, Socket.IO), voice and sound.
 - `games/cheese-thief/logic.ts` — the Cheese Thief rules engine, shared by the browser host and the dedicated server.
 - `games/ma-soi/logic.ts` — the Ma Sói rules engine (browser-hosted; the dedicated server still runs Cheese Thief only for now — Ma Sói rooms opened with `?server=` get `GAME_NOT_SUPPORTED`).
+- `games/uno/logic.ts` — the Uno rules engine (browser-hosted; same `?server=` limitation as Ma Sói).
 - `server/` — Socket.IO server, one process for all games; rooms are namespaced `(game, code)`.
 
 Adding a game = one entry in `client/src/platform/games.ts` + its component (and, for server mode, an engine in `games/<id>/` + an id in the server's `GAME_IDS` set). Rooms never collide across games: MQTT/voice topics live under `ct1/<game>/<code>/`, PeerJS ids under `ct-<game>-v1-`.
@@ -36,7 +39,7 @@ Adding a game = one entry in `client/src/platform/games.ts` + its component (and
    - **5 players:** a villager who *witnesses* the steal (awake at the thief's hour) switches sides on the spot. One witness → they become the Follower; several witnesses → the thief secretly picks one, the others learn who it was.
    - **6 players:** after hour 6 the thief secretly recruits **1** Follower, who learns who the thief is.
    - **7 players:** the thief recruits **2** Followers; the two Followers learn each other but **not** who the thief is.
-   - **8 players:** the thief recruits **2** Followers; all three learn each other.
+   - **8 players (house rule):** the thief recruits **2** Followers; the two Followers learn each other but **not** who the thief is (same as 7p).
 4. **Day:** the cheese is gone! Discuss in the real-time chat (default 2 min — the host can set 1, 2 or 3 minutes in the lobby). Discussion ends early only when **all** players press "ready to vote"; the host can also end it.
 5. **Voting:** simultaneous secret vote (60 s), no self-vote, no changing. Most votes = accused.
    - Chuột Phô Mai accused → **villagers win**. Anyone else accused → **thief's team wins**.
@@ -46,11 +49,18 @@ Adding a game = one entry in `client/src/platform/games.ts` + its component (and
 7. **Chat** is open in the lobby, during the day discussion and on the results screen; it is locked at night, during recruitment and while voting. One-tap emoji reactions and preset quick phrases (rendered in each viewer's own language) keep phone players in the conversation.
 
 ## Ma Sói — roles & flow
-- **Roles** (6–12 players): 🐺 Sói (2 at 6–8p, 3 at 9–12p), 🔮 Tiên Tri (peeks one player per night), 🛡️ Bảo Vệ (protects one per night, never the same player twice running), 🧪 Phù Thủy (8p+: one save potion + one kill potion per game, max one potion per night), 🏹 Thợ Săn (10p+: one shot when killed), 🧑 Dân Làng.
+- **Roles** (6–12 players): 🐺 Sói (2 at 6–8p, 3 at 9–12p by default), 🔮 Tiên Tri (peeks one player per night), 🛡️ Bảo Vệ (protects one per night, never the same player twice running), 🧪 Phù Thủy (8p+: one save potion + one kill potion per game, max one potion per night), 🏹 Thợ Săn (10p+: one shot when killed), 🧑 Dân Làng. The **host can change the role setup in the lobby** — wolves 2 or 3, witch and hunter on/off — and the game auto-fits the table to the player count (never fewer than 1 villager). The host can also **add smart bots** (they vote, hunt, peek, protect and use potions like human players), so 1 human + 5 bots can start a game.
 - **Night** (each step 30 s, steps with no living actor are skipped): Thợ Săn (only if a hunter died with a shot pending) → Sói (majority pick, tie → earliest pick) → Tiên Tri → Bảo Vệ → Phù Thủy → dawn. A wolf kill is blocked if the Guardian protected the same player or the Witch used her save. Forgotten night actions default to the safe option (no kill / no peek / no protect / no potion / no shot) — never a random irreversible action.
 - **Day:** deaths are announced with their roles; discussion (host picks 60/120/180 s, ends early when all living players press ready-to-vote); secret vote (60 s, no self-vote); a tie eliminates nobody. The hunter's shot, if pending, resolves before the next night.
 - **Win:** villagers win when no wolf remains; wolves win at parity (wolves ≥ villagers). Roles of the dead are public during play; all roles are revealed at results.
 - **Chat is locked at night** (a villager could blurt their role) and open in the lobby, during the day and at results. Voice works the same as Cheese Thief: speaker auto-on (listen-only), mic manual.
+
+## Uno — rules & flow
+- **Classic Uno** (2–10 players, 108 cards, 7 dealt each). Match by color, number or symbol; wilds always playable. Skip skips the next player; Reverse flips direction (acts as Skip with 2 players); Draw 2 makes the next player draw 2 and lose the turn (no stacking).
+- **Wild Draw 4 with challenge:** the next player may take 4 cards or challenge — judged on whether the +4 player had a card matching the pre-play color. Bluff caught → the +4 player draws 4 and the challenger keeps the turn; wrong challenge → the challenger draws 6.
+- **UNO call-out:** playing down to 1 card marks you UNO — call it before the next player acts, or any other player may catch you (+2 cards). Drawing while marked UNO clears the mark.
+- **Draw flow:** one draw per turn; a playable drawn card may be played at once (only that card) or kept by passing; an unplayable draw passes the turn immediately. Empty deck reshuffles the discard pile (minus the top card).
+- **Win & points:** first to empty their hand wins the round; points = the value of opponents' remaining hands (number = face value, Skip/Reverse/Draw 2 = 20, Wild/Wild Draw 4 = 50). Turn timer 30 s — a timed-out turn resolves safely (draw 1 + pass, or the safe default on a decision). Chat is open in all phases.
 
 ## Session & social features
 - 🏆 **Session scoreboard** — rounds won per player in this room, leader crowned; plus your **personal record** (W/L split by dealt role).
@@ -81,7 +91,8 @@ Other adaptations vs. the physical game: fixed timers instead of a narrator (nig
 - `tests/logic.test.mjs` — 32 rules tests (including the session-scoreboard scoring and the night-recap recording introduced by the improvement loop) (role/dice distribution, secret leakage, lone-waker inspection, multi-waker block, steal timing, vote integrity, all tie cases, follower witness/recruit/information rules per player count, Fall Mouse dealing + solo wins). Run: compile `shared/logic.ts` to `shared/logic.mjs` with esbuild, then `node tests/logic.test.mjs` (delete `shared/logic.mjs` afterwards — if left in place it shadows the `.ts` source for Vite and breaks the client build).
 - `tests/mqtt.transport.test.mjs` — 14 checks: the shipped public transport itself (compiled from `client/src`), 4 simulated players against a real MQTT broker (aedes) play a complete round — join, encrypted role delivery, all-ready night start, steal, private inspection, ready-to-vote discussion skip, results. Note: some sandboxes' egress proxies block the public brokers, so this test runs against a local broker with identical protocol/topics/encryption.
 - `tests/socket.integration.mjs` — 23 checks: real Socket.IO server, 5 simultaneous clients play a complete round (create/join/rejections, role secrecy, night steal + private inspection, live chat, voting, results, late-join rejection, play-again, reconnection). Run the server with fast-timer env (`CT_HOUR_MS=700 CT_DISCUSSION_MS=3000 CT_VOTE_MS=3000 CT_RECRUIT_MS=1500 PORT=3109`) then `node tests/socket.integration.mjs`.
-- `tests/ma-soi.logic.test.mjs` — 17 rules tests for Ma Sói (role tables 6–12p, wolf majority/tie, seer peek rules, guardian repeat rule, witch potions, night resolution incl. both saves, hunter shot, vote tie, win checks, default votes, public/private secrecy). Browser checks: `check/verify-ma-soi.mjs` (9 checks — full 6-player round in real Chromium over a local aedes broker) and `check/visual-ma-soi.mjs` (8 checks — hub with two live games, lobby, role reveal, wolves' night panel, dawn deaths, results, all screens fitted to one viewport).
+- `tests/ma-soi.logic.test.mjs` — 25 rules tests for Ma Sói (role tables 6–12p, role-config overrides/clamps, wolf majority/tie, seer peek rules, guardian repeat rule, witch potions, night resolution incl. both saves, hunter shot, vote tie, win checks, default votes, public/private secrecy). `tests/ma-soi.bots.test.mjs` — 10 tests for the bot decisions (wolf pack picks, seer/guardian/witch/hunter/vote). Browser checks: `check/verify-ma-soi.mjs` (12 checks — full 6-player round incl. wolf chat + pick lock, in real Chromium over a local aedes broker), `check/verify-ma-soi-bots.mjs` (7 checks — 1 human + 5 bots finish a full game) and `check/visual36.mjs` (30 checks — hub with three live games, Ma Sói landing/lobby, Uno landing/lobby/table/results, all screens fitted to one viewport).
+- `tests/uno.logic.test.mjs` — 23 rules tests for Uno (deck composition, matching, skip/reverse/draw2, wild draw 4 + challenge both ways, UNO call/catch/settle, draw-then-play-or-pass, reshuffle, win + points). Browser check: `check/verify-uno.mjs` (6 checks — 4 players play a full game to results over a local aedes broker).
 - QA probe — 33 checks (two simultaneous rooms: an 8-player round with leakage/unauthorized-action assertions, host-kick validation, the discussion-length option, disconnect-during-voting). Real-browser self-plays (Playwright) drive complete rounds over both the MQTT and Socket.IO transports, including the scoreboard, night recap, personal record and share-summary flows. The 10-cycle improvement loop that shipped v14–v23 is documented under `loop/` (one CYCLE file + one implementation prompt per cycle).
 
 ## Tech
