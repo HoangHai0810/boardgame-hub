@@ -123,6 +123,35 @@ export function WolfAvatar({ seed, size = 48, state = 'villager', halo }: { seed
   );
 }
 
+/** Flat SVG cat face in the platform's style (Mèo Nổ): pointed ears,
+ *  round face, whiskers; dead = X eyes. Colors hash from the seed. */
+const CAT_COLORS: [string, string][] = [
+  ['#F8CD9E', '#EDA45F'], ['#C9CED8', '#9AA3B2'], ['#F8E08C', '#E9C04C'], ['#ACCDF6', '#7FA8E6'],
+  ['#F7BDD6', '#EA93B8'], ['#B4E0C2', '#85C79B'], ['#F6AC8D', '#E67F57'], ['#DEC4F4', '#BB94E4'],
+];
+export function CatAvatar({ seed, size = 48, state = 'awake' }: { seed: string; size?: number; state?: 'awake' | 'dead' }) {
+  const [face, shade] = CAT_COLORS[hashId(seed) % CAT_COLORS.length];
+  const dead = state === 'dead';
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" className="inline-block flex-none" aria-hidden>
+      <path d="M22 40 L14 8 L46 22 Z" fill={face} stroke="#2B2016" strokeWidth="3" strokeLinejoin="round" />
+      <path d="M78 40 L86 8 L54 22 Z" fill={face} stroke="#2B2016" strokeWidth="3" strokeLinejoin="round" />
+      <path d="M24 32 L20 16 L36 24 Z" fill="#F6A8BC" />
+      <path d="M76 32 L80 16 L64 24 Z" fill="#F6A8BC" />
+      <circle cx="50" cy="56" r="35" fill={face} stroke="#2B2016" strokeWidth="3" />
+      <g stroke="#2B2016" strokeWidth="1.6" opacity="0.35" strokeLinecap="round"><path d="M8 60 l14 3 M10 70 l13 -1" /><path d="M92 60 l-14 3 M90 70 l-13 -1" /></g>
+      {dead ? (
+        <g stroke="#2B2016" strokeWidth="3.4" strokeLinecap="round"><path d="M31 46 l12 12 M43 46 l-12 12" /><path d="M57 46 l12 12 M69 46 l-12 12" /></g>
+      ) : (
+        <g fill="#2B2016"><circle cx="37" cy="52" r="4.6" /><circle cx="63" cy="52" r="4.6" /></g>
+      )}
+      <path d="M44 66 h12 l-6 7 Z" fill="#F2728C" stroke="#2B2016" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M50 73 q0 5 -7 6 M50 73 q0 5 7 6" stroke="#2B2016" strokeWidth="2" fill="none" strokeLinecap="round" />
+      <ellipse cx="50" cy="74" rx="13" ry="8" fill={shade} opacity="0.35" />
+    </svg>
+  );
+}
+
 /** Role icon for the reveal card: a tinted circle holding the role's mark
  *  (wolf face, eye, shield, flask, bow, house). Colors match the role pills. */
 export const ROLE_TINT: Record<Role, string> = {

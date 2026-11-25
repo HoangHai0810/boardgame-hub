@@ -6,6 +6,7 @@ import type { ComponentType } from 'react';
 import CheeseThiefApp from '../games/cheese-thief/GameApp';
 import MaSoiApp from '../games/ma-soi/GameApp';
 import UnoApp from '../games/uno/GameApp';
+import MeoNoApp from '../games/meo-no/GameApp';
 
 export interface GameDef {
   id: string;
@@ -18,6 +19,7 @@ export const GAMES: GameDef[] = [
   { id: 'cheese-thief', component: CheeseThiefApp },
   { id: 'ma-soi', component: MaSoiApp },
   { id: 'uno', component: UnoApp },
+  { id: 'meo-no', component: MeoNoApp },
   { id: 'gian-diep', comingSoon: true },
 ];
 

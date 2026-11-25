@@ -8,7 +8,7 @@ A multi-boardgame platform that runs in the browser — no install, works on mob
 - 🧀 **Chuột Phô Mai (Cheese Mouse)** — LIVE. Real-time multiplayer social deduction for **4–8 players** (see below).
 - 🐺 **Ma Sói (Werewolf)** — LIVE. Classic Werewolf for **6–12 players**: wolves hunt at night, the village votes by day (see below).
 - 🃏 **Uno** — LIVE. Classic Uno for **2–10 players** (see below).
-- 🐱 **Mèo Nổ (Exploding Kittens)** — in design, next game.
+- 🐱 **Mèo Nổ (Exploding Kittens)** — LIVE. Exploding Kittens for **2–5 players** (see below).
 - 🕵️ **Ai là Gián Điệp? (Who's the Spy?)** — coming soon.
 
 ## Layout
@@ -16,10 +16,12 @@ A multi-boardgame platform that runs in the browser — no install, works on mob
 - `client/src/games/cheese-thief/` — the Cheese Thief game (UI, engine host, i18n).
 - `client/src/games/ma-soi/` — the Ma Sói game (UI, engine host, i18n, wolf avatars, bots).
 - `client/src/games/uno/` — the Uno game (UI, engine host, i18n).
+- `client/src/games/meo-no/` — the Mèo Nổ game (UI, engine host, i18n, cat avatars).
 - `client/src/transport/` — the shared multiplayer transport (MQTT default, PeerJS, Socket.IO), voice and sound.
 - `games/cheese-thief/logic.ts` — the Cheese Thief rules engine, shared by the browser host and the dedicated server.
 - `games/ma-soi/logic.ts` — the Ma Sói rules engine (browser-hosted; the dedicated server still runs Cheese Thief only for now — Ma Sói rooms opened with `?server=` get `GAME_NOT_SUPPORTED`).
 - `games/uno/logic.ts` — the Uno rules engine (browser-hosted; same `?server=` limitation as Ma Sói).
+- `games/meo-no/logic.ts` — the Mèo Nổ rules engine (browser-hosted; same `?server=` limitation as Ma Sói/Uno).
 - `server/` — Socket.IO server, one process for all games; rooms are namespaced `(game, code)`.
 
 Adding a game = one entry in `client/src/platform/games.ts` + its component (and, for server mode, an engine in `games/<id>/` + an id in the server's `GAME_IDS` set). Rooms never collide across games: MQTT/voice topics live under `ct1/<game>/<code>/`, PeerJS ids under `ct-<game>-v1-`.
@@ -62,6 +64,14 @@ Adding a game = one entry in `client/src/platform/games.ts` + its component (and
 - **Draw flow:** one draw per turn; a playable drawn card may be played at once (only that card) or kept by passing; an unplayable draw passes the turn immediately. Empty deck reshuffles the discard pile (minus the top card).
 - **Win & points:** first to empty their hand wins the round; points = the value of opponents' remaining hands (number = face value, Skip/Reverse/Draw 2 = 20, Wild/Wild Draw 4 = 50). Turn timer 30 s — a timed-out turn resolves safely (draw 1 + pass, or the safe default on a decision). Chat is open in all phases.
 
+## Mèo Nổ — rules & flow
+- **Exploding Kittens** (2–5 players, 7 cards each incl. 1 Defuse). Deck: Exploding Kittens = players − 1, Defuse 6 total, Nope / Skip / Shuffle / See the Future / Attack / Favor 4 each, Cat cards 5 types × 4 = 20. Cat cards have no standalone effect in v1.
+- **Turn:** play any number of action cards, then draw 1 to end the turn. Skip ends the turn without drawing; Attack ends it and makes the next player draw twice — answering an Attack with an Attack adds 2 and passes the debt on. A Skip cancels one owed draw.
+- **Drawing an Exploding Kitten:** with a Defuse, use it and put the kitten back at one of 5 fixed positions (top / 2nd / 3rd / middle / bottom — only you see the choice); without one, you explode at once — hand discarded, out of the game. The danger meter always shows pile size, kittens left in the pile and the explosion risk %.
+- **Nope!** (lobby toggle, default on): when someone plays an action card, any other player holding a Nope gets 5 s to block it; a Nope may itself be Noped, restarting the 5 s window — an odd number of Nopes cancels the action. See the Future shows the top 3 cards privately, with a hint when one of them is a kitten. Favor: pick a player; they choose one card from their hand to give you.
+- **Lobby toggles** (host): allow Nope (default on), show everyone's card counts (default on), 30 s turn limit (default **off** — a forgotten turn still auto-draws, and a forgotten defuse/reinsert/favor decision resolves to a safe default after 60 s). No bots in v1 — the design has no bot button.
+- **Win:** the last player standing wins the round; the results screen ranks survivors first, then the exploded by turn of explosion. The laptop table has an event feed ("Diễn biến") beside the chat. Chat is open in all phases.
+
 ## Session & social features
 - 🏆 **Session scoreboard** — rounds won per player in this room, leader crowned; plus your **personal record** (W/L split by dealt role).
 - 🌙 **Night recap** — after each round, the results screen replays the night hour by hour (who woke, the steal, witnesses, inspections, recruitments). It is only revealed at results; mid-game state never contains it.
@@ -93,6 +103,7 @@ Other adaptations vs. the physical game: fixed timers instead of a narrator (nig
 - `tests/socket.integration.mjs` — 23 checks: real Socket.IO server, 5 simultaneous clients play a complete round (create/join/rejections, role secrecy, night steal + private inspection, live chat, voting, results, late-join rejection, play-again, reconnection). Run the server with fast-timer env (`CT_HOUR_MS=700 CT_DISCUSSION_MS=3000 CT_VOTE_MS=3000 CT_RECRUIT_MS=1500 PORT=3109`) then `node tests/socket.integration.mjs`.
 - `tests/ma-soi.logic.test.mjs` — 25 rules tests for Ma Sói (role tables 6–12p, role-config overrides/clamps, wolf majority/tie, seer peek rules, guardian repeat rule, witch potions, night resolution incl. both saves, hunter shot, vote tie, win checks, default votes, public/private secrecy — roles stay hidden until results). `tests/ma-soi.bots.test.mjs` — 11 tests for the bot decisions (wolf pack picks, seer/guardian/witch/hunter/vote — incl. a wolf bot never copying a pack vote that targets itself). `tests/ma-soi.vote-probe.mjs` — fake-clock probe driving the real HostEngine + bots through full games: every living player (human/bot, wolf/villager) gets a genuine vote in every round, before the timer. Browser checks: `check/verify-ma-soi.mjs` (12 checks — full 6-player round incl. wolf chat + pick lock, in real Chromium over a local aedes broker), `check/verify-ma-soi-bots.mjs` (7 checks — 1 human + 5 bots finish a full game) and `check/visual36.mjs` (30 checks — hub with three live games, Ma Sói landing/lobby, Uno landing/lobby/table/results, all screens fitted to one viewport).
 - `tests/uno.logic.test.mjs` — 23 rules tests for Uno (deck composition, matching, skip/reverse/draw2, wild draw 4 + challenge both ways, UNO call/catch/settle, draw-then-play-or-pass, reshuffle, win + points). Browser check: `check/verify-uno.mjs` (6 checks — 4 players play a full game to results over a local aedes broker).
+- `tests/meo-no.logic.test.mjs` — 25 rules tests for Mèo Nổ (deck composition, deal incl. 1 Defuse each, skip/attack debt + stacking, shuffle, peek, favor give, Nope chain both parities + who may nope, defuse + 5 reinsert positions, explosion + elimination, last-player-standing win, auto defaults, hand-count hiding). Browser check: `check/verify-meo-no.mjs` (hub 4 live + 1 coming-soon, full 4-player game to results with defuse + Nope seen, all screens fitted to one viewport).
 - QA probe — 33 checks (two simultaneous rooms: an 8-player round with leakage/unauthorized-action assertions, host-kick validation, the discussion-length option, disconnect-during-voting). Real-browser self-plays (Playwright) drive complete rounds over both the MQTT and Socket.IO transports, including the scoreboard, night recap, personal record and share-summary flows. The 10-cycle improvement loop that shipped v14–v23 is documented under `loop/` (one CYCLE file + one implementation prompt per cycle).
 
 ## Tech

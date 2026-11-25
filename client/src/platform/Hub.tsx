@@ -7,7 +7,7 @@
 // affordance), dark coming-soon cards. Laptop: all 4 cards in one row.
 import { useState } from 'react';
 import { t, Lang } from './i18n';
-import { CheeseWedge, MouseAvatar, WolfAvatar } from './avatars';
+import { CheeseWedge, MouseAvatar, WolfAvatar, CatAvatar } from './avatars';
 
 function playUrl(id: string) {
   const q = new URLSearchParams(location.search);
@@ -56,9 +56,20 @@ export default function Hub() {
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#E8E8E8] border-2 border-[#2B2016] flex-none"><WolfAvatar seed="hub-wolf" size={48} state="wolf" /></span>,
       bannerIcon: <WolfAvatar seed="hub-wolf" size={72} state="wolf" />,
     },
+    {
+      id: 'uno', name: d.unoName, tag: d.unoTag, tagWide: d.unoTag,
+      color: '#2E7CD6', min: 2, max: 10, minsMobile: 15, minsWide: 15,
+      icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#14142B] border-2 border-[#2B2016] flex-none"><UnoIcon size={44} /></span>,
+      bannerIcon: <UnoIcon size={72} />,
+    },
+    {
+      id: 'meo-no', name: d.meoName, tag: d.meoTag, tagWide: d.meoTagWide,
+      color: '#F08A1D', min: 2, max: 5, minsMobile: 10, minsWide: 10,
+      icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#F5E9C8] border-2 border-[#2B2016] flex-none"><CatAvatar seed="hub-cat" size={48} /></span>,
+      bannerIcon: <CatAvatar seed="hub-cat" size={72} />,
+    },
   ];
   const soon = [
-    { name: d.unoName, tag: d.unoTag, min: 2, max: 10, mins: 15, icon: <UnoIcon /> },
     { name: d.spyName, tag: d.spyTag, min: 3, max: 8, mins: 10, icon: <SpyIcon /> },
   ];
   return (
