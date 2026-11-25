@@ -339,7 +339,6 @@ export default function MaSoiApp() {
                   onClick={(e) => { e.stopPropagation(); if ((p as any).isBot) getNet().nightAction('removeBot', p.id); else getNet().kick(p.id); }}
                   className="inline-block text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-0.5 mt-1 cursor-pointer hover:bg-red-200 whitespace-nowrap">✖ {(p as any).isBot ? d.removeBot : d.kick}</span>)}
               {selected && variant === 'pick' && <span className="block text-xs font-extrabold text-[#D63A2F] mt-0.5">{lang === 'vi' ? 'đã chọn' : 'picked'}</span>}
-              {dead && p.role && variant === 'pick' && <span className={`block text-xs font-extrabold mt-0.5 ${roleColor(p.role)}`}>{roleLabel(d, p.role)}</span>}
             </button>
           );
         })}
@@ -676,7 +675,7 @@ export default function MaSoiApp() {
             </div>
             {pub!.lastVoteOut && (
               <div className="bg-[#23233F] border-2 border-[#3D3D63] rounded-2xl px-3 py-2 mb-2 font-bold text-[#FFF3CF] text-sm">
-                {d.voteOutNote(pub!.lastVoteOut.name, roleLabel(d, pub!.lastVoteOut.role))}
+                {d.voteOutNote(pub!.lastVoteOut.name)}
               </div>
             )}
             {pub!.voteTie && (
@@ -841,7 +840,7 @@ export default function MaSoiApp() {
                       <div key={x.id} className="flex items-center gap-2 bg-white hard-sm rounded-2xl px-3 py-2">
                         <MouseAvatar seed={x.id} size={40} state="dead" />
                         <div className="font-bold min-w-0">
-                          <div className="truncate">{x.name} — <span className={roleColor(x.role)}>{ROLE_EMOJI[x.role]} {roleLabel(d, x.role)}</span></div>
+                          <div className="truncate">{x.name}</div>
                           <div className="text-[#8A7B63] text-sm">{d.diedBy(x.cause)}</div>
                         </div>
                       </div>

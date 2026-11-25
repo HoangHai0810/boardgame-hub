@@ -319,7 +319,7 @@ export default function UnoApp() {
     <aside className="hidden lg:flex flex-col min-h-0">
       <div className="card-cream p-3 flex flex-col flex-1 min-h-0">
         <div className="disp font-extrabold text-lg mb-2">💬 {d.chatTitle}</div>
-        <ChatPanel chat={pub.chat} myId={joined.playerId} d={d} height="flex" onChat={onChat} reactions={UNO_REACTIONS} />
+        <ChatPanel chat={pub.chat} myId={joined?.playerId ?? ''} d={d} height="flex" onChat={onChat} reactions={UNO_REACTIONS} />
       </div>
     </aside>
   );
@@ -485,7 +485,7 @@ export default function UnoApp() {
                   <button data-testid="draw-pile" disabled={!canDraw} onClick={doDraw} className="text-center disabled:opacity-60">
                     <UnoCardBack size="lg" />
                     <span className="block font-extrabold text-[#FFF3CF] text-sm mt-1.5">{d.drawPile} · {pub.deckCount}</span>
-                    <span className="block font-bold text-[#BFE8D2] text-xs mt-0.5">{canDraw ? d.draw : d.turnDrawn ? d.drawnPlayable : ''}</span>
+                    <span className="block font-bold text-[#BFE8D2] text-xs mt-0.5">{canDraw ? d.draw : pub.turnDrawn ? d.drawnPlayable : ''}</span>
                   </button>
                   <div className="text-center">
                     {pub.topCard ? <UnoCardFace card={pub.topCard} size="lg" /> : <UnoCardBack size="lg" />}

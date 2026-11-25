@@ -346,17 +346,22 @@ export function publicState(s: GameState) {
     discussionEndsAt: s.discussionEndsAt, voteEndsAt: s.voteEndsAt,
     revealReady: s.revealReady, dayReady: s.dayReady,
     chat: s.chat,
-    nightDeaths: s.nightDeaths, lastVoteOut: s.lastVoteOut, voteTie: s.voteTie,
+    nightDeaths: s.phase === 'results' ? s.nightDeaths : s.nightDeaths.map(d => ({ ...d, role: undefined })),
+    // Death records carry the role in the engine, but the table only
+    // learns it at results — strip it during play (same rule as below).
+    lastVoteOut: s.phase === 'results' || !s.lastVoteOut ? s.lastVoteOut : { ...s.lastVoteOut, role: undefined },
+    voteTie: s.voteTie,
     pendingHunterShot: s.pendingHunterShot,
     winner: s.winner,
     roleOverrides: s.roleOverrides,
     players: s.players.map(p => ({
       id: p.id, name: p.name, isHost: p.isHost, connected: p.connected, isBot: !!p.isBot,
       alive: p.alive, hasVoted: p.hasVoted, wins: p.wins,
-      // A dead player's role is public knowledge — the table learns it
-      // the moment the body is found (or the vote lands). At results,
-      // EVERYONE's role is revealed (like Cheese Thief's inResults spread).
-      role: p.alive && s.phase !== 'results' ? undefined : p.role,
+      // Roles stay secret until the game ends — even the dead keep
+      // theirs (the table must deduce, not be told; live report
+      // 2026-11-25). At results, EVERYONE's role is revealed (like
+      // Cheese Thief's inResults spread).
+      role: s.phase !== 'results' ? undefined : p.role,
     })),
   };
 }

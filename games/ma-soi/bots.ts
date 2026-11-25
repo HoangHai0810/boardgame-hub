@@ -71,7 +71,13 @@ export function botVote(s: GameState, bot: Player, rng: () => number = Math.rand
     if (known.length) return known[0].targetId;
   }
   if (bot.role === 'wolf') {
-    const packVote = wolvesAlive(s).find(p => p.id !== bot.id && p.vote);
+    // Copy a packmate's vote — but never one that targets this bot
+    // itself: a self-vote is rejected by castVote, so copying it would
+    // leave the bot voteless for the whole ballot (live report
+    // 2026-11-25: a wolf that never votes). A packmate may vote for a
+    // fellow wolf (bussing, or a mistake), so the exclusion lives here,
+    // not in the voter.
+    const packVote = wolvesAlive(s).find(p => p.id !== bot.id && p.vote && p.vote !== bot.id);
     if (packVote?.vote) return packVote.vote;
     const prey = alive(s).filter(p => p.role !== 'wolf');
     return pick(prey, rng)?.id ?? null;

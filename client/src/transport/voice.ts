@@ -9,12 +9,19 @@
 //   so late joiners discover the whole mesh from the broker alone.
 // - Deterministic initiator (smaller clientId offers) avoids offer glare
 //   without a perfect-negotiation state machine.
-// - STUN (Google) + the free OpenRelay TURN (same public relay the
-//   PeerJS transport uses): a phone on carrier NAT and a computer on a
-//   home/office network usually CANNOT reach each other peer-to-peer —
-//   without a relay both sides show "mic on" and hear nothing (the PO's
-//   live report, 2026-11-24). TURN relays those pairs; failure stays
-//   per-pair and silent, never fatal to the room.
+// - STUN (Google) + Metered Open Relay TURN via the static-auth scheme:
+//   the widely copy-pasted `openrelayproject` / `openrelayproject` pair
+//   on openrelay.metered.ca is STALE (Metered now requires signup + API
+//   key for it — and the PO's live report of 2026-11-25, mic on but
+//   silence both ways, is exactly the symptom of a dead relay: a phone
+//   on carrier NAT and a computer on a home/office network usually
+//   CANNOT reach each other peer-to-peer). The documented no-signup
+//   mechanism is staticauth.openrelay.metered.ca with a time-limited
+//   TURN-REST credential — username "<expiry>:<label>", credential =
+//   base64(HMAC-SHA1('openrelayprojectsecret', username)) — computed
+//   here with WebCrypto at join time (24h validity, far longer than a
+//   voice session). The old pair is kept last as a fallback; failure
+//   stays per-pair and silent, never fatal to the room.
 // - Speaker and mic are SEPARATE (v29, Hoàng's ask): joining voice is
 //   listen-only — you hear everyone without a mic (peer connections are
 //   born with a recvonly audio transceiver). Enabling the mic later
@@ -24,6 +31,37 @@
 //   track.enabled — instant and renegotiation-free.
 import type { MqttClient } from 'mqtt';
 import { brokerOrder, connectMqttSequential } from './brokers';
+
+/** ICE servers for the voice mesh (see the header note). Computed once
+ *  per join; the TURN credential is time-limited (24h). */
+async function turnIceServers(): Promise<RTCIceServer[]> {
+  const stun: RTCIceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ];
+  const legacy: RTCIceServer[] = [
+    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+  ];
+  try {
+    const expiry = Math.floor(Date.now() / 1000) + 86400;
+    const username = expiry + ':muse';
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode('openrelayprojectsecret'),
+      { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+    const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(username));
+    const credential = btoa(String.fromCharCode(...new Uint8Array(sig)));
+    return [...stun,
+      { urls: 'turn:staticauth.openrelay.metered.ca:80', username, credential },
+      { urls: 'turn:staticauth.openrelay.metered.ca:443', username, credential },
+      { urls: 'turn:staticauth.openrelay.metered.ca:443?transport=tcp', username, credential },
+      ...legacy,
+    ];
+  } catch {
+    return [...stun, ...legacy];
+  }
+}
 
 
 export interface VoiceHandle {
@@ -49,6 +87,9 @@ interface Peer {
 }
 
 export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbacks, gameId = 'cheese-thief'): Promise<VoiceHandle> {
+  // TURN credentials are computed once here (see turnIceServers); the
+  // peer connections below all share them.
+  const iceServers = await turnIceServers();
   // Voice rides the same per-game topic tree as the game bus.
   const vTopic = (code: string, part: string) => `ct1/${gameId}/${code}/${part}`;
   // Listen-only by default: NO mic is requested to join the mesh.
@@ -139,15 +180,7 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
   const ensurePeer = (pid: string): Peer => {
     const existing = peers.get(pid);
     if (existing) return existing;
-    const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
-      ],
-    });
+    const pc = new RTCPeerConnection({ iceServers });
     if (stream) { const ms = stream; ms.getTracks().forEach(t => pc.addTrack(t, ms)); }
     else pc.addTransceiver('audio', { direction: 'recvonly' }); // listen-only until the mic is enabled
     const audio = document.createElement('audio');

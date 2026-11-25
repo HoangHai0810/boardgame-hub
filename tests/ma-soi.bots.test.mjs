@@ -59,6 +59,15 @@ t('wolf bot copies the pack vote', () => {
   s.players[0].vote = 'p3';
   assert.equal(botVote(s, s.players[1]), 'p3');
 });
+t('wolf bot never copies a pack vote that targets itself', () => {
+  // A packmate may vote for a fellow wolf (bussing / a mistake) — but a
+  // self-vote is rejected by castVote, so copying it would leave the bot
+  // voteless for the whole ballot. It must fall back to a villager.
+  const s = mk(['wolf', 'wolf', 'villager', 'villager']);
+  s.players[0].vote = 'p1';
+  assert.equal(botVote(s, s.players[1], () => 0), 'p2');
+  assert.notEqual(botVote(s, s.players[1]), 'p1');
+});
 t('villager bot votes someone else at random', () => {
   const s = mk(['villager', 'wolf', 'villager']);
   assert.notEqual(botVote(s, s.players[0], () => 0), 'p0');

@@ -162,10 +162,21 @@ t('wolf confirm locks the pick', () => {
   assert.equal(resolveWolfTarget(s), 'p2');
   assert.equal(wolfConfirm(s, s.players[1]), false); // second wolf has no pick
 });
-t('dead players reveal their role in publicState', () => {
+t('dead players keep their role secret until results', () => {
   const s = mk(['wolf', 'villager']);
   s.players[0].alive = false;
-  assert.equal(publicState(s).players[0].role, 'wolf');
+  s.nightDeaths = [{ id: 'p0', name: 'P0', role: 'wolf', cause: 'wolves' }];
+  s.lastVoteOut = { id: 'p0', name: 'P0', role: 'wolf', cause: 'vote' };
+  const pub = publicState(s);
+  assert.equal(pub.players[0].role, undefined); // dead, mid-game: still secret
+  assert.equal(pub.nightDeaths[0].role, undefined);
+  assert.equal(pub.lastVoteOut?.role, undefined);
+  s.phase = 'results';
+  const pub2 = publicState(s);
+  assert.equal(pub2.players[0].role, 'wolf'); // revealed at results
+  assert.equal(pub2.players[1].role, 'villager');
+  assert.equal(pub2.nightDeaths[0].role, 'wolf');
+  assert.equal(pub2.lastVoteOut?.role, 'wolf');
 });
 
 
