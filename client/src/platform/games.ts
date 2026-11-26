@@ -11,6 +11,7 @@ const CheeseThiefApp = lazy(() => import('../games/cheese-thief/GameApp'));
 const MaSoiApp = lazy(() => import('../games/ma-soi/GameApp'));
 const UnoApp = lazy(() => import('../games/uno/GameApp'));
 const MeoNoApp = lazy(() => import('../games/meo-no/GameApp'));
+const GianDiepApp = lazy(() => import('../games/gian-diep/GameApp'));
 
 export interface GameDef {
   id: string;
@@ -24,7 +25,7 @@ export const GAMES: GameDef[] = [
   { id: 'ma-soi', component: MaSoiApp },
   { id: 'uno', component: UnoApp },
   { id: 'meo-no', component: MeoNoApp },
-  { id: 'gian-diep', comingSoon: true },
+  { id: 'gian-diep', component: GianDiepApp },
 ];
 
 export const GAME_IDS = new Set(GAMES.filter(g => !g.comingSoon).map(g => g.id));

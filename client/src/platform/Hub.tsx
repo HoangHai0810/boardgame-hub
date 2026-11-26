@@ -68,10 +68,14 @@ export default function Hub() {
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#F5E9C8] border-2 border-[#2B2016] flex-none"><CatAvatar seed="hub-cat" size={48} /></span>,
       bannerIcon: <CatAvatar seed="hub-cat" size={72} />,
     },
+    {
+      id: 'gian-diep', name: d.spyName, tag: d.spyTag, tagWide: d.spyTagWide,
+      color: '#7C4DBD', min: 3, max: 8, minsMobile: 60, minsWide: 60,
+      icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#14142B] border-2 border-[#2B2016] flex-none"><SpyIcon size={44} /></span>,
+      bannerIcon: <SpyIcon size={72} />,
+    },
   ];
-  const soon = [
-    { name: d.spyName, tag: d.spyTag, min: 3, max: 8, mins: 10, icon: <SpyIcon /> },
-  ];
+  const soon: { name: string; tag: string; min: number; max: number; mins: number; icon: React.ReactNode }[] = [];
   return (
     <div className="min-h-dvh bg-[#14142B] p-3 sm:p-4">
       <div className="max-w-3xl lg:max-w-6xl mx-auto">
@@ -94,7 +98,7 @@ export default function Hub() {
           </p>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mt-4 sm:mt-5">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mt-4 sm:mt-5">
           {live.map((g, gi) => (
             <a key={g.id} href={playUrl(g.id)} className="col-span-2 lg:col-span-1 card-cream !rounded-[28px] overflow-hidden flex flex-col no-underline anim-enter lift" style={{ animationDelay: `${gi * 70}ms` }}>
               {/* mobile: thin color strip; laptop: tall banner with icon + pill */}
