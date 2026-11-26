@@ -4,7 +4,7 @@ import { Pub, Priv } from './hostEngine';
 import { t, Lang } from './i18n';
 import { sfx, ensureCtx } from '../../transport/sound';
 import { joinVoice, VoiceHandle } from '../../transport/voice';
-import { TopBar, ChatPanel, ChatSheet, chatPreview } from '../../platform/ui';
+import { TopBar, ChatPanel, ChatSheet, chatPreview, RetryDefaultButton } from '../../platform/ui';
 import { CatAvatar } from '../../platform/avatars';
 import { MIN_PLAYERS, MAX_PLAYERS, NOPE_MS } from '../../../../games/meo-no/logic';
 import type { Card, Kind, FeedEvent } from '../../../../games/meo-no/logic';
@@ -14,16 +14,20 @@ const MEO_REACTIONS = ['💣', '😱', '🙏', '🤔', '👍', '🐱', '🔥', '
 
 const AVATAR_BG = ['bg-rose-100', 'bg-sky-100', 'bg-lime-100', 'bg-violet-100', 'bg-amber-100', 'bg-teal-100', 'bg-pink-100', 'bg-indigo-100'];
 const avatarBg = (id: string) => AVATAR_BG[[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_BG.length];
-function TimerPill({ secs, dark = false }: { secs: number | null; dark?: boolean }) {
+// The countdown ticks inside the pill (1s) instead of a 250ms clock at
+// App level re-rendering the whole screen 4×/second (A3).
+function TimerPill({ endsAt, dark = false }: { endsAt: number | null | undefined; dark?: boolean }) {
+  const [secs, setSecs] = useState<number | null>(() => (endsAt ? Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)) : null));
+  useEffect(() => {
+    if (!endsAt) { setSecs(null); return; }
+    const tick = () => setSecs(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)));
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [endsAt]);
   if (secs === null || secs === undefined) return null;
   const label = secs >= 60 ? `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` : `${secs}s`;
   return <span className={`disp inline-flex items-center gap-1 rounded-full px-3 py-1 font-extrabold text-base ${dark ? 'bg-[#23233F] border-2 border-[#3D3D63] text-[#FFB020]' : 'bg-[#FFFBef] hard-xs text-[#2B2016]'}`}>🕐 {label}</span>;
-}
-
-function useNow(step = 250) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => { const i = setInterval(() => setNow(Date.now()), step); return () => clearInterval(i); }, [step]);
-  return now;
 }
 const secsLeft = (endsAt: number | null, now: number) => endsAt ? Math.max(0, Math.ceil((endsAt - now) / 1000)) : null;
 
@@ -217,11 +221,13 @@ export default function MeoNoApp() {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [connLost, setConnLost] = useState(false);
+  const [migrating, setMigrating] = useState(false);
   const [muted, setMuted] = useState(() => localStorage.getItem('ct_muted') === '1');
   const [showHelp, setShowHelp] = useState(false);
   const [chatSheet, setChatSheet] = useState(false);
   const [myRecord, setMyRecord] = useState<{ w: number; l: number }>({ w: 0, l: 0 });
   const [shareCopied, setShareCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [favorPick, setFavorPick] = useState<Card | null>(null);
   const [favorGiveId, setFavorGiveId] = useState<string | null>(null);
@@ -233,6 +239,7 @@ export default function MeoNoApp() {
   useEffect(() => { setSeenChat(pub?.chat.length ?? 0); }, [pub?.phase]);
   const recordedRounds = useRef<Set<string>>(new Set());
   const netRef = useRef<Net | null>(null);
+  const toggleGuard = useRef(0);
   const voiceRef = useRef<VoiceHandle | null>(null);
   const [voiceSpeaker, setVoiceSpeaker] = useState<'off' | 'busy' | 'on'>('off');
   const [voiceMic, setVoiceMic] = useState<'off' | 'busy' | 'on'>('off');
@@ -241,7 +248,7 @@ export default function MeoNoApp() {
   const autoVoiceRef = useRef('');
   const voiceOptOutRef = useRef(false);
   const phase = pub?.phase ?? 'lobby';
-  const now = useNow();
+
   const me = pub?.players.find(p => p.id === joined?.playerId);
   const myHand = priv?.myHand ?? [];
   const myTurn = phase === 'playing' && pub?.turn === joined?.playerId && !!me?.alive;
@@ -252,7 +259,7 @@ export default function MeoNoApp() {
   const getNet = () => {
     if (!netRef.current) {
       netRef.current = createNet({
-        onState: (s) => { setPub(s); setStatus(''); setConnLost(false); },
+        onState: (s) => { setPub(s); setStatus(''); setConnLost(false); setMigrating(false); },
         onPrivate: (p) => setPriv(p),
         onJoined: (c, pid, isHost) => {
           setJoined({ code: c, playerId: pid, isHost });
@@ -277,6 +284,7 @@ export default function MeoNoApp() {
         },
         onStatus: (m) => {
           if (!m) { setStatus(''); return; }
+          if (m === 'STATUS_MIGRATING') { setMigrating(true); return; }
           if (m === 'STATUS_CREATING') setStatus(d.statusCreating);
           else if (m.startsWith('STATUS_CONNECTING:')) setStatus(d.statusConnecting(m.slice('STATUS_CONNECTING:'.length)));
           else setStatus(m);
@@ -362,7 +370,7 @@ export default function MeoNoApp() {
       voiceRef.current = await joinVoice(joined.code, joined.playerId, {
         onSpeaking: (ids) => setSpeakingIds(prev => (prev.size === ids.size && [...ids].every(x => prev.has(x)) ? prev : ids)),
         onPeers: () => { /* presence is implicit in the speaking badges */ },
-      }, 'meo-no');
+      }, 'meo-no', getNet().getBrokerUrl?.());
       setVoiceSpeaker('on');
     } catch {
       setVoiceSpeaker('off');
@@ -450,7 +458,15 @@ export default function MeoNoApp() {
     && (pendingNope.nopes === 0 ? pendingNope.actorId !== joined?.playerId : pendingNope.lastNoper !== joined?.playerId)
     && dismissedNope !== nopeKey;
   const showNopeSheet = !!pendingNope && iCanNope;
-  const nopeSecs = pendingNope ? secsLeft(pendingNope.endsAt, now) : null;
+  // The Nope drain bar ticks at 250ms — but ONLY while a Nope window is
+  // open; the rest of the game no longer re-renders 4×/second (A3).
+  const [nopeNow, setNopeNow] = useState(Date.now());
+  useEffect(() => {
+    if (!pendingNope) return;
+    const i = setInterval(() => setNopeNow(Date.now()), 250);
+    return () => clearInterval(i);
+  }, [pendingNope]);
+  const nopeSecs = pendingNope ? secsLeft(pendingNope.endsAt, nopeNow) : null;
   const favorTarget = pub?.pendingFavor ? pub.players.find(p => p.id === pub.pendingFavor!.targetId) : null;
   const favorFrom = pub?.pendingFavor ? pub.players.find(p => p.id === pub.pendingFavor!.fromId) : null;
   const lastDrewEk = pub?.feed.length ? [...pub.feed].reverse().find(e => e.kind === 'drew-ek') : null;
@@ -499,9 +515,9 @@ export default function MeoNoApp() {
       <div className="min-h-dvh bg-[#14142B] text-[#2B2016]">
         <div className="max-w-md lg:max-w-lg mx-auto">
           <div className="flex items-center gap-2 px-3 pt-3">
-            <button className="disp font-extrabold text-[#FFF3CF] text-sm bg-[#23233F] border-2 border-[#3D3D63] rounded-full px-3 py-1.5" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
+            <button className="disp font-extrabold text-[#FFF3CF] text-sm bg-[#23233F] border-2 border-[#3D3D63] rounded-full px-3 py-2.5 push" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
             <span className="flex-1" />
-            <button title={muted ? '🔇' : '🔊'} className="w-10 h-10 rounded-full bg-[#23233F] border-2 border-[#3D3D63] text-lg flex items-center justify-center" onClick={toggleMuted}>{muted ? '🔇' : '🔊'}</button>
+            <button title={muted ? '🔕' : '🔊'} className="w-11 h-11 push rounded-full bg-[#23233F] border-2 border-[#3D3D63] text-lg flex items-center justify-center" onClick={toggleMuted}>{muted ? '🔕' : '🔊'}</button>
             <span className="inline-flex rounded-full overflow-hidden border-2 border-[#3D3D63] text-sm font-black">
               <button className={`px-2.5 py-1 ${lang === 'vi' ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#23233F] text-[#B9BCE0]'}`} onClick={() => { localStorage.setItem('ct_lang', 'vi'); setLang('vi'); }}>VI</button>
               <button className={`px-2.5 py-1 ${lang === 'en' ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#23233F] text-[#B9BCE0]'}`} onClick={() => { localStorage.setItem('ct_lang', 'en'); setLang('en'); }}>EN</button>
@@ -521,6 +537,7 @@ export default function MeoNoApp() {
               value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
             <button className={`${BTN} btn-amber w-full mt-3`} disabled={!name.trim() || !!status}
               onClick={() => { setError(''); getNet().createRoom(name.trim()); }}>💣 {d.create}</button>
+            {!name.trim() && <p className="text-center font-bold text-[#8A7B63] text-sm mt-2">{d.nameFirst}</p>}
             <div className="flex items-center gap-3 mt-4 mb-3">
               <span className="flex-1 border-t-2 border-[#E5DCC0]" />
               <span className="disp font-extrabold text-xs text-[#8A7B63] tracking-wide">{d.orJoinFriend}</span>
@@ -534,7 +551,7 @@ export default function MeoNoApp() {
                 onClick={() => { setError(''); getNet().joinRoom(roomCodeInput.trim(), name.trim()); }}>🚪 {d.join}</button>
             </div>
             {status && <p className="text-center font-bold mt-3">{status} <button className="text-red-500 font-extrabold ml-1" onClick={() => { try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } try { getNet().leave(); } catch { /* ignore */ } location.href = location.pathname; }}>{d.cancelConnect}</button></p>}
-            {error && <p className="text-center font-bold text-red-600 mt-3">{error}</p>}
+            {error && <><p className="text-center font-bold text-red-600 mt-3">{error}</p><RetryDefaultButton d={d} /></>}
             {!status && !error && <p className="text-center text-[#8A7B63] font-bold text-sm mt-4">{d.landingFoot}</p>}
             <p className="text-center mt-3">
               <button className="font-bold text-sm text-[#8A7B63] underline" onClick={() => setShowHelp(true)}>{d.how}</button>
@@ -554,46 +571,47 @@ export default function MeoNoApp() {
 
   return (
     <div className={`min-h-dvh ${tone === 'navy' ? 'bg-[#14142B] text-[#FFF3CF]' : 'bg-[#FFF3CF] text-[#2B2016]'} transition-colors duration-1000`}>
-      <div className="max-w-3xl lg:max-w-6xl mx-auto px-3 py-4">
+      <div className="max-w-3xl lg:max-w-6xl mx-auto px-3 py-3">
         <TopBar logo={<span className="text-2xl">💣</span>} d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })} voice={voice} tone={tone} />
         <button className="disp font-extrabold text-[#FFB020] text-sm mb-2" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
         {connLost && <div className="bg-amber-100 border-2 border-amber-400 rounded-2xl px-3 py-2 mb-2 font-bold text-amber-800 text-center">{d.connLost}</div>}
-        {error && <div className="bg-red-100 border-2 border-red-400 rounded-2xl px-3 py-2 mb-2 font-bold text-red-700 text-center">{error}</div>}
+        {migrating && <div className="bg-amber-100 border-2 border-amber-400 rounded-2xl px-3 py-2 mb-2 font-bold text-amber-800 text-center">🔄 {d.statusMigrating}</div>}
+        {error && <><div className="bg-red-100 border-2 border-red-400 rounded-2xl px-3 py-2 mb-2 font-bold text-red-700 text-center">{error}</div><RetryDefaultButton d={d} /></>}
 
         {phase === 'lobby' && (
           <div>
-            <div className="flex items-center gap-3 mb-3">
-              <button className="w-11 h-11 flex-none rounded-2xl bg-[#FFFBef] hard-xs font-extrabold text-xl text-[#2B2016]" onClick={() => { location.href = location.pathname; }}>‹</button>
+            <div className="flex items-center gap-3 mb-2">
+              <button className="w-11 h-11 flex-none rounded-2xl bg-[#FFFBef] hard-xs push font-extrabold text-xl text-[#2B2016]" onClick={() => { location.href = location.pathname; }}>‹</button>
               <div className="min-w-0">
-                <h2 className="disp font-extrabold text-2xl leading-none">💣 {d.title} · {d.lobby}</h2>
-                <p className="font-bold text-[#8A7B63] text-sm mt-1">{d.waiting}</p>
+                <h2 className="disp font-extrabold text-xl leading-none">💣 {d.title} · {d.lobby}</h2>
+                <p className="font-bold text-[#8A7B63] text-sm mt-0.5">{d.waiting}</p>
               </div>
               <span className="flex-1" />
               <span className="hidden sm:block font-bold text-[#8A7B63] text-sm">{connected}/{MAX_PLAYERS}</span>
             </div>
-            <div className="bg-[#14142B] rounded-[20px] px-4 py-3 flex items-center gap-3 hard">
+            <div className="bg-[#14142B] rounded-[20px] px-4 py-2 flex items-center gap-3 hard">
               <div className="min-w-0">
                 <div className="disp text-[#FFB020] font-extrabold text-[11px] tracking-[0.18em]">{d.roomCode}</div>
                 <div className="flex gap-1.5 mt-1" data-testid="room-code">
                   {pub!.roomCode.split('').map((c, i) => (
-                    <span key={i} className="w-8 h-9 sm:w-9 sm:h-10 rounded-lg bg-[#FFFBef] text-[#2B2016] font-extrabold text-xl flex items-center justify-center">{c}</span>
+                    <span key={i} className="w-8 h-8 sm:w-9 sm:h-10 rounded-lg bg-[#FFFBef] text-[#2B2016] font-extrabold text-xl flex items-center justify-center">{c}</span>
                   ))}
                 </div>
               </div>
               <span className="flex-1" />
-              <button className="disp flex-none px-3 py-2 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] text-sm" onClick={async () => { try { await navigator.clipboard.writeText(location.href.split('?')[0] + `?game=meo-no&room=${pub!.roomCode}`); } catch { /* ignore */ } }}>🔗 {d.copyLink}</button>
+              <button className="disp flex-none px-3 py-2 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] text-sm" onClick={async () => { try { await navigator.clipboard.writeText(location.href.split('?')[0] + `?game=meo-no&room=${pub!.roomCode}`); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 1500); } catch { /* ignore */ } }}>{linkCopied ? `✅ ${d.copied}` : `🔗 ${d.copyLink}`}</button>
             </div>
 
-            <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-4 mt-4">
-              <div className="card-cream p-4">
+            <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-4 mt-3">
+              <div className="card-cream p-3">
                 <div className="flex items-baseline justify-between gap-2">
                   <h3 className="disp font-extrabold text-xl">{d.players}</h3>
                   <span className="font-bold text-[#8A7B63] text-sm">{connected}/{MAX_PLAYERS} · {d.needAtLeast(MIN_PLAYERS)}</span>
                 </div>
                 <div className="grid grid-cols-4 lg:grid-cols-5 gap-2 my-3">
                   {pub!.players.map(p => (
-                    <div key={p.id} className={`rounded-2xl p-2 text-center hard-xs ${p.id === joined.playerId ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'}`}>
-                      <span className="mx-auto block w-fit"><CatAvatar seed={p.id} size={48} /></span>
+                    <div key={p.id} className={`rounded-2xl p-1.5 text-center hard-xs ${p.id === joined.playerId ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'}`}>
+                      <span className="mx-auto block w-fit"><CatAvatar seed={p.id} size={40} /></span>
                       <span className="block font-bold truncate text-sm mt-0.5 text-[#2B2016]">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
                       {p.isHost && <span className="text-amber-600 text-xs font-extrabold whitespace-nowrap">👑 {d.host}</span>}
                       {!p.connected && <span className="text-red-500 text-xs font-bold"> • {d.offline}</span>}
@@ -608,13 +626,13 @@ export default function MeoNoApp() {
                   ))}
                 </div>
                 {joined.isHost && <p className="font-bold text-[#8A7B63] text-sm hidden lg:block">{d.kickHint}</p>}
-                <button className={`${BTN} bg-[#FFFBef] text-[#D63A2F] w-full mt-3`} onClick={() => { try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } getNet().leave(); setJoined(null); setPub(null); setPriv(null); }}>🚪 {d.leave}</button>
+                <button className={`${BTN} bg-[#FFFBef] text-[#D63A2F] w-full mt-2`} onClick={() => { try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } getNet().leave(); setJoined(null); setPub(null); setPriv(null); }}>🚪 {d.leave}</button>
               </div>
 
               {/* Rule toggles (design MN2/MN9) — host only */}
-              <div className="card-cream p-4 mt-4 lg:mt-0">
-                <h3 className="disp font-extrabold text-xl">{d.rulesTitle}</h3>
-                <div className="mt-3 space-y-3">
+              <div className="card-cream p-3 mt-3 lg:mt-0">
+                <h3 className="disp font-extrabold text-xl">{d.rulesTitle}{!joined.isHost && <span className="text-sm font-bold text-[#8A7B63]"> ({d.hostOnlyShort})</span>}</h3>
+                <div className="mt-3 space-y-2">
                   {([
                     ['nopeEnabled', d.ruleNope, d.ruleNopeSub],
                     ['showCounts', d.ruleCounts, d.ruleCountsSub],
@@ -629,22 +647,24 @@ export default function MeoNoApp() {
                         data-testid={`toggle-${key}`}
                         disabled={!joined.isHost}
                         aria-pressed={pub!.config[key]}
-                        onClick={() => getNet().nightAction('setConfig', undefined, { config: { [key]: !pub!.config[key] } })}
-                        className={`flex-none w-12 h-7 rounded-full border-2 border-[#2B2016] relative transition-colors disabled:opacity-70 ${pub!.config[key] ? 'bg-[#0E9F6E]' : 'bg-[#C9BFA5]'}`}>
-                        <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white border-2 border-[#2B2016] transition-all ${pub!.config[key] ? 'left-6' : 'left-0.5'}`} />
+                        onClick={() => { const n = Date.now(); if (n - toggleGuard.current < 500) return; toggleGuard.current = n; getNet().nightAction('setConfig', undefined, { config: { [key]: !pub!.config[key] } }); }}
+                        className="flex-none min-w-[44px] min-h-[44px] px-1 flex items-center justify-center disabled:opacity-70">
+                        <span className={`w-12 h-7 rounded-full border-2 border-[#2B2016] relative transition-colors block ${pub!.config[key] ? 'bg-[#0E9F6E]' : 'bg-[#C9BFA5]'}`}>
+                          <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white border-2 border-[#2B2016] transition-all ${pub!.config[key] ? 'left-6' : 'left-0.5'}`} />
+                        </span>
                       </button>
                     </div>
                   ))}
                 </div>
                 {joined.isHost ? (
                   <>
-                    <button className={`${BTN} btn-amber w-full mt-4`} disabled={connected < MIN_PLAYERS}
+                    <button className={`${BTN} btn-amber w-full mt-3`} disabled={connected < MIN_PLAYERS}
                       onClick={() => { setError(''); getNet().startGame(); }}>▶ {d.start}</button>
-                    {connected < MIN_PLAYERS && <p className="text-center font-bold text-red-600 text-sm mt-2">{d.need2}</p>}
-                    {connected >= MIN_PLAYERS && <p className="text-center font-bold text-[#8A7B63] text-sm mt-2">{d.stillNeed(MAX_PLAYERS - connected)}</p>}
+                    {connected < MIN_PLAYERS && <p className="text-center font-bold text-red-600 text-xs mt-2">{d.need2}</p>}
+                    {connected >= MIN_PLAYERS && <p className="text-center font-bold text-[#8A7B63] text-xs mt-2 hidden sm:block">{d.stillNeed(MAX_PLAYERS - connected)}</p>}
                   </>
                 ) : (
-                  <p className="text-center font-bold text-[#8A7B63] mt-4">{d.waiting}</p>
+                  <p className="text-center font-bold text-[#8A7B63] mt-3">{d.waiting}</p>
                 )}
               </div>
             </div>
@@ -661,9 +681,10 @@ export default function MeoNoApp() {
                   {myTurn ? d.yourTurn : d.turnOf(turnPlayer?.name ?? '')}
                 </h2>
                 {pub.debt > 0 && myTurn && <span className="font-extrabold text-[#D63A2F] text-sm">{d.attackedNote(pub.debt)}</span>}
-                {pub.config.timerEnabled && <TimerPill secs={secsLeft(pub.turnEndsAt, now)} dark />}
+                {pub.config.timerEnabled && <TimerPill endsAt={pub.turnEndsAt} dark />}
                 {!me?.alive && <span className="font-extrabold text-[#D63A2F] text-sm">💥 {d.exploded} — {d.keepWatching}</span>}
               </div>
+              {pub.config.timerEnabled && <p className="font-bold text-[#8A7B63] text-xs mt-1">{d.ruleTimerSub}</p>}
 
               {/* opponents (design MN3) */}
               <div className="flex gap-2 overflow-x-auto pb-1 mt-2">
@@ -684,7 +705,7 @@ export default function MeoNoApp() {
               {/* Nope window banner (when I cannot / do not nope) */}
               {pendingNope && !showNopeSheet && (
                 <div className="mt-2 bg-[#EDE9FE] border-2 border-[#7C4DBD] rounded-2xl px-3 py-2 flex items-center gap-2">
-                  <span className="font-bold text-sm flex-1 text-[#4C1D95]">{d.nopePlayedBy(playerName(pendingNope.actorId))} — {d.nopeSecondsLeft(nopeSecs ?? 0)}</span>
+                  <span className="font-bold text-sm flex-1 text-[#4C1D95]">{dismissedNope === nopeKey ? d.nopeDismissed : !iHoldNope ? d.nopeWaitOnly : <>{d.nopePlayedBy(playerName(pendingNope.actorId))} — {d.nopeSecondsLeft(nopeSecs ?? 0)}</>}</span>
                   <span className="w-full max-w-[120px] h-2 bg-white rounded-full overflow-hidden border border-[#7C4DBD]"><span className="block h-full bg-[#7C4DBD]" style={{ width: `${Math.max(0, Math.min(100, ((nopeSecs ?? 0) / (NOPE_MS / 1000)) * 100))}%` }} /></span>
                 </div>
               )}
@@ -741,8 +762,8 @@ export default function MeoNoApp() {
                     const selected = c.id === selectedCardId;
                     return (
                       <span key={c.id} className="flex-none anim-card-fall -ml-1 first:ml-0" style={{ animationDelay: `${hi * 45}ms` }}>
-                      <button data-testid="hand-card" data-card-id={c.id} data-kind={c.kind} disabled={!playable && !selected} onClick={() => setSelectedCardId(selected ? null : c.id)}
-                        className={`flex-none rounded-xl transition ${playable ? 'hover:-translate-y-2 cursor-pointer' : 'opacity-45 cursor-default'} ${selected ? 'ring-4 ring-[#FFB020] -translate-y-2 z-10' : ''}`}>
+                      <button data-testid="hand-card" data-card-id={c.id} data-kind={c.kind} disabled={!playable} onClick={() => setSelectedCardId(selected ? null : c.id)}
+                        className={`flex-none rounded-xl transition ${playable ? 'hover:-translate-y-2 cursor-pointer' : 'opacity-45 cursor-default'} ${selected && playable ? 'ring-4 ring-[#FFB020] -translate-y-2 z-10' : ''}`}>
                         <MeoCardFace card={c} d={d} size="md" />
                       </button>
                       </span>
@@ -753,10 +774,13 @@ export default function MeoNoApp() {
                 <div className="flex gap-2 mt-1">
                   <button data-testid="play-selected-btn" className={`${BTN} btn-amber flex-1`} disabled={!selectedCard || !canPlay(selectedCard)} onClick={doPlaySelected}>{d.playSelected}</button>
                   <button data-testid="draw-btn" className={`${BTN} btn-dark flex-1`} disabled={!canDraw} onClick={doDraw}>
-                    <span className="lg:hidden">{d.drawCardBtn}</span>
-                    <span className="hidden lg:inline">{d.drawCardBtnWide}</span>
+                    <span>{d.drawCardBtnWide}</span>
                   </button>
                 </div>
+              </div>
+              <div className="lg:hidden mt-3 bg-[#23233F] border-[3px] border-[#2B2016] rounded-[24px] p-3 hard">
+                <div className="disp font-extrabold text-sm mb-1.5 text-[#FFF3CF]">📜 {d.feedTitle}</div>
+                <FeedList feed={pub.feed.slice(-2)} d={d} myId={joined?.playerId} players={pub.players} />
               </div>
               {chatPreviewBar}
             </div>
@@ -817,8 +841,8 @@ export default function MeoNoApp() {
 
         {/* Nope sheet (design MN4) */}
         {showNopeSheet && pendingNope && (
-          <div className="fixed inset-x-0 bottom-0 z-50 flex justify-center p-3" style={{ background: 'linear-gradient(to top, rgba(20,20,43,0.92), transparent)' }}>
-            <div className="w-full max-w-md bg-[#23233F] border-[3px] border-[#2B2016] rounded-[24px] p-4 hard anim-slide-up text-[#FFF3CF]">
+          <div className="fixed inset-x-0 bottom-0 z-50 flex justify-center p-3 pointer-events-none" style={{ background: 'linear-gradient(to top, rgba(20,20,43,0.92), transparent)' }}>
+            <div className="w-full max-w-md bg-[#23233F] border-[3px] border-[#2B2016] rounded-[24px] p-4 hard anim-slide-up text-[#FFF3CF] pointer-events-auto">
               <div className="text-center">
                 <p className="disp text-[#FFB020] font-extrabold tracking-[0.18em] text-[11px]">{d.nopePlayedBy(playerName(pendingNope.actorId)).toUpperCase()}</p>
                 <p className="font-bold text-sm text-[#B9BCE0] mt-1">

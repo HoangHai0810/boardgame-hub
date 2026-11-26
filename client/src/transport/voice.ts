@@ -30,7 +30,7 @@
 //   the new one is born with the mic track attached. Muting stays
 //   track.enabled — instant and renegotiation-free.
 import type { MqttClient } from 'mqtt';
-import { brokerOrder, connectMqttSequential } from './brokers';
+import { brokerOrder, connectMqttSequential, tryOneBroker } from './brokers';
 
 /** ICE servers for the voice mesh (see the header note). Computed once
  *  per join; the TURN credential is time-limited (24h). */
@@ -86,7 +86,7 @@ interface Peer {
   remoteSet: boolean;
 }
 
-export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbacks, gameId = 'cheese-thief'): Promise<VoiceHandle> {
+export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbacks, gameId = 'cheese-thief', pinBroker?: string): Promise<VoiceHandle> {
   // TURN credentials are computed once here (see turnIceServers); the
   // peer connections below all share them.
   const iceServers = await turnIceServers();
@@ -293,7 +293,7 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
     c.on('connect', publishPresence);
     c.on('offline', () => {
       if (failoverTimer || left) return;
-      failoverTimer = setTimeout(() => { failoverTimer = null; void failoverBus(); }, 9000);
+      failoverTimer = setTimeout(() => { failoverTimer = null; void failoverBus(); }, 3000);
     });
   }
 
@@ -311,11 +311,22 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
       // re-delivery recreates missing peers; live PCs keep their tracks.
       [...peerIds].forEach(pid => { if (pid !== myId && !peers.has(pid)) { ensurePeer(pid); if (myId < pid) void makeOffer(pid); } });
     } catch {
-      if (!failoverTimer && !left) failoverTimer = setTimeout(() => { failoverTimer = null; void failoverBus(); }, 9000);
+      if (!failoverTimer && !left) failoverTimer = setTimeout(() => { failoverTimer = null; void failoverBus(); }, 3000);
     } finally { failoverBusy = false; }
   }
 
-  const r0 = await connectMqttSequential(order, 0, busExtra());
+  // PIN (A9): when the caller knows the game bus's broker, go straight
+  // there — the whole mesh gathers on the host's broker, so walking the
+  // order from 0 could strand voice on a broker nobody else uses (and
+  // cost up to ~16s when the first brokers are dead for this network).
+  // Falls back to the sequential walk when the pin is absent or dead.
+  const pinIdx = pinBroker ? order.indexOf(pinBroker) : -1;
+  let r0: { client: MqttClient; idx: number } | null = null;
+  if (pinIdx >= 0) {
+    const pinned = await tryOneBroker(pinBroker!, busExtra());
+    if (pinned) { (pinned as any).options.reconnectPeriod = 2000; r0 = { client: pinned, idx: pinIdx }; }
+  }
+  if (!r0) r0 = await connectMqttSequential(order, 0, busExtra());
   bus = r0.client; busIdx = r0.idx;
   attach(bus);
   if (bus.connected) publishPresence();

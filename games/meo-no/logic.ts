@@ -31,7 +31,7 @@ export const NOPE_MS = 5000;
 /** Fallback for a pending decision (defuse / reinsert / give a card)
  *  when the 30s turn timer is OFF — a forgotten decision still gets a
  *  sensible default instead of stalling the table. */
-export const DECISION_MS = 60000;
+export const DECISION_MS = 30000;
 export const DEAL_N = 7;
 
 export interface Card { id: string; kind: Kind; variant?: CatVariant }

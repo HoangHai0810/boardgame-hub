@@ -10,7 +10,7 @@ export function TopBar({ d, lang, muted, onToggleMuted, onHelp, onToggleLang, vo
   const chip = tone === 'navy'
     ? 'bg-[#23233F] border-2 border-[#3D3D63] text-[#EDEDF7]'
     : 'bg-[#FFFBef] hard-xs text-[#2B2016]';
-  const chipCls = `rounded-xl px-2 sm:px-2.5 py-1.5 text-base leading-none ${chip} push`;
+  const chipCls = `rounded-xl min-h-[44px] min-w-[44px] px-3 py-2.5 text-base leading-none flex items-center justify-center ${chip} push`;
   return (
     <div className="flex items-center justify-between gap-2 mb-2 relative z-20">
       <div className={`disp font-extrabold text-lg flex items-center gap-1.5 whitespace-nowrap shrink-0 ${tone === 'navy' ? 'text-[#FFF3CF]' : 'text-[#2B2016]'}`}>{logo} {d.title}</div>
@@ -25,13 +25,13 @@ export function TopBar({ d, lang, muted, onToggleMuted, onHelp, onToggleLang, vo
                 ? <button title={d.voiceMicOn} className={chipCls} onClick={voice.onMic}>🎤</button>
                 : voice.mic === 'busy'
                   ? <button title={d.voiceMicOn} className={`${chipCls} !bg-[#FFB020] !text-[#2B2016] anim-pulse-soft`} onClick={voice.onMic}>🎤</button>
-                  : <button title={voice.muted ? d.voiceUnmute : d.voiceMute} className={`${chipCls} ${voice.muted ? '!bg-[#D63A2F] !text-white' : '!bg-[#0E9F6E] !text-white'}`} onClick={voice.onMic}>{voice.muted ? '🔇' : '🎤'}</button>}
+                  : <button title={voice.muted ? d.voiceUnmute : d.voiceMute} className={`${chipCls} relative ${voice.muted ? '!bg-[#D63A2F] !text-white' : '!bg-[#0E9F6E] !text-white'}`} onClick={voice.onMic}>🎤{voice.muted && <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-white text-[#D63A2F] text-[11px] leading-none font-extrabold flex items-center justify-center border-2 border-[#D63A2F]">✕</span>}</button>}
             </>)}
-        <button aria-label="sound" title={muted ? '🔇' : '🔊'} className={chipCls} onClick={onToggleMuted}>{muted ? '🔇' : '🔊'}</button>
+        <button aria-label="sound" title={muted ? '🔕' : '🔊'} className={chipCls} onClick={onToggleMuted}>{muted ? '🔕' : '🔊'}</button>
         <button title={d.help} className={`${chipCls} disp font-extrabold`} onClick={onHelp}>?</button>
         <div className={`flex rounded-xl overflow-hidden ${tone === 'navy' ? 'border-2 border-[#3D3D63]' : 'hard-xs !shadow-none border-2'}`} role="group" aria-label="language">
-          <button className={`disp px-2.5 py-1.5 font-extrabold text-sm leading-none ${lang === 'vi' ? 'bg-[#FFB020] text-[#2B2016]' : tone === 'navy' ? 'bg-[#23233F] text-[#B9BCE0]' : 'bg-[#FFFBef] text-[#8A7B63]'}`} onClick={() => lang !== 'vi' && onToggleLang()}>VI</button>
-          <button className={`disp px-2.5 py-1.5 font-extrabold text-sm leading-none ${lang === 'en' ? 'bg-[#FFB020] text-[#2B2016]' : tone === 'navy' ? 'bg-[#23233F] text-[#B9BCE0]' : 'bg-[#FFFBef] text-[#8A7B63]'}`} onClick={() => lang !== 'en' && onToggleLang()}>EN</button>
+          <button className={`disp px-3 py-2.5 min-h-[44px] font-extrabold text-sm leading-none ${lang === 'vi' ? 'bg-[#FFB020] text-[#2B2016]' : tone === 'navy' ? 'bg-[#23233F] text-[#B9BCE0]' : 'bg-[#FFFBef] text-[#8A7B63]'}`} onClick={() => lang !== 'vi' && onToggleLang()}>VI</button>
+          <button className={`disp px-3 py-2.5 min-h-[44px] font-extrabold text-sm leading-none ${lang === 'en' ? 'bg-[#FFB020] text-[#2B2016]' : tone === 'navy' ? 'bg-[#23233F] text-[#B9BCE0]' : 'bg-[#FFFBef] text-[#8A7B63]'}`} onClick={() => lang !== 'en' && onToggleLang()}>EN</button>
         </div>
       </div>
     </div>
@@ -64,7 +64,20 @@ export function renderChatText(d: any, text: string, reactions: string[] = DEFAU
 // moves THIS box, and only while the reader is already near the bottom
 // (or the newest message is their own).
 
-export function ChatPanel({ chat, myId, d, height = 'h-48', onChat, reactions = DEFAULT_REACTIONS }: { chat: any[]; myId?: string; d: any; height?: string; onChat: (text: string) => void; reactions?: string[] }) {
+// "Retry in default mode" button for transport errors that tell the player
+// to leave ?server= / ?net= behind — the UI now offers the action itself.
+export function RetryDefaultButton({ d }: { d: any }) {
+  let show = false;
+  try { const q = new URLSearchParams(location.search); show = q.has('server') || q.has('net'); } catch { /* ignore */ }
+  if (!show) return null;
+  return (
+    <div className="text-center mt-2">
+      <button className={`${BTN} btn-amber !py-2.5`} onClick={() => { const u = new URL(location.href); u.searchParams.delete('server'); u.searchParams.delete('net'); location.href = u.toString(); }}>{d.retryDefault}</button>
+    </div>
+  );
+}
+
+export function ChatPanel({ chat, myId, d, height = 'h-48', onChat, reactions = DEFAULT_REACTIONS, readOnly = false }: { chat: any[]; myId?: string; d: any; height?: string; onChat: (text: string) => void; reactions?: string[]; readOnly?: boolean }) {
   const [text, setText] = useState('');
   const boxRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
@@ -91,6 +104,9 @@ export function ChatPanel({ chat, myId, d, height = 'h-48', onChat, reactions = 
             </div>);
         })}
       </div>
+      {readOnly ? (
+        <p className="text-center font-extrabold text-[#8A7B63] text-sm mt-2 py-2">{d.deadSpectate ?? ''}</p>
+      ) : (<>
       <div className="flex gap-1.5 mt-2 overflow-x-auto pb-1" aria-label="quick reactions">
         {reactions.map(e => (
           <button key={e} className="text-2xl bg-white hard-xs rounded-full w-10 h-10 shrink-0 active:scale-90 transition"
@@ -107,11 +123,12 @@ export function ChatPanel({ chat, myId, d, height = 'h-48', onChat, reactions = 
           onKeyDown={e => { if (e.key === 'Enter') send(); }} />
         <button className={`${BTN} btn-amber !px-4 !py-2`} onClick={send} title={d.send}>➤</button>
       </div>
+      </>)}
     </div>
   );
 }
 
-export function ChatSheet({ open, onClose, chat, myId, d, onChat, reactions = DEFAULT_REACTIONS }: { open: boolean; onClose: () => void; chat: any[]; myId?: string; d: any; onChat: (t: string) => void; reactions?: string[] }) {
+export function ChatSheet({ open, onClose, chat, myId, d, onChat, reactions = DEFAULT_REACTIONS, readOnly = false }: { open: boolean; onClose: () => void; chat: any[]; myId?: string; d: any; onChat: (t: string) => void; reactions?: string[]; readOnly?: boolean }) {
   if (!open) return null;
   return (
     <div className="absolute inset-0 z-50 flex flex-col justify-end">
@@ -119,9 +136,9 @@ export function ChatSheet({ open, onClose, chat, myId, d, onChat, reactions = DE
       <div className="relative w-full max-w-3xl mx-auto h-[62%] bg-[#FFF3CF] border-t-[3px] border-x-[3px] border-[#2B2016] rounded-t-[28px] p-3 flex flex-col anim-slide-up shadow-2xl">
         <div className="flex items-center justify-between mb-1">
           <span className="disp font-extrabold text-lg text-[#2B2016]">💬 {d.chatTitle ?? 'Chat'}</span>
-          <button className="bg-white hard-xs rounded-full w-9 h-9 font-extrabold text-[#2B2016]" onClick={onClose}>✕</button>
+          <button className="bg-white hard-xs push rounded-full w-11 h-11 font-extrabold text-[#2B2016] flex items-center justify-center" onClick={onClose}>✕</button>
         </div>
-        <ChatPanel chat={chat} myId={myId} d={d} height="flex" onChat={onChat} reactions={reactions} />
+        <ChatPanel chat={chat} myId={myId} d={d} height="flex" onChat={onChat} reactions={reactions} readOnly={readOnly} />
       </div>
     </div>
   );

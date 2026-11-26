@@ -4,7 +4,7 @@ import { Pub, Priv } from './hostEngine';
 import { t, Lang } from './i18n';
 import { sfx, ensureCtx } from '../../transport/sound';
 import { joinVoice, VoiceHandle } from '../../transport/voice';
-import { TopBar, ChatPanel, ChatSheet, chatPreview } from '../../platform/ui';
+import { TopBar, ChatPanel, ChatSheet, chatPreview, RetryDefaultButton } from '../../platform/ui';
 import { WolfAvatar, MouseAvatar, RoleIcon, ROLE_STRONG, MoonVillage } from '../../platform/avatars';
 import { roleTable, effectiveRoleConfig, MIN_PLAYERS, MAX_PLAYERS } from '../../../../games/ma-soi/logic';
 import type { RoleConfig } from '../../../../games/ma-soi/logic';
@@ -15,18 +15,21 @@ const WOLF_REACTIONS = ['👀', '🐺', '😱', '🤔', '👍', '👎', '😂', 
 
 const AVATAR_BG = ['bg-rose-100', 'bg-sky-100', 'bg-lime-100', 'bg-violet-100', 'bg-amber-100', 'bg-teal-100', 'bg-pink-100', 'bg-indigo-100'];
 const avatarBg = (id: string) => AVATAR_BG[[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_BG.length];
-function TimerPill({ secs, dark = false }: { secs: number | null; dark?: boolean }) {
+// The countdown ticks inside the pill (1s) instead of a 250ms clock at
+// App level re-rendering the whole screen 4×/second (A3).
+function TimerPill({ endsAt, dark = false }: { endsAt: number | null | undefined; dark?: boolean }) {
+  const [secs, setSecs] = useState<number | null>(() => (endsAt ? Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)) : null));
+  useEffect(() => {
+    if (!endsAt) { setSecs(null); return; }
+    const tick = () => setSecs(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)));
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [endsAt]);
   if (secs === null || secs === undefined) return null;
   const label = secs >= 60 ? `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` : `${secs}s`;
   return <span className={`disp inline-flex items-center gap-1 rounded-full px-3 py-1 font-extrabold text-base ${dark ? 'bg-[#23233F] border-2 border-[#3D3D63] text-[#FFB020]' : 'bg-[#FFFBef] hard-xs text-[#2B2016]'}`}>🕐 {label}</span>;
 }
-
-function useNow(step = 250) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => { const i = setInterval(() => setNow(Date.now()), step); return () => clearInterval(i); }, [step]);
-  return now;
-}
-const secsLeft = (endsAt: number | null, now: number) => endsAt ? Math.max(0, Math.ceil((endsAt - now) / 1000)) : null;
 
 const BTN = 'disp px-5 py-3 rounded-2xl font-extrabold hard push disabled:opacity-40';
 const CARD = 'card-cream p-4 sm:p-5';
@@ -66,12 +69,31 @@ export default function MaSoiApp() {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [connLost, setConnLost] = useState(false);
+  const [migrating, setMigrating] = useState(false);
   const [muted, setMuted] = useState(() => localStorage.getItem('ct_muted') === '1');
   const [showHelp, setShowHelp] = useState(false);
   const [roleSettingsOpen, setRoleSettingsOpen] = useState(false);
   const [chatSheet, setChatSheet] = useState(false);
   const [myRecord, setMyRecord] = useState<{ w: number; l: number; roles: Record<string, { w: number; g: number }> }>({ w: 0, l: 0, roles: {} });
   const [shareCopied, setShareCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [botAdding, setBotAdding] = useState(false);
+  // Optimistic UI (same pattern as Cheese Thief): show the tap result
+  // immediately, replace it when the host state arrives (6s fallback).
+  const [optVote, setOptVote] = useState<string | null>(null);
+  const [optReady, setOptReady] = useState(false);
+  const [optReadyVote, setOptReadyVote] = useState(false);
+  useEffect(() => { if (!optVote) return; const t = setTimeout(() => setOptVote(null), 6000); return () => clearTimeout(t); }, [optVote]);
+  useEffect(() => { if (!optReady) return; const t = setTimeout(() => setOptReady(false), 6000); return () => clearTimeout(t); }, [optReady]);
+  useEffect(() => { if (!optReadyVote) return; const t = setTimeout(() => setOptReadyVote(false), 6000); return () => clearTimeout(t); }, [optReadyVote]);
+  useEffect(() => {
+    if (!joined || !pub) return;
+    if (pub.players.find(p => p.id === joined.playerId)?.hasVoted) setOptVote(null);
+    if (pub.revealReady?.includes(joined.playerId)) setOptReady(false);
+    if (pub.dayReady?.includes(joined.playerId)) setOptReadyVote(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pub]);
+  useEffect(() => { setBotAdding(false); }, [pub?.players.length]);
   // Local pick highlight for the night grid (reset each step); the
   // authoritative pick lives in priv (wolves) / the peek list (seer).
   const [nightPick, setNightPick] = useState<string | null>(null);
@@ -91,11 +113,13 @@ export default function MaSoiApp() {
   const [speakingIds, setSpeakingIds] = useState<Set<string>>(new Set());
   const autoVoiceRef = useRef('');
   const voiceOptOutRef = useRef(false);
+  const tapGuard = useRef(0);
+  const allowTap = () => { const n = Date.now(); if (n - tapGuard.current < 500) return false; tapGuard.current = n; return true; };
   // Pending intents (v29 pattern): a tap that the host never confirmed is
   // re-fired when the connection recovers, so a vote never silently dies.
   const pendingRef = useRef<Record<string, { kind: string; targetId?: string }>>({});
   const phase = pub?.phase ?? 'lobby';
-  const now = useNow();
+
   const me = pub?.players.find(p => p.id === joined?.playerId);
 
   const toggleMuted = () => setMuted(m => { localStorage.setItem('ct_muted', m ? '0' : '1'); return !m; });
@@ -104,7 +128,7 @@ export default function MaSoiApp() {
   const getNet = () => {
     if (!netRef.current) {
       netRef.current = createNet({
-        onState: (s) => { setPub(s); setStatus(''); setConnLost(false); },
+        onState: (s) => { setPub(s); setStatus(''); setConnLost(false); setMigrating(false); },
         onPrivate: (p) => setPriv(p),
         onJoined: (c, pid, isHost) => {
           setJoined({ code: c, playerId: pid, isHost });
@@ -129,6 +153,7 @@ export default function MaSoiApp() {
         },
         onStatus: (m) => {
           if (!m) { setStatus(''); return; }
+          if (m === 'STATUS_MIGRATING') { setMigrating(true); return; }
           if (m === 'STATUS_CREATING') setStatus(d.statusCreating);
           else if (m.startsWith('STATUS_CONNECTING:')) setStatus(d.statusConnecting(m.slice('STATUS_CONNECTING:'.length)));
           else setStatus(m);
@@ -181,7 +206,7 @@ export default function MaSoiApp() {
   }, [pub, priv?.myRole]);
 
   // Pending intents: re-fire unconfirmed ones when the connection recovers.
-  useEffect(() => { setChatSheet(false); pendingRef.current = {}; }, [phase]);
+  useEffect(() => { setChatSheet(false); pendingRef.current = {}; setOptVote(null); setOptReady(false); setOptReadyVote(false); }, [phase]);
   useEffect(() => {
     if (connLost || !joined) return;
     const pend = pendingRef.current;
@@ -209,7 +234,7 @@ export default function MaSoiApp() {
       voiceRef.current = await joinVoice(joined.code, joined.playerId, {
         onSpeaking: (ids) => setSpeakingIds(prev => (prev.size === ids.size && [...ids].every(x => prev.has(x)) ? prev : ids)),
         onPeers: () => { /* presence is implicit in the speaking badges */ },
-      }, 'ma-soi');
+      }, 'ma-soi', getNet().getBrokerUrl?.());
       setVoiceSpeaker('on');
     } catch {
       setVoiceSpeaker('off');
@@ -254,6 +279,7 @@ export default function MaSoiApp() {
     getNet().nightAction(kind as any, targetId);
   };
   const doVote = (targetId: string) => {
+    setOptVote(targetId);
     pendingRef.current.vote = { kind: 'vote', targetId };
     getNet().vote(targetId);
   };
@@ -323,6 +349,28 @@ export default function MaSoiApp() {
               </button>
             );
           }
+          if (variant === 'lobby') {
+            // Lobby cards are plain divs, NOT disabled buttons: the host's
+            // kick / remove-bot ✕ lives inside the card, and a disabled
+            // <button> swallows clicks on its children (B1: kick was dead).
+            return (
+              <div key={p.id} className={`relative rounded-2xl text-[#2B2016] p-1.5 text-center hard-xs ${dead ? 'bg-[#D8D8D8]' : isMe ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'}`}>
+                {speakingIds.has(p.id) && <span className="absolute -bottom-2 -left-2 bg-green-500 text-white text-xs rounded-full px-1.5 py-0.5 shadow anim-pulse-soft">🎙️</span>}
+                <span className="mx-auto block w-fit">
+                  {isWolfCard ? <WolfAvatar seed={p.id} size={avSize} state={dead ? 'dead' : 'wolf'} />
+                    : <MouseAvatar seed={p.id} size={avSize} state={dead ? 'dead' : phase === 'night' ? 'asleep' : 'awake'} />}
+                </span>
+                <span className={`block font-bold truncate text-sm mt-0.5 ${dead ? 'line-through text-gray-500' : ''}`}>{p.name}{isMe ? ` (${d.you})` : ''}</span>
+                {(p as any).isBot && <span className="text-xs font-extrabold bg-[#23233F] text-[#FFB020] rounded-full px-2 py-0.5 mt-0.5 inline-block">🤖 {d.botTag}</span>}
+                {p.isHost && <span className="text-amber-600 text-xs font-extrabold">👑 {d.host}</span>}
+                {!p.connected && <span className="text-red-500 text-xs font-bold"> • {d.offline}</span>}
+                {joined?.isHost && !isMe && (
+                  <span role="button" title={(p as any).isBot ? d.removeBot : d.kick}
+                    onClick={() => { if ((p as any).isBot) getNet().nightAction('removeBot', p.id); else getNet().kick(p.id); }}
+                    className="inline-block text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-0.5 mt-1 cursor-pointer hover:bg-red-200">✖ {(p as any).isBot ? d.removeBot : d.kick}</span>)}
+              </div>
+            );
+          }
           return (
             <button key={p.id} disabled={onPick ? !canPick : true}
               onClick={() => { onPick?.(p.id); }}
@@ -333,13 +381,6 @@ export default function MaSoiApp() {
                   : <MouseAvatar seed={p.id} size={avSize} state={dead ? 'dead' : phase === 'night' ? 'asleep' : 'awake'} />}
               </span>
               <span className={`block font-bold truncate text-sm mt-0.5 ${dead ? 'line-through text-gray-500' : ''}`}>{p.name}{isMe ? ` (${d.you})` : ''}</span>
-              {variant === 'lobby' && (p as any).isBot && <span className="text-xs font-extrabold bg-[#23233F] text-[#FFB020] rounded-full px-2 py-0.5 mt-0.5 inline-block">🤖 {d.botTag}</span>}
-              {variant === 'lobby' && p.isHost && <span className="text-amber-600 text-xs font-extrabold whitespace-nowrap">👑 {d.host}</span>}
-              {variant === 'lobby' && !p.connected && <span className="text-red-500 text-xs font-bold"> • {d.offline}</span>}
-              {variant === 'lobby' && joined?.isHost && !isMe && (
-                <span role="button" title={(p as any).isBot ? d.removeBot : d.kick}
-                  onClick={(e) => { e.stopPropagation(); if ((p as any).isBot) getNet().nightAction('removeBot', p.id); else getNet().kick(p.id); }}
-                  className="inline-block text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-0.5 mt-1 cursor-pointer hover:bg-red-200 whitespace-nowrap">✖ {(p as any).isBot ? d.removeBot : d.kick}</span>)}
               {selected && variant === 'pick' && <span className="block text-xs font-extrabold text-[#D63A2F] mt-0.5">{lang === 'vi' ? 'đã chọn' : 'picked'}</span>}
             </button>
           );
@@ -375,9 +416,9 @@ export default function MaSoiApp() {
       <div className="min-h-dvh bg-[#14142B] text-[#2B2016]">
         <div className="max-w-md lg:max-w-lg mx-auto">
           <div className="flex items-center gap-2 px-3 pt-3">
-            <button className="disp font-extrabold text-[#FFF3CF] text-sm bg-[#23233F] border-2 border-[#3D3D63] rounded-full px-3 py-1.5" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
+            <button className="disp font-extrabold text-[#FFF3CF] text-sm bg-[#23233F] border-2 border-[#3D3D63] rounded-full px-3 py-2.5 push" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
             <span className="flex-1" />
-            <button title={muted ? '🔇' : '🔊'} className="w-10 h-10 rounded-full bg-[#23233F] border-2 border-[#3D3D63] text-lg flex items-center justify-center" onClick={toggleMuted}>{muted ? '🔇' : '🔊'}</button>
+            <button title={muted ? '🔕' : '🔊'} className="w-11 h-11 push rounded-full bg-[#23233F] border-2 border-[#3D3D63] text-lg flex items-center justify-center" onClick={toggleMuted}>{muted ? '🔕' : '🔊'}</button>
             <span className="inline-flex rounded-full overflow-hidden border-2 border-[#3D3D63] text-sm font-black">
               <button className={`px-2.5 py-1 ${lang === 'vi' ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#23233F] text-[#B9BCE0]'}`} onClick={() => { localStorage.setItem('ct_lang', 'vi'); setLang('vi'); }}>VI</button>
               <button className={`px-2.5 py-1 ${lang === 'en' ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#23233F] text-[#B9BCE0]'}`} onClick={() => { localStorage.setItem('ct_lang', 'en'); setLang('en'); }}>EN</button>
@@ -395,6 +436,7 @@ export default function MaSoiApp() {
               value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
             <button className={`${BTN} btn-amber w-full mt-3`} disabled={!name.trim() || !!status}
               onClick={() => { setError(''); getNet().createRoom(name.trim()); }}>🌙 {d.create}</button>
+            {!name.trim() && <p className="text-center font-bold text-[#8A7B63] text-sm mt-2">{d.nameFirst}</p>}
             <div className="flex items-center gap-3 mt-4 mb-3">
               <span className="flex-1 border-t-2 border-[#E5DCC0]" />
               <span className="disp font-extrabold text-xs text-[#8A7B63] tracking-wide">{d.orJoinFriend}</span>
@@ -408,7 +450,7 @@ export default function MaSoiApp() {
                 onClick={() => { setError(''); getNet().joinRoom(roomCodeInput.trim(), name.trim()); }}>🚪 {d.join}</button>
             </div>
             {status && <p className="text-center font-bold mt-3">{status} <button className="text-red-500 font-extrabold ml-1" onClick={() => { try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } try { getNet().leave(); } catch { /* ignore */ } location.href = location.pathname; }}>{d.cancelConnect}</button></p>}
-            {error && <p className="text-center font-bold text-red-600 mt-3">{error}</p>}
+            {error && <><p className="text-center font-bold text-red-600 mt-3">{error}</p><RetryDefaultButton d={d} /></>}
             {!status && !error && <p className="text-center text-[#8A7B63] font-bold text-sm mt-4">{d.landingFoot}</p>}
             <p className="text-center mt-3">
               <button className="font-bold text-sm text-[#8A7B63] underline" onClick={() => setShowHelp(true)}>{d.how}</button>
@@ -455,7 +497,7 @@ export default function MaSoiApp() {
       if (patch.wolves === 3) return (t.find(x => x.role === 'villager')?.count ?? 0) >= 1;
       return true;
     };
-    const set = (patch: Partial<RoleConfig>) => getNet().nightAction('setRoles', undefined, { overrides: patch });
+    const set = (patch: Partial<RoleConfig>) => { if (!allowTap()) return; getNet().nightAction('setRoles', undefined, { overrides: patch }); };
     const pillStyle = (on: boolean, color: string) => on ? { background: color, color: '#FFF3CF' } : { background: '#FFFBef', color: '#2B2016' };
     return (
       <div className="mt-2 rounded-2xl border-2 border-dashed border-[#C9BFA5] p-1.5 text-[#2B2016]">
@@ -477,23 +519,23 @@ export default function MaSoiApp() {
           {[2, 3].map(v => (
             <button key={v} disabled={v === 3 && !canSet({ wolves: 3 })}
               onClick={() => set({ wolves: v as 2 | 3 })}
-              className={`disp px-2.5 py-1 rounded-full font-extrabold text-sm push ${eff.wolves === v ? 'bg-[#D63A2F] text-white hard-xs' : 'bg-white hard-xs'} disabled:opacity-30`}>
+              className={`disp px-3.5 py-2.5 min-h-[44px] rounded-full font-extrabold text-sm push ${eff.wolves === v ? 'bg-[#D63A2F] text-white hard-xs' : 'bg-white hard-xs'} disabled:opacity-30`}>
               {v}
             </button>
           ))}
           <button disabled={!eff.witch && !canSet({ witch: true })} onClick={() => set({ witch: !eff.witch })}
-            className="disp px-2.5 py-1 rounded-full font-extrabold text-sm push hard-xs border-2 border-[#2B2016] disabled:opacity-30"
+            className="disp px-3.5 py-2.5 min-h-[44px] rounded-full font-extrabold text-sm push hard-xs border-2 border-[#2B2016] disabled:opacity-30"
             style={pillStyle(eff.witch, '#7C4DBD')}>🧪 {d.witch}</button>
           <button disabled={!eff.hunter && !canSet({ hunter: true })} onClick={() => set({ hunter: !eff.hunter })}
-            className="disp px-2.5 py-1 rounded-full font-extrabold text-sm push hard-xs border-2 border-[#2B2016] disabled:opacity-30"
+            className="disp px-3.5 py-2.5 min-h-[44px] rounded-full font-extrabold text-sm push hard-xs border-2 border-[#2B2016] disabled:opacity-30"
             style={pillStyle(eff.hunter, '#B45309')}>🏹 {d.hunter}</button>
         </div>
         {showDiscussion && (
           <div className="flex items-center gap-1.5 mt-2 flex-wrap">
             <span className="font-extrabold text-sm">{d.discussionTime}:</span>
             {[60000, 120000, 180000].map(ms => (
-              <button key={ms} onClick={() => getNet().setDiscussion(ms)}
-                className={`disp px-2.5 py-1 rounded-full font-extrabold text-sm push ${pub!.discussionMs === ms ? 'bg-[#2B2016] text-[#FFF3CF] hard-xs' : 'bg-white hard-xs'}`}>
+              <button key={ms} onClick={() => { if (allowTap()) getNet().setDiscussion(ms); }}
+                className={`disp px-3.5 py-2.5 min-h-[44px] rounded-full font-extrabold text-sm push ${pub!.discussionMs === ms ? 'bg-[#2B2016] text-[#FFF3CF] hard-xs' : 'bg-white hard-xs'}`}>
                 {ms / 60000}:00
               </button>
             ))}
@@ -520,10 +562,14 @@ export default function MaSoiApp() {
     <aside className="hidden lg:flex flex-col min-h-0">
       <div className="card-cream p-3 flex flex-col flex-1 min-h-0">
         <div className="disp font-extrabold text-lg mb-2">💬 {d.villageChat}</div>
-        <ChatPanel chat={pub.chat} myId={joined.playerId} d={d} height="flex" onChat={onChat} reactions={WOLF_REACTIONS} />
-        <button className={`${BTN} btn-dark w-full mt-3`} onClick={() => { pendingRef.current.readyVote = { kind: 'readyVote' }; getNet().readyVote(); }}>
-          {d.readyVoteBtn}
-        </button>
+        <ChatPanel chat={pub.chat} myId={joined.playerId} d={d} height="flex" onChat={onChat} reactions={WOLF_REACTIONS} readOnly={!!amDead} />
+        {amDead
+          ? <p className="text-center font-extrabold text-[#8A7B63] mt-3">{d.deadSpectate}</p>
+          : pub!.dayReady.includes(joined.playerId) || optReadyVote
+          ? <p className="text-center font-extrabold text-[#0E9F6E] mt-3">{d.readyVoteDone}</p>
+          : <button className={`${BTN} btn-dark w-full mt-3`} onClick={() => { setOptReadyVote(true); pendingRef.current.readyVote = { kind: 'readyVote' }; getNet().readyVote(); }}>
+            {d.readyVoteBtn}
+          </button>}
         <p className="text-center font-bold text-[#8A7B63] text-sm mt-2">{d.readyVoteOf(pub!.dayReady.length, pub!.players.filter(p => p.connected && p.alive).length)}</p>
         {joined.isHost && (
           <button className="disp w-full text-center font-extrabold text-sm text-[#D63A2F] mt-1" onClick={() => getNet().toVoting()}>{d.toVote}</button>
@@ -546,12 +592,13 @@ export default function MaSoiApp() {
         <button className="disp font-extrabold text-[#FFB020] text-sm mb-2" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
         {secretBar}
         {connLost && <div className="bg-amber-100 border-2 border-amber-400 rounded-2xl px-3 py-2 mb-2 font-bold text-amber-800 text-center">{d.connLost}</div>}
-        {error && <div className="bg-red-100 border-2 border-red-400 rounded-2xl px-3 py-2 mb-2 font-bold text-red-700 text-center">{error}</div>}
+        {migrating && <div className="bg-amber-100 border-2 border-amber-400 rounded-2xl px-3 py-2 mb-2 font-bold text-amber-800 text-center">🔄 {d.statusMigrating}</div>}
+        {error && <><div className="bg-red-100 border-2 border-red-400 rounded-2xl px-3 py-2 mb-2 font-bold text-red-700 text-center">{error}</div><RetryDefaultButton d={d} /></>}
 
         {phase === 'lobby' && (
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <button className="w-11 h-11 flex-none rounded-2xl bg-[#FFFBef] hard-xs font-extrabold text-xl text-[#2B2016]" onClick={() => { location.href = location.pathname; }}>‹</button>
+              <button className="w-11 h-11 flex-none rounded-2xl bg-[#FFFBef] hard-xs push font-extrabold text-xl text-[#2B2016]" onClick={() => { location.href = location.pathname; }}>‹</button>
               <div className="min-w-0">
                 <h2 className="disp font-extrabold text-2xl leading-none">🐺 {d.title} · {d.lobby}</h2>
                 <p className="font-bold text-[#8A7B63] text-sm mt-1">{d.waiting}</p>
@@ -568,7 +615,7 @@ export default function MaSoiApp() {
                 </div>
               </div>
               <span className="flex-1" />
-              <button className="disp flex-none px-3 py-2 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] text-sm" onClick={async () => { try { await navigator.clipboard.writeText(location.href.split('?')[0] + `?game=ma-soi&room=${pub!.roomCode}`); } catch { /* ignore */ } }}>🔗 {d.copyLink}</button>
+              <button className="disp flex-none px-3 py-2 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] text-sm" onClick={async () => { try { await navigator.clipboard.writeText(location.href.split('?')[0] + `?game=ma-soi&room=${pub!.roomCode}`); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 1500); } catch { /* ignore */ } }}>{linkCopied ? `✅ ${d.copied}` : `🔗 ${d.copyLink}`}</button>
             </div>
             <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-4 mt-3">
               <div className="lg:card-cream lg:p-5">
@@ -580,12 +627,22 @@ export default function MaSoiApp() {
                 {joined.isHost && <p className="font-bold text-[#8A7B63] text-sm hidden lg:block">{d.kickHint}</p>}
                 {joined.isHost && pub!.players.length < MAX_PLAYERS && (
                   <div className="mt-2">
-                    <button className={`${BTN} btn-dark w-full`} onClick={() => getNet().nightAction('addBot')}>🤖 {d.addBot}</button>
+                    <button className={`${BTN} btn-dark w-full`} disabled={botAdding} onClick={() => { setBotAdding(true); getNet().nightAction('addBot'); }}>🤖 {d.addBot}</button>
                     <p className="font-bold text-[#8A7B63] text-sm text-center mt-1.5">{d.botHint}</p>
                   </div>
                 )}
                 <div className="mt-2 lg:hidden">
                   <RoleSettings showSummary showDiscussion collapsible open={roleSettingsOpen} onToggle={() => setRoleSettingsOpen(o => !o)} />
+                  {!joined.isHost && (
+                    <div className="mt-2">
+                      <div className="disp font-extrabold text-sm">{d.rolesPreview}</div>
+                      <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        {roleTable(connected, pub?.roleOverrides ?? {}).map(t => (
+                          <span key={t.role} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-extrabold text-white" style={{ background: t.role === 'villager' ? '#E8DCC0' : ROLE_STRONG[t.role], color: t.role === 'villager' ? '#2B2016' : '#FFF3CF' }}>{ROLE_EMOJI[t.role]} {roleLabel(d, t.role)} ×{t.count}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="mt-3 lg:mt-0">
@@ -644,16 +701,18 @@ export default function MaSoiApp() {
                 <p className="text-[#D63A2F] font-bold mt-3">{d.wolfTeammates}: {priv.wolfTeam.filter(w => w.id !== joined.playerId).map(w => w.name).join(', ')}</p>
               )}
             </div>
-            <button className={`${BTN} btn-amber w-full mt-5`} onClick={() => { pendingRef.current.ready = { kind: 'ready' }; getNet().ready(); }}>
-              {d.imReady}
-            </button>
+            {pub!.revealReady.includes(joined.playerId) || optReady
+              ? <p className="text-center font-extrabold text-[#0E9F6E] mt-5">{d.imReady}</p>
+              : <button className={`${BTN} btn-amber w-full mt-5`} onClick={() => { setOptReady(true); pendingRef.current.ready = { kind: 'ready' }; getNet().ready(); }}>
+                {d.imReady}
+              </button>}
             <div className="flex items-center justify-center gap-1.5 mt-3">
               {Array.from({ length: connected }).map((_, i) => (
                 <span key={i} className={`w-3 h-3 rounded-full ${i < pub!.revealReady.length ? 'bg-[#FFB020]' : 'bg-[#3D3D63]'}`} />
               ))}
               <span className="text-[#B9BCE0] font-bold text-sm ml-2">{d.readyOf(pub!.revealReady.length, connected)}</span>
             </div>
-            {joined.isHost && <button className="disp font-extrabold text-sm text-[#FFB020] mt-2 underline" onClick={() => getNet().beginNight()}>{d.forceNight}</button>}
+            {joined.isHost && <button className="disp font-extrabold text-sm text-[#FFB020] mt-2 py-2 px-3 push rounded-full bg-[#23233F] border-2 border-[#3D3D63]" onClick={() => getNet().beginNight()}>{d.forceNight}</button>}
           </div>
         )}
 
@@ -664,7 +723,7 @@ export default function MaSoiApp() {
                 <h2 className="disp font-extrabold text-3xl text-[#FFF3CF] leading-none">{d.night} {pub!.night}</h2>
                 <p className="text-[#B9BCE0] font-bold mt-1">{nightStepTitle}</p>
               </div>
-              <TimerPill secs={secsLeft(pub!.nightEndsAt, now)} dark />
+              <TimerPill endsAt={pub!.nightEndsAt} dark />
             </div>
             <div className="flex gap-2 flex-wrap mb-3">
               {nightSteps().map(st => {
@@ -702,7 +761,7 @@ export default function MaSoiApp() {
                     </div>
                     <div className="flex gap-2">
                       <button className="disp flex-1 px-4 py-2.5 rounded-2xl font-extrabold hard push bg-[#23233F] text-[#B9BCE0] border-2 border-[#3D3D63]" onClick={() => { setNightPick(null); doNight('wolfPass'); }}>{d.passNoKill}</button>
-                      <button className="hidden lg:block disp flex-1 px-4 py-2.5 rounded-2xl font-extrabold hard push bg-[#D63A2F] text-white disabled:opacity-40" disabled={!priv!.wolfPick || priv!.wolfConfirmed} onClick={() => getNet().nightAction('wolfConfirm')}>{priv!.wolfConfirmed ? d.pickLocked : d.confirmPick}</button>
+                      <button className="disp flex-1 px-4 py-2.5 rounded-2xl font-extrabold hard push bg-[#D63A2F] text-white disabled:opacity-40" disabled={!priv!.wolfPick || priv!.wolfConfirmed} onClick={() => getNet().nightAction('wolfConfirm')}>{priv!.wolfConfirmed ? d.pickLocked : d.confirmPick}</button>
                     </div>
                     <p className="text-center text-[#B9BCE0] font-bold text-xs mt-3">{d.wolfTimeoutNote}</p>
                   </div>
@@ -824,8 +883,9 @@ export default function MaSoiApp() {
                   <h2 className="disp font-extrabold text-2xl leading-none">{d.day} · {d.dayNum(pub!.night)}</h2>
                   <p className="font-bold text-[#8A7B63] text-sm mt-1">{d.discussSub}</p>
                 </div>
-                <TimerPill secs={secsLeft(pub!.discussionEndsAt, now)} />
+                <TimerPill endsAt={pub!.discussionEndsAt} />
               </div>
+              <p className="font-bold text-[#8A7B63] text-xs mt-1">{d.discussTimeout}</p>
               {(pub!.nightDeaths.length > 0 || pub!.lastVoteOut || pub!.voteTie) ? (
                 <div className={`${CARD}`}>
                   {pub!.nightDeaths.length > 0 ? (<>
@@ -850,9 +910,13 @@ export default function MaSoiApp() {
               <p className="font-extrabold text-lg mt-4">{d.discuss}</p>
               <PlayerGrid variant="day" />
               <div className="lg:hidden">
-                <button className={`${BTN} btn-dark w-full mt-2`} onClick={() => { pendingRef.current.readyVote = { kind: 'readyVote' }; getNet().readyVote(); }}>
-                  {d.readyVoteBtn}
-                </button>
+                {amDead
+                  ? <p className="text-center font-extrabold text-[#8A7B63] mt-2">{d.deadSpectate}</p>
+                  : pub!.dayReady.includes(joined.playerId) || optReadyVote
+                  ? <p className="text-center font-extrabold text-[#0E9F6E] mt-2">{d.readyVoteDone}</p>
+                  : <button className={`${BTN} btn-dark w-full mt-2`} onClick={() => { setOptReadyVote(true); pendingRef.current.readyVote = { kind: 'readyVote' }; getNet().readyVote(); }}>
+                    {d.readyVoteBtn}
+                  </button>}
                 <p className="text-center font-bold text-[#8A7B63] text-sm mt-2">{d.readyVoteOf(pub!.dayReady.length, pub!.players.filter(p => p.connected && p.alive).length)}</p>
                 {joined.isHost && (
                   <button className="disp w-full text-center font-extrabold text-sm text-[#D63A2F] mt-1" onClick={() => getNet().toVoting()}>{d.toVote}</button>
@@ -872,17 +936,18 @@ export default function MaSoiApp() {
               </span>
               <div className="min-w-0 flex-1">
                 <h2 className="disp font-extrabold text-2xl leading-none">{d.voting}</h2>
-                <p className="font-bold text-[#8A7B63] text-xs sm:text-sm mt-1 whitespace-nowrap">{d.votedCount(pub!.players.filter(p => p.alive && p.hasVoted).length, pub!.players.filter(p => p.alive).length)}</p>
+                <p className="font-bold text-[#8A7B63] text-xs sm:text-sm mt-1">{d.votedCount(pub!.players.filter(p => p.alive && p.hasVoted).length, pub!.players.filter(p => p.alive).length)}</p>
               </div>
-              <TimerPill secs={secsLeft(pub!.voteEndsAt, now)} />
+              <TimerPill endsAt={pub!.voteEndsAt} />
             </div>
+            <p className="font-bold text-[#8A7B63] text-xs mt-1">{d.voteTimeout}</p>
             <div className={`${CARD}`}>
               <p className="font-bold text-[#8A7B63]">{d.voteHint}</p>
               <PlayerGrid variant="vote"
                 pickable={p => p.alive && p.id !== joined.playerId}
                 onPick={id => doVote(id)}
               />
-              {me?.hasVoted && priv?.myVote && <p className="text-center font-extrabold text-[#0E9F6E]">{d.votedFor(playerName(priv.myVote))}</p>}
+              {((me?.hasVoted && priv?.myVote) || optVote) && <p className="text-center font-extrabold text-[#0E9F6E]">{d.votedFor(playerName(priv?.myVote || optVote))}</p>}
             </div>
             <p className="text-center font-bold text-[#8A7B63] text-sm mt-3">{d.voteFoot}</p>
           </div>
@@ -923,7 +988,7 @@ export default function MaSoiApp() {
                     {shareCopied ? '✓ ' + d.copied : '📣 ' + d.shareResults}
                   </button>
                   {joined.isHost ? (
-                    <button className="disp flex-1 px-3 py-2.5 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] whitespace-nowrap" onClick={() => getNet().playAgain()}>🔄 {d.playAgain}</button>
+                    <button className="disp flex-1 px-3 py-2.5 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] whitespace-nowrap" onClick={() => getNet().playAgain()}>{d.backLobby}</button>
                   ) : (
                     <p className="flex-1 text-center font-bold text-[#B9BCE0] self-center text-[13px] leading-tight">{d.waiting}</p>
                   )}
@@ -934,7 +999,7 @@ export default function MaSoiApp() {
           </div>
         )}
       </div>
-      {chatSheet && pub && <ChatSheet open={chatSheet} onClose={() => setChatSheet(false)} chat={pub.chat} myId={joined.playerId} d={d} onChat={onChat} reactions={WOLF_REACTIONS} />}
+      {chatSheet && pub && <ChatSheet open={chatSheet} onClose={() => setChatSheet(false)} chat={pub.chat} myId={joined.playerId} d={d} onChat={onChat} reactions={WOLF_REACTIONS} readOnly={!!amDead && phase === 'day'} />}
       {showHelp && <HelpModal d={d} onClose={() => setShowHelp(false)} />}
     </div>
   );

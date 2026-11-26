@@ -4,7 +4,7 @@ import { Pub, Priv } from './hostEngine';
 import { t, Lang } from './i18n';
 import { sfx, ensureCtx } from '../../transport/sound';
 import { joinVoice, VoiceHandle } from '../../transport/voice';
-import { TopBar, ChatPanel, ChatSheet, chatPreview } from '../../platform/ui';
+import { TopBar, ChatPanel, ChatSheet, chatPreview, RetryDefaultButton } from '../../platform/ui';
 import { MouseAvatar } from '../../platform/avatars';
 import { isPlayable, MIN_PLAYERS, MAX_PLAYERS, COLORS } from '../../../../games/uno/logic';
 import type { Card, Color } from '../../../../games/uno/logic';
@@ -14,18 +14,21 @@ const UNO_REACTIONS = ['🎉', '😱', '🙏', '🤔', '👍', '🔴', '🔵', '
 
 const AVATAR_BG = ['bg-rose-100', 'bg-sky-100', 'bg-lime-100', 'bg-violet-100', 'bg-amber-100', 'bg-teal-100', 'bg-pink-100', 'bg-indigo-100'];
 const avatarBg = (id: string) => AVATAR_BG[[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_BG.length];
-function TimerPill({ secs, dark = false }: { secs: number | null; dark?: boolean }) {
+// The countdown ticks inside the pill (1s) instead of a 250ms clock at
+// App level re-rendering the whole screen 4×/second (A3).
+function TimerPill({ endsAt, dark = false }: { endsAt: number | null | undefined; dark?: boolean }) {
+  const [secs, setSecs] = useState<number | null>(() => (endsAt ? Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)) : null));
+  useEffect(() => {
+    if (!endsAt) { setSecs(null); return; }
+    const tick = () => setSecs(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)));
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [endsAt]);
   if (secs === null || secs === undefined) return null;
   const label = secs >= 60 ? `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` : `${secs}s`;
   return <span className={`disp inline-flex items-center gap-1 rounded-full px-3 py-1 font-extrabold text-base ${dark ? 'bg-[#23233F] border-2 border-[#3D3D63] text-[#FFB020]' : 'bg-[#FFFBef] hard-xs text-[#2B2016]'}`}>🕐 {label}</span>;
 }
-
-function useNow(step = 250) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => { const i = setInterval(() => setNow(Date.now()), step); return () => clearInterval(i); }, [step]);
-  return now;
-}
-const secsLeft = (endsAt: number | null, now: number) => endsAt ? Math.max(0, Math.ceil((endsAt - now) / 1000)) : null;
 
 const BTN = 'disp px-5 py-3 rounded-2xl font-extrabold hard push disabled:opacity-40';
 const CARD = 'card-cream p-4 sm:p-5';
@@ -97,6 +100,7 @@ export default function UnoApp() {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [connLost, setConnLost] = useState(false);
+  const [migrating, setMigrating] = useState(false);
   const [muted, setMuted] = useState(() => localStorage.getItem('ct_muted') === '1');
   const [showHelp, setShowHelp] = useState(false);
   const [chatSheet, setChatSheet] = useState(false);
@@ -105,9 +109,22 @@ export default function UnoApp() {
   // A wild card in my hand waiting for a color choice (or the first-card
   // wild: colorPickPending === me, with no card involved).
   const [wildPick, setWildPick] = useState<Card | null>(null);
+  // Optimistic UI: the played card fades out at once; the draw pile shows
+  // "drawing" until the host state arrives (6s fallback).
+  const [optPlayed, setOptPlayed] = useState<string | null>(null);
+  const [optDrew, setOptDrew] = useState(false);
+  useEffect(() => { if (!optPlayed) return; const t = setTimeout(() => setOptPlayed(null), 6000); return () => clearTimeout(t); }, [optPlayed]);
+  useEffect(() => { if (!optDrew) return; const t = setTimeout(() => setOptDrew(false), 6000); return () => clearTimeout(t); }, [optDrew]);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [seenChat, setSeenChat] = useState(0);
   const unreadChat = Math.max(0, (pub?.chat.length ?? 0) - seenChat);
   useEffect(() => { setSeenChat(pub?.chat.length ?? 0); }, [pub?.phase]);
+  useEffect(() => { setOptPlayed(null); setOptDrew(false); }, [pub?.phase]);
+  useEffect(() => {
+    if (optPlayed && priv && !priv.myHand.some(c => c.id === optPlayed)) setOptPlayed(null);
+    if (optDrew && pub?.turnDrawn) setOptDrew(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pub, priv]);
   const recordedRounds = useRef<Set<string>>(new Set());
   const netRef = useRef<Net | null>(null);
   const voiceRef = useRef<VoiceHandle | null>(null);
@@ -118,7 +135,7 @@ export default function UnoApp() {
   const autoVoiceRef = useRef('');
   const voiceOptOutRef = useRef(false);
   const phase = pub?.phase ?? 'lobby';
-  const now = useNow();
+
   const me = pub?.players.find(p => p.id === joined?.playerId);
 
   const toggleMuted = () => setMuted(m => { localStorage.setItem('ct_muted', m ? '0' : '1'); return !m; });
@@ -127,7 +144,7 @@ export default function UnoApp() {
   const getNet = () => {
     if (!netRef.current) {
       netRef.current = createNet({
-        onState: (s) => { setPub(s); setStatus(''); setConnLost(false); },
+        onState: (s) => { setPub(s); setStatus(''); setConnLost(false); setMigrating(false); },
         onPrivate: (p) => setPriv(p),
         onJoined: (c, pid, isHost) => {
           setJoined({ code: c, playerId: pid, isHost });
@@ -152,6 +169,7 @@ export default function UnoApp() {
         },
         onStatus: (m) => {
           if (!m) { setStatus(''); return; }
+          if (m === 'STATUS_MIGRATING') { setMigrating(true); return; }
           if (m === 'STATUS_CREATING') setStatus(d.statusCreating);
           else if (m.startsWith('STATUS_CONNECTING:')) setStatus(d.statusConnecting(m.slice('STATUS_CONNECTING:'.length)));
           else setStatus(m);
@@ -222,7 +240,7 @@ export default function UnoApp() {
       voiceRef.current = await joinVoice(joined.code, joined.playerId, {
         onSpeaking: (ids) => setSpeakingIds(prev => (prev.size === ids.size && [...ids].every(x => prev.has(x)) ? prev : ids)),
         onPeers: () => { /* presence is implicit in the speaking badges */ },
-      }, 'uno');
+      }, 'uno', getNet().getBrokerUrl?.());
       setVoiceSpeaker('on');
     } catch {
       setVoiceSpeaker('off');
@@ -282,9 +300,10 @@ export default function UnoApp() {
   const doPlay = (card: Card, color?: Color) => {
     if (card.color === 'wild' && !color) { setWildPick(card); return; }
     setWildPick(null);
+    setOptPlayed(card.id);
     getNet().nightAction('playCard', undefined, { cardId: card.id, ...(color ? { color } : {}) });
   };
-  const doDraw = () => getNet().nightAction('drawCard');
+  const doDraw = () => { setOptDrew(true); getNet().nightAction('drawCard'); };
   const doPass = () => getNet().nightAction('passTurn');
   const doCallUno = () => getNet().nightAction('callUno');
   const doCatchUno = (targetId: string) => getNet().nightAction('catchUno', targetId);
@@ -304,6 +323,8 @@ export default function UnoApp() {
   const unoPendingPlayer = pub?.players.find(p => p.id === pub?.unoPending);
   const draw4Player = pub?.players.find(p => p.id === pub?.pendingDraw4?.from);
   const colorLabel = (c: Color) => COLOR_LABEL[c];
+  const drawnCard = priv?.myHand.find(c => c.id === priv?.drawnCardId);
+  const drawnIsPlayable = drawnCard ? canPlay(drawnCard) : false;
 
   const shareText = () => {
     const lines = [`🃏 ${d.title} — ${playerName(pub?.winner)} ${d.winner}`];
@@ -337,9 +358,9 @@ export default function UnoApp() {
       <div className="min-h-dvh bg-[#14142B] text-[#2B2016]">
         <div className="max-w-md lg:max-w-lg mx-auto">
           <div className="flex items-center gap-2 px-3 pt-3">
-            <button className="disp font-extrabold text-[#FFF3CF] text-sm bg-[#23233F] border-2 border-[#3D3D63] rounded-full px-3 py-1.5" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
+            <button className="disp font-extrabold text-[#FFF3CF] text-sm bg-[#23233F] border-2 border-[#3D3D63] rounded-full px-3 py-2.5 push" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
             <span className="flex-1" />
-            <button title={muted ? '🔇' : '🔊'} className="w-10 h-10 rounded-full bg-[#23233F] border-2 border-[#3D3D63] text-lg flex items-center justify-center" onClick={toggleMuted}>{muted ? '🔇' : '🔊'}</button>
+            <button title={muted ? '🔕' : '🔊'} className="w-11 h-11 push rounded-full bg-[#23233F] border-2 border-[#3D3D63] text-lg flex items-center justify-center" onClick={toggleMuted}>{muted ? '🔕' : '🔊'}</button>
             <span className="inline-flex rounded-full overflow-hidden border-2 border-[#3D3D63] text-sm font-black">
               <button className={`px-2.5 py-1 ${lang === 'vi' ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#23233F] text-[#B9BCE0]'}`} onClick={() => { localStorage.setItem('ct_lang', 'vi'); setLang('vi'); }}>VI</button>
               <button className={`px-2.5 py-1 ${lang === 'en' ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#23233F] text-[#B9BCE0]'}`} onClick={() => { localStorage.setItem('ct_lang', 'en'); setLang('en'); }}>EN</button>
@@ -363,6 +384,7 @@ export default function UnoApp() {
               value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
             <button className={`${BTN} btn-amber w-full mt-3`} disabled={!name.trim() || !!status}
               onClick={() => { setError(''); getNet().createRoom(name.trim()); }}>🃏 {d.create}</button>
+            {!name.trim() && <p className="text-center font-bold text-[#8A7B63] text-sm mt-2">{d.nameFirst}</p>}
             <div className="flex items-center gap-3 mt-4 mb-3">
               <span className="flex-1 border-t-2 border-[#E5DCC0]" />
               <span className="disp font-extrabold text-xs text-[#8A7B63] tracking-wide">{d.orJoinFriend}</span>
@@ -376,7 +398,7 @@ export default function UnoApp() {
                 onClick={() => { setError(''); getNet().joinRoom(roomCodeInput.trim(), name.trim()); }}>🚪 {d.join}</button>
             </div>
             {status && <p className="text-center font-bold mt-3">{status} <button className="text-red-500 font-extrabold ml-1" onClick={() => { try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } try { getNet().leave(); } catch { /* ignore */ } location.href = location.pathname; }}>{d.cancelConnect}</button></p>}
-            {error && <p className="text-center font-bold text-red-600 mt-3">{error}</p>}
+            {error && <><p className="text-center font-bold text-red-600 mt-3">{error}</p><RetryDefaultButton d={d} /></>}
             {!status && !error && <p className="text-center text-[#8A7B63] font-bold text-sm mt-4">{d.landingFoot}</p>}
             <p className="text-center mt-3">
               <button className="font-bold text-sm text-[#8A7B63] underline" onClick={() => setShowHelp(true)}>{d.how}</button>
@@ -394,12 +416,13 @@ export default function UnoApp() {
         <TopBar logo={<span className="text-2xl">🃏</span>} d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })} voice={voice} tone={tone} />
         <button className="disp font-extrabold text-[#FFB020] text-sm mb-2" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
         {connLost && <div className="bg-amber-100 border-2 border-amber-400 rounded-2xl px-3 py-2 mb-2 font-bold text-amber-800 text-center">{d.connLost}</div>}
-        {error && <div className="bg-red-100 border-2 border-red-400 rounded-2xl px-3 py-2 mb-2 font-bold text-red-700 text-center">{error}</div>}
+        {migrating && <div className="bg-amber-100 border-2 border-amber-400 rounded-2xl px-3 py-2 mb-2 font-bold text-amber-800 text-center">🔄 {d.statusMigrating}</div>}
+        {error && <><div className="bg-red-100 border-2 border-red-400 rounded-2xl px-3 py-2 mb-2 font-bold text-red-700 text-center">{error}</div><RetryDefaultButton d={d} /></>}
 
         {phase === 'lobby' && (
           <div>
             <div className="flex items-center gap-3 mb-3">
-              <button className="w-11 h-11 flex-none rounded-2xl bg-[#FFFBef] hard-xs font-extrabold text-xl text-[#2B2016]" onClick={() => { location.href = location.pathname; }}>‹</button>
+              <button className="w-11 h-11 flex-none rounded-2xl bg-[#FFFBef] hard-xs push font-extrabold text-xl text-[#2B2016]" onClick={() => { location.href = location.pathname; }}>‹</button>
               <div className="min-w-0">
                 <h2 className="disp font-extrabold text-2xl leading-none">🃏 {d.title} · {d.lobby}</h2>
                 <p className="font-bold text-[#8A7B63] text-sm mt-1">{d.waiting}</p>
@@ -415,7 +438,7 @@ export default function UnoApp() {
                 </div>
               </div>
               <span className="flex-1" />
-              <button className="disp flex-none px-3 py-2 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] text-sm" onClick={async () => { try { await navigator.clipboard.writeText(location.href.split('?')[0] + `?game=uno&room=${pub!.roomCode}`); } catch { /* ignore */ } }}>🔗 {d.copyLink}</button>
+              <button className="disp flex-none px-3 py-2 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] text-sm" onClick={async () => { try { await navigator.clipboard.writeText(location.href.split('?')[0] + `?game=uno&room=${pub!.roomCode}`); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 1500); } catch { /* ignore */ } }}>{linkCopied ? `✅ ${d.copied}` : `🔗 ${d.copyLink}`}</button>
             </div>
             <div className="mt-4 card-cream p-4">
               <div className="flex items-baseline justify-between gap-2">
@@ -481,13 +504,14 @@ export default function UnoApp() {
                     {myTurn ? d.yourTurn : d.turnOf(turnPlayer?.name ?? '')}
                   </span>
                   <span className="text-[#FFF3CF] font-extrabold text-lg" title={pub.direction === 1 ? 'clockwise' : 'counter-clockwise'}>{pub.direction === 1 ? '⟳' : '⟲'}</span>
-                  <TimerPill secs={secsLeft(pub.turnEndsAt, now)} dark />
+                  <TimerPill endsAt={pub.turnEndsAt} dark />
                 </div>
+                <p className="text-center font-bold text-[#BFE8D2] text-xs mt-1">{d.turnTimer} — {d.turnTimeout}</p>
                 <div className="flex items-start justify-center gap-4 sm:gap-8 mt-3">
-                  <button data-testid="draw-pile" disabled={!canDraw} onClick={doDraw} className="text-center disabled:opacity-60">
+                  <button data-testid="draw-pile" disabled={!canDraw || optDrew} onClick={doDraw} className="text-center disabled:opacity-60">
                     <UnoCardBack size="lg" />
                     <span className="block font-extrabold text-[#FFF3CF] text-sm mt-1.5">{d.drawPile} · {pub.deckCount}</span>
-                    <span className="block font-bold text-[#BFE8D2] text-xs mt-0.5">{canDraw ? d.draw : pub.turnDrawn ? d.drawnPlayable : ''}</span>
+                    <span className="block font-bold text-[#BFE8D2] text-xs mt-0.5">{optDrew && !pub.turnDrawn ? '…' : canDraw ? d.draw : pub.turnDrawn ? (drawnIsPlayable ? d.drawnPlayable : d.drawnNotPlayable) : ''}</span>
                   </button>
                   <div className="text-center">
                     {pub.topCard ? <UnoCardFace card={pub.topCard} size="lg" /> : <UnoCardBack size="lg" />}
@@ -541,7 +565,7 @@ export default function UnoApp() {
               )}
               {priv?.drawnCardId && myTurn && (
                 <div className="mt-2 flex gap-2">
-                  <div className="flex-1 bg-[#FFFBef] border-2 border-[#FFB020] rounded-2xl px-3 py-2 font-bold text-sm text-[#7A5A00]">✨ {d.drawnPlayable}</div>
+                  <div className="flex-1 bg-[#FFFBef] border-2 border-[#FFB020] rounded-2xl px-3 py-2 font-bold text-sm text-[#7A5A00]">{drawnIsPlayable ? `✨ ${d.drawnPlayable}` : d.drawnNotPlayable}</div>
                   <button data-testid="pass-btn" className={`${BTN} btn-dark !py-2`} onClick={doPass}>{d.pass}</button>
                 </div>
               )}
@@ -558,8 +582,8 @@ export default function UnoApp() {
                     const isDrawn = c.id === priv?.drawnCardId;
                     return (
                       <span key={c.id} className="flex-none anim-card-fall" style={{ animationDelay: `${hi * 45}ms` }}>
-                      <button data-testid="hand-card" data-card-id={c.id} disabled={!playable} onClick={() => doPlay(c)}
-                        className={`flex-none rounded-xl transition ${playable ? 'hover:-translate-y-2 cursor-pointer' : 'opacity-40 cursor-default'} ${isDrawn ? 'ring-4 ring-[#FFB020] -translate-y-2' : ''}`}>
+                      <button data-testid="hand-card" data-card-id={c.id} disabled={!playable || optPlayed === c.id} onClick={() => doPlay(c)}
+                        className={`flex-none rounded-xl transition ${playable ? 'hover:-translate-y-2 cursor-pointer' : 'opacity-40 cursor-default'} ${isDrawn ? 'ring-4 ring-[#FFB020] -translate-y-2' : ''} ${optPlayed === c.id ? 'opacity-30 scale-90 pointer-events-none' : ''}`}>
                         <UnoCardFace card={c} size="md" />
                       </button>
                       </span>

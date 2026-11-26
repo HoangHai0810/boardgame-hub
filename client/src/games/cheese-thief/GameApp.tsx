@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createNet, Net } from '../../transport/net';
 import { Pub, Priv } from './hostEngine';
-import { TopBar, ChatPanel, ChatSheet, chatPreview } from '../../platform/ui';
+import { TopBar, ChatPanel, ChatSheet, chatPreview, RetryDefaultButton } from '../../platform/ui';
 import { t, Lang } from './i18n';
 import { HOUR_MS } from '../../../../games/cheese-thief/logic';
 import { sfx, ensureCtx } from '../../transport/sound';
@@ -35,18 +35,34 @@ export function Confetti() {
     }}>{e}</span>))}</>;
 }
 
-function TimerPill({ secs, dark = false }: { secs: number | null; dark?: boolean }) {
+// The countdown ticks inside the pill (1s) instead of a 250ms clock at
+// App level re-rendering the whole screen 4×/second (A3).
+function TimerPill({ endsAt, dark = false }: { endsAt: number | null | undefined; dark?: boolean }) {
+  const [secs, setSecs] = useState<number | null>(() => (endsAt ? Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)) : null));
+  useEffect(() => {
+    if (!endsAt) { setSecs(null); return; }
+    const tick = () => setSecs(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)));
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [endsAt]);
   if (secs === null || secs === undefined) return null;
   const label = secs >= 60 ? `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` : `${secs}s`;
   return <span className={`disp inline-flex items-center gap-1 rounded-full px-3 py-1 font-extrabold text-base ${dark ? 'bg-[#23233F] border-2 border-[#3D3D63] text-[#FFB020]' : 'bg-[#FFFBef] hard-xs text-[#2B2016]'}`}>🕐 {label}</span>;
 }
 
-function useNow(step = 250) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => { const i = setInterval(() => setNow(Date.now()), step); return () => clearInterval(i); }, [step]);
-  return now;
+// The night-hour progress bar ticks inside itself (1s), same reason as TimerPill (A3).
+function HourProgress({ endsAt }: { endsAt: number | null | undefined }) {
+  const [pct, setPct] = useState(0);
+  useEffect(() => {
+    if (!endsAt) { setPct(0); return; }
+    const tick = () => setPct(Math.max(0, Math.min(100, ((endsAt - Date.now()) / HOUR_MS) * 100)));
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [endsAt]);
+  return <div className="h-full bg-[#FFB020] rounded-full transition-[width] duration-300" style={{ width: `${pct}%` }} />;
 }
-const secsLeft = (endsAt: number | null, now: number) => endsAt ? Math.max(0, Math.ceil((endsAt - now) / 1000)) : null;
 
 const BTN = 'disp px-5 py-3 rounded-2xl font-extrabold hard push disabled:opacity-40';
 const CARD = 'card-cream p-4 sm:p-5';
@@ -110,7 +126,7 @@ function PlayerChips({ players, myId, phase, d, roleLabel, onPick, pickable, onK
                 className="inline-block text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-0.5 cursor-pointer hover:bg-red-200">✖ {d.kick}</span>
             </div>)}
           {(phase === 'results') && <div className="text-sm mt-1 font-extrabold flex items-center justify-center gap-2"><span className={roleColor(p)}>{roleLabel(p.role, p.isFollower)}</span><DiceFace value={p.dice ?? 1} size={26} /></div>}
-          {phase === 'voting' && <div className="text-xs mt-1">{p.hasVoted ? '✅ voted' : '🤔 …'}</div>}
+          {phase === 'voting' && <div className="text-xs mt-1">{p.hasVoted ? `✅ ${d.votedStatus}` : `🤔 ${d.thinkingStatus}`}</div>}
         </button>
       ))}
     </div>
@@ -190,12 +206,12 @@ export default function App() {
   // Personal session record (Cycle 8): my wins/losses, split by dealt role.
   const [myRecord, setMyRecord] = useState<{ w: number; l: number; roles: Record<string, { w: number; g: number }> }>({ w: 0, l: 0, roles: {} });
   const recordedRounds = useRef<Set<string>>(new Set());
-  const now = useNow();
+
 
   const getNet = () => {
     if (!netRef.current) {
       netRef.current = createNet({
-        onState: (s) => { setPub(s); setStatus(''); setConnLost(false); },
+        onState: (s) => { setPub(s); setStatus(''); setConnLost(false); setMigrating(false); },
         onPrivate: (p) => setPriv(p),
         onJoined: (c, pid, isHost) => {
           setJoined({ code: c, playerId: pid, isHost });
@@ -228,6 +244,7 @@ export default function App() {
           setStatus(m);
           if (m === 'NET_LOST') setConnLost(true);
           else if (m === 'NET_OK') setConnLost(false);
+          else if (m === 'STATUS_MIGRATING') setMigrating(true);
         },
         onPromoted: () => {
           // Host migration: I am the successor host now — host controls
@@ -320,6 +337,7 @@ export default function App() {
   const flyKeyRef = useRef('');
   const [chatSheet, setChatSheet] = useState(false);
   const [connLost, setConnLost] = useState(false);
+  const [migrating, setMigrating] = useState(false);
   // Voice chat (v26): off -> busy (mic prompt + mesh join) -> on; the mic
   // button then toggles mute, ✕ leaves the mesh. Speaking ids drive the
   // 🎙️ badges on player cards.
@@ -343,7 +361,7 @@ export default function App() {
       voiceRef.current = await joinVoice(joined.code, joined.playerId, {
         onSpeaking: (ids) => setSpeakingIds(prev => (prev.size === ids.size && [...ids].every(x => prev.has(x)) ? prev : ids)),
         onPeers: () => { /* presence is implicit in the speaking badges */ },
-      }, 'cheese-thief');
+      }, 'cheese-thief', getNet().getBrokerUrl?.());
       setVoiceSpeaker('on');
     } catch {
       setVoiceSpeaker('off');
@@ -509,7 +527,7 @@ export default function App() {
       <div className="min-h-dvh bg-[#14142B] p-3 sm:p-4">
         <div className="max-w-xl mx-auto pt-2">
           <TopBar logo={<CheeseWedge size={30} />} d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })} />
-          <button className="font-bold text-[#B9BCE0] hover:text-[#FFF3CF] text-sm mt-2 mb-1 px-1" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
+          <button className="font-bold text-[#B9BCE0] hover:text-[#FFF3CF] text-sm mt-2 mb-1 px-3 py-2.5 push" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
           <div className="card-cream anim-pop overflow-hidden !rounded-[28px]">
             <div className="relative bg-[#171731] px-5 pt-6 text-center overflow-hidden">
               <div className="stars" style={{ position: 'absolute' }} />
@@ -535,6 +553,7 @@ export default function App() {
                 value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
               <button className={`${BTN} btn-amber w-full mt-3.5 text-xl`}
                 disabled={!name.trim() || !!status} onClick={() => { setError(''); getNet().createRoom(name); }}>🏠 {d.create}</button>
+              {!name.trim() && <p className="text-center font-bold text-[#8A7B63] text-sm mt-2">{d.nameFirst}</p>}
               <div className="flex items-center gap-3 mt-5">
                 <span className="flex-1 h-[2px] bg-[#E3D3AC]" />
                 <span className="text-[11px] font-black tracking-[0.14em] text-[#8A7B63]">{d.orJoin}</span>
@@ -555,7 +574,7 @@ export default function App() {
                 <button className="block mx-auto mt-2.5 bg-white hard-xs push rounded-full px-5 py-2 font-extrabold text-[#D63A2F]"
                   onClick={() => { getNet().cancelConnect(); setStatus(''); }}>{d.cancelConnect}</button>
               )}
-              {error && <p className="mt-3 text-center text-red-600 font-bold">{localizeMsg(error)}</p>}
+              {error && <><p className="mt-3 text-center text-red-600 font-bold">{localizeMsg(error)}</p><RetryDefaultButton d={d} /></>}
             </div>
           </div>
         </div>
@@ -588,8 +607,9 @@ export default function App() {
         <div className="flex flex-col flex-1 min-h-0">
         <TopBar logo={<CheeseWedge size={30} />} d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })}  tone={tone} voice={{ speaker: voiceSpeaker, mic: voiceMic, muted: voiceMuted, onSpeaker: toggleSpeaker, onMic: toggleMic }}/>
         {connLost && joined && <div className="bg-red-500 text-white text-center font-bold text-sm rounded-full px-4 py-1 mb-2 anim-pulse-soft shadow">📡 {d.connLost}</div>}
-        {error && <div className="bg-red-100 border border-red-400 text-red-700 rounded-2xl px-4 py-2 mb-3 font-bold">{localizeMsg(error)}
-          <button className="float-right" onClick={() => setError('')}>✕</button></div>}
+        {migrating && joined && <div className="bg-amber-500 text-white text-center font-bold text-sm rounded-full px-4 py-1 mb-2 anim-pulse-soft shadow">🔄 {d.statusMigrating}</div>}
+        {error && <><div className="bg-red-100 border border-red-400 text-red-700 rounded-2xl px-4 py-2 mb-3 font-bold">{localizeMsg(error)}
+          <button className="float-right w-9 h-9 -mt-1.5 -mr-1.5 flex items-center justify-center text-lg leading-none" onClick={() => setError('')}>✕</button></div><RetryDefaultButton d={d} /></>}
 
         {/* Persistent secret info — your role & dice stay visible all game */}
         {priv?.role && (phase === 'night' || phase === 'recruit' || phase === 'day' || phase === 'voting') && (
@@ -610,7 +630,7 @@ export default function App() {
         {phase === 'lobby' && (
           <div className="anim-pop flex flex-col flex-1 min-h-0">
             <div className="flex items-center gap-2.5 mb-3">
-              <button className="bg-[#FFFBef] hard-xs push rounded-xl w-10 h-10 text-lg font-black text-[#2B2016] flex-none" title={d.leave}
+              <button className="bg-[#FFFBef] hard-xs push rounded-xl w-11 h-11 text-lg font-black text-[#2B2016] flex-none" title={d.leave}
                 onClick={() => { try { sessionStorage.removeItem('ct_guest_session:cheese-thief'); } catch { /* ignore */ } getNet().leave(); location.href = location.pathname; }}>←</button>
               <div className="min-w-0">
                 <h2 className="disp text-[26px] font-extrabold text-[#2B2016] leading-none">{d.lobby}</h2>
@@ -647,8 +667,8 @@ export default function App() {
                   </div>
                   {speakingIds.has(p.id) && <span className="absolute -bottom-2 left-2 bg-[#0E9F6E] text-white text-[11px] rounded-full px-1.5 py-0.5 shadow anim-pulse-soft">🎙️</span>}
                   {isHost && p.id !== joined.playerId && (
-                    <button title={d.kick} className="absolute -top-2 -right-2 bg-[#D63A2F] text-white text-[11px] font-black rounded-full w-6 h-6 border-2 border-[#2B2016] leading-none"
-                      onClick={() => getNet().kick(p.id)}>✕</button>)}
+                    <button title={d.kick} className="absolute -top-2 -right-2 w-11 h-11 flex items-center justify-center"
+                      onClick={() => getNet().kick(p.id)}><span className="bg-[#D63A2F] text-white text-[11px] font-black rounded-full w-6 h-6 border-2 border-[#2B2016] leading-none flex items-center justify-center">✕</span></button>)}
                 </div>
               ))}
               {Array.from({ length: Math.max(0, 8 - pub.players.length) }).map((_, i) => (
@@ -662,8 +682,8 @@ export default function App() {
                 {[60000, 120000, 180000].map(ms => {
                   const sel = ((pub as any).discussionMs ?? 120000) === ms;
                   return isHost
-                    ? <button key={ms} onClick={() => getNet().setDiscussion(ms)} className={`disp px-3.5 py-1.5 font-extrabold ${sel ? 'bg-[#33241A] text-[#FFF3CF]' : 'text-[#8A7B63]'}`}>{ms / 60000}:00</button>
-                    : <span key={ms} className={`disp px-3.5 py-1.5 font-extrabold ${sel ? 'bg-[#33241A] text-[#FFF3CF]' : 'text-[#B3A284]'}`}>{ms / 60000}:00</span>;
+                    ? <button key={ms} onClick={() => getNet().setDiscussion(ms)} className={`disp px-3.5 py-2.5 font-extrabold push ${sel ? 'bg-[#33241A] text-[#FFF3CF]' : 'text-[#8A7B63]'}`}>{ms / 60000}:00</button>
+                    : <span key={ms} className={`disp px-3.5 py-2.5 font-extrabold ${sel ? 'bg-[#33241A] text-[#FFF3CF]' : 'text-[#B3A284]'}`}>{ms / 60000}:00</span>;
                 })}
               </div>
             </div>
@@ -723,7 +743,7 @@ export default function App() {
                 ))}
                 <span className="ml-2 font-bold text-[#B9BCE0] text-sm">{d.readyOf(pub.revealReady?.length ?? 0, pub.players.filter(p => p.connected).length)}</span>
               </div>
-              {isHost && <button className="block mx-auto mt-2.5 underline font-bold text-[#B9BCE0]" onClick={() => getNet().beginNight()}>{d.forceNight}</button>}
+              {isHost && <button className="block mx-auto mt-2.5 py-2 px-3 push rounded-full bg-[#23233F] border-2 border-[#3D3D63] font-bold text-[#B9BCE0]" onClick={() => getNet().beginNight()}>{d.forceNight}</button>}
             </div>
           </div>
         )}
@@ -738,17 +758,18 @@ export default function App() {
                 <h2 className="disp text-[26px] font-extrabold text-[#FFF3CF] leading-none">🌙 {d.night}</h2>
                 <p className="text-[#B9BCE0] font-bold text-sm mt-1">{d.hourOf(pub.currentHour ?? 1)}</p>
               </div>
-              <TimerPill dark secs={secsLeft(pub.hourEndsAt, now)} />
-              <button className="relative lg:hidden bg-[#23233F] border-2 border-[#3D3D63] text-white rounded-xl w-10 h-10 text-lg flex-none" title={d.chatTitle ?? 'Chat'}
+              <TimerPill dark endsAt={pub.hourEndsAt} />
+              <button className="relative lg:hidden bg-[#23233F] border-2 border-[#3D3D63] text-white rounded-xl w-11 h-11 push text-lg flex-none" title={d.chatTitle ?? 'Chat'}
                 onClick={() => setChatSheet(true)}>💬{pub.chat.length > chatSeen && <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-[#D63A2F] rounded-full border-2 border-[#14142B]" />}</button>
             </div>
+            <p className="font-bold text-[#B9BCE0] text-xs mt-2 relative z-10 max-w-md w-full mx-auto text-center">{d.hourTimeout}</p>
             <div className="flex items-center justify-between px-1 mt-3 relative z-10 max-w-md w-full mx-auto">
               {[1, 2, 3, 4, 5, 6].map(h => (
                 <span key={h} className={`disp w-9 h-9 rounded-full flex items-center justify-center font-extrabold ${h === pub.currentHour ? 'bg-[#FFB020] text-[#2B2016] border-2 border-[#2B2016] scale-110' : h < (pub.currentHour ?? 1) ? 'bg-[#3D3D63] text-[#B9BCE0]' : 'bg-[#23233F] text-[#7C83B8]'}`}>{h}</span>
               ))}
             </div>
             <div className="max-w-md w-full mx-auto h-2 bg-[#23233F] rounded-full overflow-hidden mt-2 relative z-10" aria-label="hour progress">
-              <div className="h-full bg-[#FFB020] rounded-full transition-[width] duration-300" style={{ width: `${pub.hourEndsAt ? Math.max(0, Math.min(100, ((pub.hourEndsAt - now) / HOUR_MS) * 100)) : 0}%` }} />
+              <HourProgress endsAt={pub.hourEndsAt} />
             </div>
             {/* Table indicator must reflect what THIS player can actually see:
                 wakers see the real table (cheese present or gone); sleepers
@@ -793,6 +814,7 @@ export default function App() {
                 {priv.cheesePresentWhenAwake === true && <p className="font-bold text-[#8A7B63] mt-1">{d.cheeseHere}</p>}
                 {priv.fellowWakers.length > 0 && <p className="mt-1 font-bold text-[#7C4DBD]">👀👀 {d.fellow} ({priv.fellowWakers.map(id => pub.players.find(p => p.id === id)?.name).join(', ')})</p>}
                 {priv.role === 'thief' && priv.hasActedThisHour && <p className="mt-3 font-extrabold text-[#0B8A5E]">{d.stolenOk}</p>}
+                {priv.role === 'thief' && !priv.hasActedThisHour && <p className="mt-3 font-bold text-[#8A7B63]">{d.stealAuto}</p>}
                 {priv.followerCandidates && (
                   <div className="mt-3">
                     <div className="font-extrabold mb-2 text-[#7C4DBD]">{d.chooseWitnessTitle}</div>
@@ -832,7 +854,7 @@ export default function App() {
                 <h2 className="disp text-[26px] font-extrabold text-[#FFF3CF] leading-tight">{priv.role === 'thief' ? d.recruitTitle : '🌙 ' + d.night}</h2>
                 {priv.role === 'thief' && <p className="text-[#B9BCE0] font-bold text-sm mt-0.5">{d.hourOf(6)} · {d.revealSub}</p>}
               </div>
-              <TimerPill dark secs={secsLeft(pub.recruitEndsAt, now)} />
+              <TimerPill dark endsAt={pub.recruitEndsAt} />
             </div>
             {priv.role === 'thief' && priv.followerCandidates ? (
               <div className="card-cream anim-pop max-w-xl w-full mx-auto mt-4 relative z-10 px-4 py-4">
@@ -879,8 +901,9 @@ export default function App() {
                 <h2 className="disp text-[26px] font-extrabold text-[#2B2016] leading-none">{d.dayTitle}</h2>
                 <p className="font-extrabold text-[#D63A2F] text-sm mt-0.5">{d.daySub}</p>
               </div>
-              <TimerPill secs={secsLeft(pub.discussionEndsAt, now)} />
+              <TimerPill endsAt={pub.discussionEndsAt} />
             </div>
+            <p className="font-bold text-[#8A7B63] text-xs mt-1">{d.discussTimeout}</p>
             {priv?.isFollower && (
               <p className="bg-[#DFF5E3] border-2 border-[#0E9F6E] rounded-2xl px-4 py-2 mt-3 text-center font-extrabold text-[#0B6B4A] anim-pop">🤝 {d.becameFollower}</p>)}
             {priv?.witnessedThiefId && (
@@ -925,8 +948,9 @@ export default function App() {
                 <h2 className="disp text-[26px] font-extrabold text-[#2B2016] leading-none">{d.voting}</h2>
                 <p className="font-bold text-[#8A7B63] text-sm mt-0.5">{d.votedCount(pub.players.filter(p => p.hasVoted).length, pub.players.length)}</p>
               </div>
-              <TimerPill secs={secsLeft(pub.voteEndsAt, now)} />
+              <TimerPill endsAt={pub.voteEndsAt} />
             </div>
+            <p className="font-bold text-[#8A7B63] text-xs mt-1">{d.voteTimeout}</p>
             <div className="bg-[#FFFBef] hard-sm rounded-2xl px-4 py-2.5 mt-3 font-bold text-[#5C4B33]">
               {d.voteInstrA}<span className="text-[#D63A2F] font-extrabold">{d.thief}</span>{d.voteInstrB}
             </div>
@@ -1062,7 +1086,7 @@ export default function App() {
                     {shared ? '✅ ' + d.shareCopied : '📋 ' + d.shareResults}
                   </button>
                   {isHost
-                    ? <button className={`${BTN} btn-amber flex-1 !py-2 !px-3 whitespace-nowrap text-[15px]`} onClick={() => getNet().playAgain()}>🔁 {d.playAgain}</button>
+                    ? <button className={`${BTN} btn-amber flex-1 !py-2 !px-3 whitespace-nowrap text-[15px]`} onClick={() => getNet().playAgain()}>{d.backLobby}</button>
                     : <p className="flex-1 text-center font-bold text-[#8A7B63] self-center text-[13px] leading-tight line-clamp-2">{d.waiting}</p>}
                 </div>
               </div>

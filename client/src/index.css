@@ -1,10 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;600;700;800;900&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 body { font-family: 'Nunito', system-ui, sans-serif; }
+/* Tap targets: kill the ~300ms double-tap delay / double-tap zoom on mobile. */
+button, a { touch-action: manipulation; }
 .disp { font-family: 'Baloo 2', 'Nunito', system-ui, sans-serif; }
 
 /* ---- v30 design system (Hoàng's mockup): navy night + cream paper,
@@ -62,6 +62,11 @@ body { font-family: 'Nunito', system-ui, sans-serif; }
 .anim-slide-up { animation: slideUp .3s ease-out; }
 .awake-glow { animation: glowPulse 1.6s ease-in-out infinite; }
 .zzz { animation: zzz 2.2s ease-in infinite; }
+
+/* Respect reduced-motion: stop the infinite ambient animations */
+@media (prefers-reduced-motion: reduce) {
+  .stars, .stars2, .anim-bob, .anim-turn-glow, .awake-glow, .anim-wiggle, .anim-floaty, .zzz { animation: none !important; }
+}
 
 /* Night sky: two layers of tiny star dots that twinkle at different rates */
 .stars, .stars2 { position: fixed; inset: 0; pointer-events: none; z-index: 0; }

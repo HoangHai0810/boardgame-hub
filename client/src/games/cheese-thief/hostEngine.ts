@@ -43,7 +43,7 @@ export class HostEngine {
   }
   startRound() {
     this.clear(); assignRolesAndDice(this.state); this.state.phase = 'roleReveal'; this.broadcast();
-    this.later(45000, () => { if (this.state.phase === 'roleReveal') this.startNight(); });
+    this.later(30000, () => { if (this.state.phase === 'roleReveal') this.startNight(); });
   }
   startNight() {
     this.state.phase = 'night';
@@ -80,7 +80,7 @@ export class HostEngine {
     const s = this.state;
     const remain = (ts?: number | null) => Math.max(0, (ts ?? 0) - Date.now());
     if (s.phase === 'roleReveal') {
-      this.later(45000, () => { if (this.state.phase === 'roleReveal') this.startNight(); });
+      this.later(30000, () => { if (this.state.phase === 'roleReveal') this.startNight(); });
     } else if (s.phase === 'night') {
       this.later(remain(s.hourEndsAt), () => this.nightStep(s.currentHour + 1));
     } else if (s.phase === 'recruit') {
@@ -131,14 +131,18 @@ export class HostEngine {
       case 'ready': {
         if (s.phase !== 'roleReveal') break;
         if (!s.revealReady.includes(player.id)) s.revealReady.push(player.id);
-        if (s.players.filter(p => p.connected).every(p => s.revealReady.includes(p.id))) { this.clear(); this.startNight(); }
+        // Advance when all but one connected player is ready: one AFK
+        // player must not hold the whole table (A19).
+        const pool = s.players.filter(p => p.connected);
+        if (pool.filter(p => s.revealReady.includes(p.id)).length >= Math.max(1, pool.length - 1)) { this.clear(); this.startNight(); }
         else this.broadcast();
         break;
       }
       case 'readyVote': {
         if (s.phase !== 'day') break;
         if (!s.dayReady.includes(player.id)) s.dayReady.push(player.id);
-        if (s.players.filter(p => p.connected).every(p => s.dayReady.includes(p.id))) this.startVoting();
+        const pool = s.players.filter(p => p.connected);
+        if (pool.filter(p => s.dayReady.includes(p.id)).length >= Math.max(1, pool.length - 1)) this.startVoting();
         else this.broadcast();
         break;
       }

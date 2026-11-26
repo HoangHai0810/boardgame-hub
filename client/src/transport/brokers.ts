@@ -47,7 +47,7 @@ export function brokerOrder(roomCode: string): string[] {
   return base.map((_, i) => base[(start + i) % base.length]);
 }
 
-function tryOneBroker(url: string, extra: mqtt.IClientOptions): Promise<MqttClient | null> {
+export function tryOneBroker(url: string, extra: mqtt.IClientOptions): Promise<MqttClient | null> {
   return new Promise((resolve) => {
     let c: MqttClient;
     try { c = mqtt.connect(url, { connectTimeout: 4000, reconnectPeriod: 0, ...extra }); }
@@ -107,4 +107,61 @@ export async function connectMqttParallel<T>(
     const c = await tryOneBroker(url, opts);
     if (c) onClient(c, idx, tag);
   }));
+}
+
+/** Connect to every broker in `order` IN PARALLEL and take ONE winner,
+ *  preferring the FIRST broker in the order: if it connects within
+ *  `preferMs` it wins even when a later broker connected first; otherwise
+ *  the lowest-index broker already connected wins. Losers are ended
+ *  gracefully (their wills never fire) and the winner gets auto-reconnect
+ *  restored (v29). Used by HOST connects (create room / migration): a dead
+ *  first broker costs ~1.5s instead of ~16s of sequential walking, while
+ *  the common case still lands on the deterministic first broker (v27) —
+ *  so guests (v40 race) and the migration successor, which walk the same
+ *  order, still coincide there. `onEach` fires for every client that
+ *  connects, so a caller can drop them on cancel. */
+export async function connectMqttRacePreferred(
+  order: string[],
+  extra: () => mqtt.IClientOptions,
+  preferMs = 1500,
+  onEach?: (c: MqttClient) => void,
+): Promise<{ client: MqttClient; idx: number }> {
+  const startedAt = Date.now();
+  return new Promise((resolve, reject) => {
+    const connected = new Map<number, MqttClient>();
+    let done = false;
+    let settled = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const finish = (r: { client: MqttClient; idx: number } | null) => {
+      if (done) return; done = true;
+      if (timer) clearTimeout(timer);
+      for (const [i, c] of connected) {
+        if (!r || c !== r.client) { try { c.removeAllListeners(); c.end(true); } catch { /* noop */ } }
+      }
+      if (r) { (r.client as any).options.reconnectPeriod = 2000; resolve(r); }
+      else reject(new Error('bus unreachable'));
+    };
+    const pickBest = () => {
+      if (connected.size === 0) return false;
+      const idx = Math.min(...connected.keys());
+      finish({ client: connected.get(idx)!, idx });
+      return true;
+    };
+    timer = setTimeout(() => { if (!done && !pickBest()) { /* none yet — wait for the first */ } }, preferMs);
+    void Promise.all(order.map(async (url, idx) => {
+      const c = await tryOneBroker(url, extra());
+      if (c) {
+        connected.set(idx, c);
+        try { onEach?.(c); } catch { /* noop */ }
+        if (!done) {
+          if (idx === 0) pickBest();
+          else if (Date.now() - startedAt >= preferMs) pickBest();
+        }
+      }
+      settled++;
+      if (settled === order.length && !done) {
+        if (!pickBest()) finish(null);
+      }
+    }));
+  });
 }

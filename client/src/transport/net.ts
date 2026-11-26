@@ -15,6 +15,9 @@ import { getClientId } from './util';
 
 
 export interface Net {
+  /** MQTT transport only: the broker this client is currently on
+   *  (undefined when not connected or on another transport). */
+  getBrokerUrl(): string | undefined;
   createRoom(name: string): void;
   joinRoom(code: string, name: string): void;
   /** Abort an in-flight create/join (wrong button, dead network): tears
@@ -109,6 +112,7 @@ export function createPeerNet(h: Handlers, gameId = 'cheese-thief'): Net {
   };
 
   return {
+    getBrokerUrl: () => undefined, // PeerJS has no MQTT broker
     createRoom(name: string) {
       isHost = true; roomCode = makeRoomCode();
       h.onStatus('STATUS_CREATING');
@@ -191,6 +195,7 @@ export function createSocketNet(serverUrl: string, h: Handlers, gameId = 'cheese
   socket.on('errorMsg', (m: string) => h.onError(m));
   socket.on('connect_error', () => h.onError('SERVER_UNREACHABLE'));
   return {
+    getBrokerUrl: () => undefined, // Socket.IO has no MQTT broker
     createRoom(name: string) {
       const att = ++sockAttempt;
       socket.emit('createRoom', { game: gameId, name: cleanName(name), clientId: myId }, (r: any) => {

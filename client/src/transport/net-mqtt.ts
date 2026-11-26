@@ -28,7 +28,7 @@ import { generateKeys, deriveAesKey, encryptJson, decryptJson, KeySet } from './
 import { makeRoomCode } from './util';
 import type { Net, Handlers } from './net';
 import { getClientId } from './util';
-import { brokerOrder, connectMqttSequential, connectMqttParallel } from './brokers';
+import { brokerOrder, connectMqttSequential, connectMqttParallel, connectMqttRacePreferred } from './brokers';
 import type { EngineHooks } from '../games/cheese-thief/hostEngine';
 
 const cleanName = (n: string) => n.replace(/[<>]/g, '').trim().slice(0, 20) || 'Mouse';
@@ -109,7 +109,7 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
         failoverTimer = null;
         if (left || !client || client.connected) return;
         void failover();
-      }, 9000);
+      }, 3000);
     };
     c.on('offline', lost);
     c.on('reconnect', () => h.onStatus('NET_LOST'));
@@ -128,7 +128,7 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
     } catch {
       h.onStatus('NET_LOST');
       if (!failoverTimer && !left) {
-        failoverTimer = setTimeout(() => { failoverTimer = null; void failover(); }, 9000);
+        failoverTimer = setTimeout(() => { failoverTimer = null; void failover(); }, 3000);
       }
     } finally { failoverBusy = false; }
   }
@@ -232,8 +232,13 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
       will: { topic: topic(roomCode, 'pub'), payload: JSON.stringify({ type: 'hostGone' }), retain: true, qos: 1 } as any });
     bindCurrent = () => { if (client) bindHost(client); };
     order = brokerOrder(roomCode);
-    const rh = await connectMqttSequential(order, 0, makeExtra());
-    if (att !== attemptSeq) { try { rh.client.end(true); } catch { /* noop */ } return; } // cancelled mid-walk
+    // HOST RACE (v40.2): connect to every broker in parallel, preferring
+    // the first in the room's order — a dead first broker costs ~1.5s
+    // instead of ~16s of sequential walking, and the common case still
+    // lands on the deterministic first broker (v27).
+    const rh = await connectMqttRacePreferred(order, makeExtra, 1500, (c) => raceClients.push(c));
+    raceClients = [];
+    if (att !== attemptSeq) { try { rh.client.end(true); } catch { /* noop */ } return; } // cancelled mid-race
     client = rh.client; brokerIdx = rh.idx;
     watchLifecycle(client);
     bindCurrent();
@@ -314,6 +319,7 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
   function beginCandidacy() {
     if (candidacy || !client) return;
     candidacy = true;
+    h.onStatus('STATUS_MIGRATING');
     claimsSeen.clear();
     latestSnap = null;
     client.subscribe(topic(roomCode, 'claim'), { qos: 1 });
@@ -323,7 +329,7 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
     const myDelay = 5000 + rank * 2500;
     claimTimer = setTimeout(() => { void tryPromote(); }, myDelay);
     // Nobody could take over (e.g. the winner died too): surface the loss.
-    setTimeout(() => { if (candidacy && !engine && !migrating) { candidacy = false; notifyError('HOST_GONE'); } }, myDelay + 25000);
+    setTimeout(() => { if (candidacy && !engine && !migrating) { candidacy = false; notifyError('HOST_GONE'); } }, myDelay + 15000);
   }
 
   async function tryPromote() {
@@ -373,7 +379,8 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
       makeExtra = () => ({ clientId: 'ct-h-' + myId + '-' + Math.random().toString(36).slice(2, 7),
         will: { topic: topic(roomCode, 'pub'), payload: JSON.stringify({ type: 'hostGone' }), retain: true, qos: 1 } as any });
       bindCurrent = () => { if (client) bindHost(client); };
-      const r = await connectMqttSequential(order, 0, makeExtra());
+      const r = await connectMqttRacePreferred(order, makeExtra, 1500, (c) => raceClients.push(c));
+      raceClients = [];
       client = r.client; brokerIdx = r.idx;
       watchLifecycle(client);
       bindCurrent();
@@ -500,6 +507,9 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
   };
 
   return {
+    /** The MQTT broker this client is currently on (undefined when not
+     *  connected / non-MQTT transport). Voice pins its bus to it (A9). */
+    getBrokerUrl: () => (client && order.length ? order[brokerIdx] : undefined),
     createRoom(name: string) {
       if (starting || joinedFired) return;
       starting = true;

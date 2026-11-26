@@ -46,13 +46,13 @@ export default function Hub() {
   const live = [
     {
       id: 'cheese-thief', name: d.cheeseName, tag: d.cheeseTag, tagWide: d.cheeseTagWide,
-      color: '#FFB020', min: 4, max: 8, minsMobile: 20, minsWide: 10,
+      color: '#FFB020', min: 4, max: 8, minsMobile: 10, minsWide: 10,
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#F5E9C8] border-2 border-[#2B2016] flex-none"><MouseAvatar seed="hub-thief" size={48} state="thief" /></span>,
       bannerIcon: <CheeseWedge size={72} />,
     },
     {
       id: 'ma-soi', name: d.wolfName, tag: d.wolfTag, tagWide: d.wolfTagWide,
-      color: '#D63A2F', min: 6, max: 12, minsMobile: 30, minsWide: 20,
+      color: '#D63A2F', min: 6, max: 12, minsMobile: 20, minsWide: 20,
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#E8E8E8] border-2 border-[#2B2016] flex-none"><WolfAvatar seed="hub-wolf" size={48} state="wolf" /></span>,
       bannerIcon: <WolfAvatar seed="hub-wolf" size={72} state="wolf" />,
     },
