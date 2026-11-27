@@ -10,7 +10,7 @@
 // without knowing Love Letter from Uno or Ma Sói.
 import {
   GameState, Player, createGame, startRound, publicState, privateState,
-  playCard, chooseTarget, autoTurn, advanceTurn,
+  playCard, chooseTarget, resolveChancellor, cancelPending, autoTurn, advanceTurn,
   MIN_PLAYERS, MAX_PLAYERS,
 } from '../../../../games/love-letter/logic';
 import type { CardKind } from '../../../../games/love-letter/logic';
@@ -109,6 +109,9 @@ export class HostEngine {
       case 'chooseTarget':
         if (msg.targetId && chooseTarget(s, player, msg.targetId, msg.guess as CardKind | undefined)) this.sync();
         break;
+      case 'resolveChancellor':
+        if (msg.keepCardId && resolveChancellor(s, player, msg.keepCardId)) this.sync();
+        break;
       case 'chat': {
         const now = Date.now();
         if (now - (this.lastChat.get(player.id) ?? 0) < 400) return;
@@ -151,7 +154,9 @@ export class HostEngine {
     // table never stalls on an empty chair.
     if (s.phase === 'playing' && s.turn === playerId) {
       if (s.pendingAction?.actorId === playerId) {
-        s.pendingAction = null;
+        // cancelPending returns a Chancellor's extra drawn cards to the
+        // bottom of the deck so the hand stays at one card.
+        cancelPending(s);
         if (s.lastPlay) s.lastPlay.outcome = 'no-target';
       }
       advanceTurn(s);

@@ -7,7 +7,7 @@ import { joinVoice, VoiceHandle } from '../../transport/voice';
 import { TopBar, ChatPanel, ChatSheet, chatPreview, RetryDefaultButton } from '../../platform/ui';
 import { MouseAvatar } from '../../platform/avatars';
 import { PlayerAvatar } from '../../platform/GameCard';
-import { legalPlays, MIN_PLAYERS, MAX_PLAYERS, GUESSABLE, CARD_VALUE } from '../../../../games/love-letter/logic';
+import { legalPlays, MIN_PLAYERS, MAX_PLAYERS, GUESSABLE, CARD_VALUE, tokensFor } from '../../../../games/love-letter/logic';
 import type { Card, CardKind } from '../../../../games/love-letter/logic';
 
 const SESSION_KEY = 'ct_guest_session:love-letter';
@@ -37,16 +37,16 @@ const CARD = 'card-cream p-4 sm:p-5';
 /* ---------- Love Letter cards (CSS art, same chunky style as the platform).
  *  Card names stay in English — they are the original game's names. ---------- */
 const CARD_COLORS: Record<CardKind, string> = {
-  guard: '#6B7280', priest: '#2E7CD6', baron: '#E07B39', handmaid: '#0E9F6E',
-  prince: '#5B5BD6', king: '#C99327', countess: '#C0397A', princess: '#D63A6B',
+  spy: '#78716C', guard: '#6B7280', priest: '#2E7CD6', baron: '#E07B39', handmaid: '#0E9F6E',
+  prince: '#5B5BD6', chancellor: '#0E7490', king: '#C99327', countess: '#C0397A', princess: '#D63A6B',
 };
 const CARD_NAMES: Record<CardKind, string> = {
-  guard: 'Guard', priest: 'Priest', baron: 'Baron', handmaid: 'Handmaid',
-  prince: 'Prince', king: 'King', countess: 'Countess', princess: 'Princess',
+  spy: 'Spy', guard: 'Guard', priest: 'Priest', baron: 'Baron', handmaid: 'Handmaid',
+  prince: 'Prince', chancellor: 'Chancellor', king: 'King', countess: 'Countess', princess: 'Princess',
 };
 const CARD_EFFECTS = (d: any): Record<CardKind, string> => ({
-  guard: d.effGuard, priest: d.effPriest, baron: d.effBaron, handmaid: d.effHandmaid,
-  prince: d.effPrince, king: d.effKing, countess: d.effCountess, princess: d.effPrincess,
+  spy: d.effSpy, guard: d.effGuard, priest: d.effPriest, baron: d.effBaron, handmaid: d.effHandmaid,
+  prince: d.effPrince, chancellor: d.effChancellor, king: d.effKing, countess: d.effCountess, princess: d.effPrincess,
 });
 function LLCardFace({ card, d, size = 'md' }: { card: Card; d: any; size?: 'sm' | 'md' | 'lg' }) {
   const box = size === 'lg' ? 'w-[92px] h-[134px]' : size === 'sm' ? 'w-[46px] h-[66px]' : 'w-[76px] h-[112px]';
@@ -93,7 +93,7 @@ function HelpModal({ d, onClose }: { d: any; onClose: () => void }) {
         <ol className="space-y-2 text-left text-[15px] leading-snug">
           {d.tutorial.map((s: string, i: number) => <li key={i}>{s}</li>)}
         </ol>
-        <div className="grid grid-cols-4 gap-1.5 mt-4">
+        <div className="grid grid-cols-5 gap-1.5 mt-4">
           {(Object.keys(CARD_NAMES) as CardKind[]).map(k => (
             <LLCardFace key={k} card={{ id: k, kind: k, value: CARD_VALUE[k] }} d={d} size="sm" />
           ))}
@@ -123,6 +123,9 @@ export default function LoveLetterApp() {
   const [shareCopied, setShareCopied] = useState(false);
   // Target/guess picker for the open card effect (mine only).
   const [pickOpen, setPickOpen] = useState(false);
+  // Chancellor keep-one picker (mine only).
+  const [chancellorOpen, setChancellorOpen] = useState(false);
+  const [keepPick, setKeepPick] = useState<string | null>(null);
   const [pickTarget, setPickTarget] = useState<string | null>(null);
   const [pickGuess, setPickGuess] = useState<CardKind | null>(null);
   // Priest peek modal: shown once per new peek.
@@ -135,7 +138,7 @@ export default function LoveLetterApp() {
   const [seenChat, setSeenChat] = useState(0);
   const unreadChat = Math.max(0, (pub?.chat.length ?? 0) - seenChat);
   useEffect(() => { setSeenChat(pub?.chat.length ?? 0); }, [pub?.phase]);
-  useEffect(() => { setOptPlayed(null); setPickOpen(false); setPickTarget(null); setPickGuess(null); }, [pub?.phase]);
+  useEffect(() => { setOptPlayed(null); setPickOpen(false); setPickTarget(null); setPickGuess(null); setChancellorOpen(false); setKeepPick(null); }, [pub?.phase]);
   useEffect(() => {
     if (optPlayed && priv && !priv.myHand.some(c => c.id === optPlayed)) setOptPlayed(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -239,7 +242,8 @@ export default function LoveLetterApp() {
   // Auto-open the target picker when an effect of mine opens; show the
   // Priest peek modal once per new peek.
   const myPending = pub?.phase === 'playing' && pub.pendingAction?.actorId === joined?.playerId ? pub.pendingAction : null;
-  useEffect(() => { if (myPending) setPickOpen(true); }, [myPending?.type, myPending?.actorId]);
+  useEffect(() => { if (myPending && myPending.type !== 'chancellor') setPickOpen(true); }, [myPending?.type, myPending?.actorId]);
+  useEffect(() => { if (myPending?.type === 'chancellor') setChancellorOpen(true); }, [myPending?.type, myPending?.actorId]);
   useEffect(() => {
     const seen = priv?.mySeen;
     if (!seen) return;
@@ -365,6 +369,7 @@ export default function LoveLetterApp() {
       case 'tie': return `${d.playedCard(by, cardName)} — ${d.baronTie(tgt)}`;
       case 'trade': return `${d.playedCard(by, cardName)} — ${d.kingTrade(tgt)}`;
       case 'redraw': return `${d.playedCard(by, cardName)} — ${d.princeRedraw(tgt)}`;
+      case 'chancellor': return `${d.playedCard(by, cardName)} — ${d.chancellorPlayed}`;
       case 'princess': return `${d.playedCard(by, cardName)} — ${d.princePrincess(tgt)}`;
       case 'no-target': return `${d.playedCard(by, cardName)} — ${d.noTarget}`;
       default: return d.playedNoEffect(by, cardName);
@@ -416,11 +421,11 @@ export default function LoveLetterApp() {
             <p className="text-[#B9BCE0] font-bold mt-2 leading-snug">{d.subtitle}</p>
           </div>
           <div className="flex justify-center items-end mt-5 -space-x-3">
-            <span className="rotate-[-18deg] translate-y-2"><LLCardFace card={{ id: 'fan-guard', kind: 'guard', value: 1 }} d={d} size="md" /></span>
-            <span className="rotate-[-9deg] translate-y-1"><LLCardFace card={{ id: 'fan-countess', kind: 'countess', value: 7 }} d={d} size="md" /></span>
-            <span className="z-10 -translate-y-1"><LLCardFace card={{ id: 'fan-princess', kind: 'princess', value: 8 }} d={d} size="md" /></span>
-            <span className="rotate-[9deg] translate-y-1"><LLCardFace card={{ id: 'fan-prince', kind: 'prince', value: 5 }} d={d} size="md" /></span>
-            <span className="rotate-[18deg] translate-y-2"><LLCardFace card={{ id: 'fan-king', kind: 'king', value: 6 }} d={d} size="md" /></span>
+            <span className="rotate-[-18deg] translate-y-2"><LLCardFace card={{ id: 'fan-spy', kind: 'spy', value: 0 }} d={d} size="md" /></span>
+            <span className="rotate-[-9deg] translate-y-1"><LLCardFace card={{ id: 'fan-guard', kind: 'guard', value: 1 }} d={d} size="md" /></span>
+            <span className="z-10 -translate-y-1"><LLCardFace card={{ id: 'fan-princess', kind: 'princess', value: 9 }} d={d} size="md" /></span>
+            <span className="rotate-[9deg] translate-y-1"><LLCardFace card={{ id: 'fan-chancellor', kind: 'chancellor', value: 6 }} d={d} size="md" /></span>
+            <span className="rotate-[18deg] translate-y-2"><LLCardFace card={{ id: 'fan-king', kind: 'king', value: 7 }} d={d} size="md" /></span>
           </div>
           <div className="bg-[#FFF3CF] rounded-t-[28px] px-4 pt-4 pb-6 mt-5">
             <label className="disp font-extrabold text-sm">{d.name}</label>
@@ -489,7 +494,7 @@ export default function LoveLetterApp() {
                 <h3 className="disp font-extrabold text-xl">{d.players}</h3>
                 <span className="font-bold text-[#8A7B63] text-sm">{connected}/{MAX_PLAYERS} · {d.needAtLeast(MIN_PLAYERS)}</span>
               </div>
-              <div className="grid grid-cols-4 gap-2 my-3">
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 my-3">
                 {pub!.players.map(p => (
                   <div key={p.id} className={`rounded-2xl p-2 text-center hard-xs ${p.id === joined.playerId ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'}`}>
                     <span className="mx-auto block w-fit"><PlayerAvatar avatarId={p.avatar} size={48} fallback={<MouseAvatar seed={p.id} size={48} state="awake" />} /></span>
@@ -502,7 +507,7 @@ export default function LoveLetterApp() {
                         className="inline-block text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-0.5 mt-1 cursor-pointer hover:bg-red-200">✖ {d.kick}</span>)}
                   </div>
                 ))}
-                {Array.from({ length: Math.max(0, 4 - pub!.players.length) }).map((_, i) => (
+                {Array.from({ length: Math.max(0, 6 - pub!.players.length) }).map((_, i) => (
                   <div key={'empty-' + i} className="rounded-2xl border-2 border-dashed border-[#C9BFA5] p-2 text-center text-[#8A7B63] font-bold text-xs hidden lg:flex items-center justify-center min-h-[86px]">{lang === 'vi' ? 'Đang chờ…' : 'Waiting…'}</div>
                 ))}
               </div>
@@ -530,11 +535,11 @@ export default function LoveLetterApp() {
                       <span className="font-bold text-xs text-[#8A7B63] block">{d.quickModeHint}</span>
                     </span>
                   </button>
-                  <p className="font-bold text-sm text-[#5C4B33]">❤ {d.tokensToWin(pub!.config.quickMode ? 3 : connected === 2 ? 7 : connected === 3 ? 5 : 4)}</p>
+                  <p className="font-bold text-sm text-[#5C4B33]">❤ {d.tokensToWin(tokensFor(connected, pub!.config.quickMode))}</p>
                 </div>
               )}
               {!joined.isHost && (
-                <p className="font-bold text-sm text-[#5C4B33] mt-2">🕐 {d.secondsUnit(pub!.config.turnSeconds)} · {pub!.config.quickMode ? `⚡ ${d.quickMode} — ` : ''}❤ {d.tokensToWin(pub!.config.quickMode ? 3 : connected === 2 ? 7 : connected === 3 ? 5 : 4)}</p>
+                <p className="font-bold text-sm text-[#5C4B33] mt-2">🕐 {d.secondsUnit(pub!.config.turnSeconds)} · {pub!.config.quickMode ? `⚡ ${d.quickMode} — ` : ''}❤ {d.tokensToWin(tokensFor(connected, pub!.config.quickMode))}</p>
               )}
               {joined.isHost ? (
                 <>
@@ -604,7 +609,10 @@ export default function LoveLetterApp() {
                 {pub.pendingAction && pub.pendingAction.actorId !== joined.playerId && (
                   <p className="text-center font-bold text-[#FFF3CF] text-sm mt-3">🎯 {d.turnOf(pendingActor?.name ?? '')}</p>
                 )}
-                {myPending && !pickOpen && (
+                {myPending && myPending.type === 'chancellor' && !chancellorOpen && (
+                  <button data-testid="reopen-chancellor" className="mt-3 w-full disp px-5 py-3 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] text-lg animate-pulse" onClick={() => setChancellorOpen(true)}>🎩 {d.chancellorTitle}</button>
+                )}
+                {myPending && myPending.type !== 'chancellor' && !pickOpen && (
                   <button data-testid="reopen-pick" className="mt-3 w-full disp px-5 py-3 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] text-lg animate-pulse" onClick={() => setPickOpen(true)}>🎯 {d.chooseTarget}</button>
                 )}
               </div>
@@ -662,10 +670,12 @@ export default function LoveLetterApp() {
             <p className="text-[#B9BCE0] font-bold mt-1">
               {pub.roundResult?.reason === 'last-standing' ? d.reasonLast
                 : pub.roundResult?.reason === 'showdown' ? d.reasonShowdown
-                : pub.roundResult?.reason === 'showdown-tiebreak' ? d.reasonTiebreak
                 : d.reasonTie}
               {' '}{pub.roundWinners.map(id => `${playerName(id)} ${d.tokensEarned(1)}`).join(', ')}
             </p>
+            {pub.roundResult?.spyFavorId && (
+              <p className="text-[#FFB020] font-bold mt-1">🕵️ {d.spyFavor(playerName(pub.roundResult.spyFavorId))}</p>
+            )}
             {pub.roundResult?.hands && (
               <div className="card-cream !rounded-[28px] p-4 mt-4 text-left text-[#2B2016]">
                 <div className="disp font-extrabold text-lg">{d.revealedHands}</div>
@@ -735,7 +745,7 @@ export default function LoveLetterApp() {
         )}
 
         {/* target + guess picker modal (my open effect) */}
-        {myPending && pickOpen && (
+        {myPending && myPending.type !== 'chancellor' && pickOpen && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setPickOpen(false)}>
             <div className={`${CARD} max-w-sm w-full text-center max-h-[85vh] overflow-auto`} onClick={e => e.stopPropagation()}>
               <div className="disp font-extrabold text-xl">🎯 {d.chooseTarget}</div>
@@ -764,7 +774,7 @@ export default function LoveLetterApp() {
                         onClick={() => setPickGuess(k)}
                         className={`rounded-xl border-[3px] py-2 font-extrabold text-sm push ${pickGuess === k ? 'border-[#FFB020] bg-[#FFB020] text-[#2B2016]' : 'border-[#2B2016] text-white'}`}
                         style={{ background: pickGuess === k ? undefined : CARD_COLORS[k] }}>
-                        {k === 'priest' ? '⛪' : k === 'baron' ? '⚖️' : k === 'handmaid' ? '🌸' : k === 'prince' ? '🤴' : k === 'king' ? '👑' : k === 'countess' ? '👸' : '💌'} {CARD_VALUE[k]} · {CARD_NAMES[k]}
+                        {k === 'spy' ? '🕵️' : k === 'priest' ? '⛪' : k === 'baron' ? '⚖️' : k === 'handmaid' ? '🌸' : k === 'prince' ? '🤴' : k === 'chancellor' ? '🎩' : k === 'king' ? '👑' : k === 'countess' ? '👸' : '💌'} {CARD_VALUE[k]} · {CARD_NAMES[k]}
                       </button>
                     ))}
                   </div>
@@ -772,6 +782,27 @@ export default function LoveLetterApp() {
               )}
               <button data-testid="pick-confirm" className={`${BTN} btn-amber w-full mt-4`} disabled={!pickTarget || (myPending.type === 'guard' && !pickGuess)} onClick={doChooseTarget}>{d.confirmTarget}</button>
               <button className="font-bold text-sm text-[#8A7B63] underline mt-3" onClick={() => setPickOpen(false)}>{d.cancelPick}</button>
+            </div>
+          </div>
+        )}
+        {/* Chancellor keep-one modal (my open effect) */}
+        {myPending && myPending.type === 'chancellor' && chancellorOpen && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setChancellorOpen(false)}>
+            <div className={`${CARD} max-w-sm w-full text-center max-h-[85vh] overflow-auto`} onClick={e => e.stopPropagation()}>
+              <div className="disp font-extrabold text-xl">🎩 {d.chancellorTitle}</div>
+              <p className="font-bold text-sm text-[#5C4B33] mt-1">{d.chancellorHint}</p>
+              <div className="flex justify-center gap-2 mt-3 flex-wrap">
+                {myHand.map(c => (
+                  <button key={c.id} data-testid="chancellor-keep-pick" data-card-id={c.id}
+                    onClick={() => setKeepPick(c.id)}
+                    className={`rounded-xl push transition ${keepPick === c.id ? 'ring-4 ring-[#FFB020] -translate-y-1' : ''}`}>
+                    <LLCardFace card={c} d={d} size="md" />
+                  </button>
+                ))}
+              </div>
+              <button data-testid="chancellor-keep" className={`${BTN} btn-amber w-full mt-4`} disabled={!keepPick}
+                onClick={() => { if (!keepPick) return; getNet().nightAction('resolveChancellor', undefined, { keepCardId: keepPick }); setChancellorOpen(false); setKeepPick(null); }}>{d.chancellorKeep}</button>
+              <button className="font-bold text-sm text-[#8A7B63] underline mt-3" onClick={() => setChancellorOpen(false)}>{d.cancelPick}</button>
             </div>
           </div>
         )}

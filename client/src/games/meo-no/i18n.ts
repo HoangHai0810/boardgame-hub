@@ -46,7 +46,7 @@ const dict = {
     errGameNotSupported: 'Game này chưa chạy ở chế độ máy chủ — thử lại ở chế độ mặc định.', retryDefault: 'Thử lại ở chế độ mặc định',
     statusCreating: 'Đang tạo phòng…', statusMigrating: 'Đang chuyển chủ phòng…', statusConnecting: (code: string) => `Đang kết nối tới phòng ${code}…`,
     connecting: 'Đang kết nối…',
-    qc1: 'Mèo nổ kìa! 💣', qc2: 'Ai có Không! không? 🙏',
+    qc1: 'Mèo nổ kìa! 💣', qc2: 'Ai có Nope! không? 🙏',
     qc3: 'Đừng Tấn công tôi mà! 😱', qc4: 'Lượt tôi, chờ tí 🤔',
     // Lobby rule toggles (design MN2)
     rulesTitle: 'Luật chơi', hostOnlyShort: 'chỉ chủ phòng',
@@ -67,12 +67,12 @@ const dict = {
     // Nope sheet (design MN4)
     nopeTitle: 'Chặn lại?',
     nopeSecondsLeft: (n: number) => `Còn ${n} giây`,
-    nopeYouHave: (n: number) => `Bạn đang có ${n} lá Không!. Đánh ra để huỷ lá vừa dùng.`,
-    nopeYouHaveNone: 'Bạn không có lá Không!.',
+    nopeYouHave: (n: number) => `Bạn đang có ${n} lá Nope!. Đánh ra để huỷ lá vừa dùng.`,
+    nopeYouHaveNone: 'Bạn không có lá Nope!.',
     nopeBtn: 'KHÔNG!', nopePass: 'Để nó qua',
     nopePlayedBy: (n: string) => `${n} vừa đánh lá`,
-    nopeWaitOnly: 'Chỉ người có lá Không! mới chặn được — chờ hết 8 giây', nopeDismissed: 'Đã bỏ qua.',
-    nopeBlocked: (n: string) => `${n} đã chặn bằng Không!!`,
+    nopeWaitOnly: 'Chỉ người có lá Nope! mới chặn được — chờ hết 8 giây', nopeDismissed: 'Đã bỏ qua.',
+    nopeBlocked: (n: string) => `${n} đã chặn bằng Nope!!`,
     // Exploding kitten (design MN5-6)
     youDrewEK: 'BẠN VỪA BỐC ĐƯỢC MÈO NỔ!',
     ekNoDefuse: 'Không gỡ được thì bạn bị loại khỏi ván. Nhưng bạn đang có lá Gỡ bom.',
@@ -105,14 +105,14 @@ const dict = {
     favorGiveTitle: (n: string) => `${n} xin bài từ bạn`,
     favorGiveSub: 'Chọn 1 lá trên tay để đưa cho họ.',
     favorGiveBtn: 'Đưa lá này',
-    // Cards — card names stay English (Hoàng 2026-11-26), except the Nope
-    // card which keeps its Vietnamese name "Không!" per his design.
-    cardDefuse: 'Defuse', cardNope: 'Không!', cardSkip: 'Skip', cardShuffle: 'Shuffle',
+    // Cards — all names English (Hải Anh 2026-11-27; the old "Không!" exception is gone)
+    // all card names English now (Hải Anh 2026-11-27: "Không!" → "Nope!").
+    cardDefuse: 'Defuse', cardNope: 'Nope!', cardSkip: 'Skip', cardShuffle: 'Shuffle',
     cardPeek: 'See the Future', cardAttack: 'Attack', cardFavor: 'Favor',
     cardCat: 'Cat', cardEK: 'Exploding Kitten',
     // Ability text on every card (Claude design MN3/MN9, Nov 2026).
     abDefuse: 'Huỷ mèo nổ vừa bốc, rồi nhét nó lại chồng bài.',
-    abNope: 'Chặn 1 lá hành động khi cửa sổ Không! đang mở.',
+    abNope: 'Chặn 1 lá hành động khi cửa sổ Nope! đang mở.',
     abSkip: 'Kết thúc lượt mà không cần bốc bài.',
     abShuffle: 'Xáo lại chồng bài rút.',
     abPeek: 'Xem 3 lá trên cùng của chồng bài.',
@@ -136,7 +136,7 @@ const dict = {
     feedDefuse: (n: string) => `${n} dùng Gỡ bom`,
     feedExploded: (n: string) => `${n} nổ, bị loại`,
     feedWin: (n: string) => `${n} sống sót, thắng ván!`,
-    feedNope: (n: string) => `${n} chặn bằng Không!`,
+    feedNope: (n: string) => `${n} chặn bằng Nope!`,
     feedShuffle: (n: string) => `${n} xáo bài`,
     feedPeek: (n: string) => `${n} xem trước 3 lá`,
     feedSkip: (n: string) => `${n} bỏ lượt`,
@@ -147,7 +147,7 @@ const dict = {
     tutorial: [
       'Mỗi người được chia 7 lá, trong đó có 1 lá Gỡ bom. Bốc bài lần lượt — ai bốc trúng mèo nổ mà không có Gỡ bom thì bị loại.',
       'Lá hành động: Bỏ lượt (kết lượt không cần bốc), Tấn công (người kế phải bốc 2 lần — đáp Tấn công thì dồn thêm 2), Xáo bài (xáo lại chồng rút), Xem trước (xem 3 lá trên cùng), Xin bài (chọn 1 người, họ phải đưa bạn 1 lá do họ chọn).',
-      'Không!: khi ai đó đánh lá hành động, người khác có lá Không! được 8 giây để chặn — Không! cũng bị Không! lại được.',
+      'Nope!: khi ai đó đánh lá hành động, người khác có lá Nope! được 8 giây để chặn — Nope! cũng bị Nope! lại được.',
       'Bốc trúng mèo nổ mà có Gỡ bom: dùng Gỡ bom rồi nhét mèo nổ lại chồng bài ở vị trí bạn chọn (trên cùng / lá thứ 2 / lá thứ 3 / giữa chồng / dưới đáy).',
       'Mèo thường chưa có hiệu ứng riêng. Người cuối cùng chưa nổ thắng ván.',
     ],

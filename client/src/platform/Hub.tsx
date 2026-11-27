@@ -113,7 +113,7 @@ export default function Hub() {
     },
     {
       id: 'love-letter', name: d.loveName, tag: d.loveTag, tagWide: d.loveTagWide,
-      color: '#D63A6B', min: 2, max: 4, minsMobile: 20, minsWide: 20,
+      color: '#D63A6B', min: 2, max: 6, minsMobile: 20, minsWide: 20,
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#F5E9C8] border-2 border-[#2B2016] flex-none"><LetterIcon size={44} /></span>,
       bannerIcon: <LetterIcon size={72} />,
       bannerArt: undefined,

@@ -4,6 +4,7 @@ import { strict as assert } from 'node:assert';
 import {
   createGame, buildDeck, startRound, playCard, chooseTarget, autoTurn,
   legalPlays, validTargets, tokensFor, knockOut, publicState, privateState,
+  resolveChancellor, cancelPending,
   CARD_COUNT, CARD_VALUE, GUESSABLE, MIN_PLAYERS, MAX_PLAYERS,
 } from '../games/love-letter/logic.mjs';
 
@@ -36,24 +37,30 @@ const playKind = (s, kind, extra) => {
   return playCard(s, me, `${kind}-play`, rng);
 };
 
-t('limits 2-4, deck is 16 with the exact official counts', () => {
-  assert.equal(MIN_PLAYERS, 2); assert.equal(MAX_PLAYERS, 4);
+t('limits 2-6, deck is 21 with the exact 2019 official counts', () => {
+  assert.equal(MIN_PLAYERS, 2); assert.equal(MAX_PLAYERS, 6);
   const deck = buildDeck();
-  assert.equal(deck.length, 16);
-  assert.equal(CARD_COUNT.guard, 5); assert.equal(CARD_COUNT.priest, 2);
-  assert.equal(CARD_COUNT.baron, 2); assert.equal(CARD_COUNT.handmaid, 2);
-  assert.equal(CARD_COUNT.prince, 2); assert.equal(CARD_COUNT.king, 1);
+  assert.equal(deck.length, 21);
+  assert.equal(CARD_COUNT.spy, 2); assert.equal(CARD_COUNT.guard, 6);
+  assert.equal(CARD_COUNT.priest, 2); assert.equal(CARD_COUNT.baron, 2);
+  assert.equal(CARD_COUNT.handmaid, 2); assert.equal(CARD_COUNT.prince, 2);
+  assert.equal(CARD_COUNT.chancellor, 2); assert.equal(CARD_COUNT.king, 1);
   assert.equal(CARD_COUNT.countess, 1); assert.equal(CARD_COUNT.princess, 1);
-  assert.equal(new Set(deck.map(c => c.id)).size, 16);
-  assert.deepEqual(GUESSABLE, ['priest', 'baron', 'handmaid', 'prince', 'king', 'countess', 'princess']);
+  assert.equal(new Set(deck.map(c => c.id)).size, 21);
+  assert.equal(CARD_VALUE.spy, 0); assert.equal(CARD_VALUE.chancellor, 6);
+  assert.equal(CARD_VALUE.king, 7); assert.equal(CARD_VALUE.countess, 8);
+  assert.equal(CARD_VALUE.princess, 9);
+  assert.deepEqual(GUESSABLE, ['spy', 'priest', 'baron', 'handmaid', 'prince', 'chancellor', 'king', 'countess', 'princess']);
 });
 
-t('tokens to win: 2p=7, 3p=5, 4p=4, quick mode 3', () => {
-  assert.equal(tokensFor(2, false), 7);
+t('tokens to win: 2p=6, 3p=5, 4p=4, 5p=3, 6p=3, quick mode 3', () => {
+  assert.equal(tokensFor(2, false), 6);
   assert.equal(tokensFor(3, false), 5);
   assert.equal(tokensFor(4, false), 4);
+  assert.equal(tokensFor(5, false), 3);
+  assert.equal(tokensFor(6, false), 3);
   assert.equal(tokensFor(2, true), 3);
-  assert.equal(tokensFor(4, true), 3);
+  assert.equal(tokensFor(6, true), 3);
 });
 
 t('setup: 1 burn card, 1 card each, first player draws a second', () => {
@@ -61,7 +68,7 @@ t('setup: 1 burn card, 1 card each, first player draws a second', () => {
   assert.equal(s.phase, 'playing');
   assert.ok(s.setAside);
   assert.equal(s.faceUpRemoved.length, 0);
-  assert.equal(s.deck.length, 16 - 1 - 4 - 1);
+  assert.equal(s.deck.length, 21 - 1 - 4 - 1);
   assert.equal(turnPlayer(s).hand.length, 2);
   s.players.filter(p => p.id !== s.turn).forEach(p => assert.equal(p.hand.length, 1));
 });
@@ -69,7 +76,7 @@ t('setup: 1 burn card, 1 card each, first player draws a second', () => {
 t('setup 2-player: 1 burn + 3 face-up removed, all public', () => {
   const s = mk(2);
   assert.equal(s.faceUpRemoved.length, 3);
-  assert.equal(s.deck.length, 16 - 1 - 3 - 2 - 1);
+  assert.equal(s.deck.length, 21 - 1 - 3 - 2 - 1);
   assert.equal(publicState(s).faceUpRemoved.length, 3);
 });
 
@@ -158,7 +165,7 @@ t('Baron: lower hand is out; tie does nothing', () => {
   give(s, 'p1', ['princess']);
   assert.equal(playKind(s, 'baron'), true);
   assert.equal(chooseTarget(s, me, 'p1', undefined, rng), true);
-  assert.equal(s.lastPlay.outcome, 'lose'); // guard(1) < princess(8): I am out
+  assert.equal(s.lastPlay.outcome, 'lose'); // guard(1) < princess(9): I am out
   assert.equal(me.inRound, false);
   const s2 = mk(3);
   const me2 = turnPlayer(s2);
@@ -293,7 +300,7 @@ t('round ends when one player is left; winner gains a token', () => {
   assert.equal(s.tokensToWin, 5);
 });
 
-t('deck-empty showdown: highest hand wins; tie broken by discard total', () => {
+t('deck-empty showdown: highest hand wins; a tie means ALL tied players win (no discard tiebreak in 2019)', () => {
   const s = mk(3);
   const me = turnPlayer(s);
   // Force the deck empty and set hands for a showdown on the next endTurn.
@@ -301,39 +308,32 @@ t('deck-empty showdown: highest hand wins; tie broken by discard total', () => {
   give(s, me.id, ['prince']); // 5
   give(s, 'p1', ['prince']); // 5 — tie on hand
   give(s, 'p2', ['guard']); // 1
-  // p0's pile will be [countess] = 7 after the play below; p1's pile must
-  // beat it for the tiebreak.
+  // Even a much bigger discard pile must NOT break the tie in 2019.
   s.players[1].discardPile = [
-    { id: 'k', kind: 'king', value: 6 },
+    { id: 'k', kind: 'king', value: 7 },
     { id: 'b', kind: 'baron', value: 3 },
-  ]; // total 9
+  ]; // total 10
   give(s, me.id, ['prince', 'countess']);
   assert.equal(playCard(s, me, me.hand.find(c => c.kind === 'countess').id, rng), true);
   assert.equal(s.phase, 'roundEnd');
-  assert.equal(s.roundResult.reason, 'showdown-tiebreak');
-  assert.deepEqual(s.roundWinners, ['p1']);
-  assert.equal(s.players[1].tokens, 1);
-  assert.ok(s.roundResult.hands);
-});
-
-t('deck-empty showdown: full tie means all tied players win', () => {
-  const s = mk(3);
-  const me = turnPlayer(s);
-  s.deck = [];
-  give(s, me.id, ['prince', 'countess']);
-  give(s, 'p1', ['prince']);
-  give(s, 'p2', ['guard']);
-  // Both tied players' discard piles must total the same: p0's pile will
-  // be [countess] = 7 after the play, so p1's pile is set to 5 + 2 = 7.
-  s.players[1].discardPile = [
-    { id: 'pr', kind: 'prince', value: 5 },
-    { id: 'pp', kind: 'priest', value: 2 },
-  ];
-  assert.equal(playCard(s, me, me.hand.find(c => c.kind === 'countess').id, rng), true);
   assert.equal(s.roundResult.reason, 'showdown-tie');
   assert.deepEqual([...s.roundWinners].sort(), ['p0', 'p1']);
   assert.equal(me.tokens, 1);
   assert.equal(s.players[1].tokens, 1);
+  assert.ok(s.roundResult.hands);
+});
+
+t('deck-empty showdown: single highest hand wins outright', () => {
+  const s = mk(3);
+  const me = turnPlayer(s);
+  s.deck = [];
+  give(s, me.id, ['king', 'countess']);
+  give(s, 'p1', ['prince']);
+  give(s, 'p2', ['guard']);
+  assert.equal(playCard(s, me, me.hand.find(c => c.kind === 'countess').id, rng), true);
+  assert.equal(s.roundResult.reason, 'showdown');
+  assert.deepEqual(s.roundWinners, ['p0']);
+  assert.equal(me.tokens, 1);
 });
 
 t('session winner at the token target; next round winner goes first', () => {
@@ -353,12 +353,12 @@ t('autoTurn plays a random legal card and resolves its effect', () => {
   const s = mk(4);
   const me = turnPlayer(s);
   give(s, me.id, ['guard', 'countess']);
-  give(s, 'p1', ['priest']);
-  autoTurn(s, () => 0); // plays the first legal card (Guard), targets p1, guesses priest
+  give(s, 'p1', ['spy']);
+  autoTurn(s, () => 0); // plays the first legal card (Guard), targets p1, guesses spy
   assert.equal(s.phase, 'playing');
   assert.notEqual(s.turn, me.id);
   assert.equal(s.pendingAction, null);
-  // rng 0 guesses 'priest' on p1, who holds a Priest — a hit, so p1 is out.
+  // rng 0 guesses 'spy' (GUESSABLE[0]) on p1, who holds a Spy — a hit, so p1 is out.
   assert.ok(s.lastPlay && s.lastPlay.card === 'guard');
   assert.equal(s.lastPlay.outcome, 'hit');
   assert.equal(s.players[1].inRound, false);
@@ -398,4 +398,213 @@ t('startRound resets the table and the round winner goes first', () => {
   assert.equal(s.turn, 'p2');
   assert.equal(s.players.every(p => p.inRound && p.discardPile.length === 0), true);
   assert.equal(s.players[2].hand.length, 2);
+});
+
+t('Chancellor: draws 2, keeps 1, the other 2 go to the bottom of the deck', () => {
+  const s = mk(3);
+  const me = turnPlayer(s);
+  const deckBefore = s.deck.length;
+  give(s, me.id, ['guard', 'chancellor']);
+  assert.equal(playCard(s, me, me.hand.find(c => c.kind === 'chancellor').id, rng), true);
+  assert.ok(s.pendingAction && s.pendingAction.type === 'chancellor');
+  assert.equal(me.hand.length, 3);
+  assert.equal(s.deck.length, deckBefore - 2);
+  const keep = me.hand[1];
+  const returnedIds = me.hand.filter(c => c.id !== keep.id).map(c => c.id).sort();
+  assert.equal(resolveChancellor(s, me, keep.id, rng), true);
+  assert.equal(s.lastPlay.outcome, 'chancellor');
+  assert.deepEqual(me.hand, [keep]);
+  // The two returned cards sit at the bottom of the deck (index 0-1);
+  // the deck is one short of deckBefore because the next player drew.
+  assert.equal(s.deck.length, deckBefore - 1);
+  assert.deepEqual(s.deck.slice(0, 2).map(c => c.id).sort(), returnedIds);
+  assert.notEqual(s.turn, me.id);
+});
+
+t('Chancellor: with 1 card left draws it and returns 1; with 0 cards no effect', () => {
+  const s = mk(3);
+  const me = turnPlayer(s);
+  s.deck = [{ id: 'only-1', kind: 'spy', value: 0 }];
+  give(s, me.id, ['guard', 'chancellor']);
+  assert.equal(playCard(s, me, me.hand.find(c => c.kind === 'chancellor').id, rng), true);
+  assert.equal(me.hand.length, 2);
+  assert.equal(s.deck.length, 0);
+  const keep = me.hand.find(c => c.kind === 'guard');
+  assert.equal(resolveChancellor(s, me, keep.id, rng), true);
+  assert.equal(me.hand.length, 1);
+  // The returned Spy is the deck's only card, so the next player draws
+  // it at the start of their turn.
+  assert.equal(s.deck.length, 0);
+  assert.equal(s.turn, 'p1');
+  assert.ok(s.players[1].hand.some(c => c.kind === 'spy'));
+  // Empty deck: the card is played with no effect and the round ends.
+  const s2 = mk(3);
+  const me2 = turnPlayer(s2);
+  s2.deck = [];
+  give(s2, me2.id, ['guard', 'chancellor']);
+  assert.equal(playCard(s2, me2, me2.hand.find(c => c.kind === 'chancellor').id, rng), true);
+  assert.equal(s2.pendingAction, null);
+  assert.equal(s2.lastPlay.outcome, 'no-target');
+  assert.equal(s2.phase, 'roundEnd'); // deck empty → showdown
+});
+
+t('Chancellor: the Countess rule does NOT apply to its draws', () => {
+  const s = mk(3);
+  const me = turnPlayer(s);
+  give(s, me.id, ['countess', 'chancellor']);
+  assert.equal(playCard(s, me, me.hand.find(c => c.kind === 'chancellor').id, rng), true);
+  assert.equal(me.hand.length, 3);
+  // Force the drawn cards to be King + Guard: keep the King, return the
+  // Countess to the bottom of the deck — legal only because the Countess
+  // rule does not trigger on Chancellor draws.
+  me.hand = [
+    { id: 'c-ct', kind: 'countess', value: 8 },
+    { id: 'c-k', kind: 'king', value: 7 },
+    { id: 'c-g', kind: 'guard', value: 1 },
+  ];
+  assert.equal(resolveChancellor(s, me, 'c-k', rng), true);
+  assert.deepEqual(me.hand.map(c => c.kind), ['king']);
+  assert.ok(s.deck.slice(0, 2).some(c => c.kind === 'countess'));
+  assert.equal(me.inRound, true);
+});
+
+t('Chancellor: resolve rejects the wrong card or the wrong player', () => {
+  const s = mk(3);
+  const me = turnPlayer(s);
+  give(s, me.id, ['guard', 'chancellor']);
+  assert.equal(playCard(s, me, me.hand.find(c => c.kind === 'chancellor').id, rng), true);
+  assert.equal(resolveChancellor(s, me, 'not-a-card', rng), false);
+  assert.equal(resolveChancellor(s, s.players[1], me.hand[0].id, rng), false);
+  assert.ok(s.pendingAction && s.pendingAction.type === 'chancellor');
+});
+
+t('cancelPending on a Chancellor returns the extra cards to the deck', () => {
+  const s = mk(3);
+  const me = turnPlayer(s);
+  const deckBefore = s.deck.length;
+  give(s, me.id, ['guard', 'chancellor']);
+  assert.equal(playCard(s, me, me.hand.find(c => c.kind === 'chancellor').id, rng), true);
+  assert.equal(me.hand.length, 3);
+  cancelPending(s);
+  assert.equal(s.pendingAction, null);
+  assert.equal(me.hand.length, 1);
+  assert.equal(me.hand[0].kind, 'guard'); // the card held before the draw
+  assert.equal(s.deck.length, deckBefore);
+});
+
+t('autoTurn on a Chancellor pending keeps the highest-value card', () => {
+  const s = mk(3);
+  const me = turnPlayer(s);
+  give(s, me.id, ['guard', 'chancellor']);
+  assert.equal(playCard(s, me, me.hand.find(c => c.kind === 'chancellor').id, rng), true);
+  me.hand = [
+    { id: 'a-spy', kind: 'spy', value: 0 },
+    { id: 'a-kg', kind: 'king', value: 7 },
+    { id: 'a-gd', kind: 'guard', value: 1 },
+  ];
+  autoTurn(s, rng);
+  assert.equal(s.pendingAction, null);
+  assert.deepEqual(me.hand.map(c => c.kind), ['king']);
+});
+
+t('Spy favor: the only in-round Spy player gains +1 token at round end', () => {
+  const s = mk(3);
+  const me = turnPlayer(s);
+  // p1 will win the round; p2 played the only Spy and stays in.
+  give(s, 'p2', ['guard']);
+  s.players[2].discardPile = [{ id: 'spy-1', kind: 'spy', value: 0 }];
+  s.deck = [];
+  give(s, me.id, ['guard', 'countess']);
+  give(s, 'p1', ['king']);
+  assert.equal(playCard(s, me, me.hand.find(c => c.kind === 'countess').id, rng), true);
+  assert.equal(s.phase, 'roundEnd');
+  assert.deepEqual(s.roundWinners, ['p1']);
+  assert.equal(s.roundResult.spyFavorId, 'p2');
+  assert.equal(s.players[2].tokens, 1); // Spy favor, not a round win
+  assert.equal(s.players[2].roundWins, 0);
+  assert.equal(s.players[1].tokens, 1);
+});
+
+t('Spy favor: two Spy players cancel each other; an out Spy earns nothing', () => {
+  const s = mk(3);
+  const me = turnPlayer(s);
+  s.players[1].discardPile = [{ id: 'spy-1', kind: 'spy', value: 0 }];
+  s.players[2].discardPile = [{ id: 'spy-2', kind: 'spy', value: 0 }];
+  s.deck = [];
+  give(s, me.id, ['guard', 'countess']);
+  give(s, 'p1', ['king']);
+  give(s, 'p2', ['guard']);
+  assert.equal(playCard(s, me, me.hand.find(c => c.kind === 'countess').id, rng), true);
+  assert.equal(s.roundResult.spyFavorId, null);
+  assert.equal(s.players[1].tokens, 1); // round winner only
+  assert.equal(s.players[2].tokens, 0);
+  // Out of the round: a Spy in the discard pile of a knocked-out player
+  // does not count — they are not "still in the round".
+  const s2 = mk(3);
+  const me2 = turnPlayer(s2);
+  s2.players[1].inRound = false; // knocked out earlier, holding a Spy in the pile
+  s2.players[1].discardPile = [{ id: 'spy-1', kind: 'spy', value: 0 }];
+  s2.deck = [];
+  give(s2, me2.id, ['guard', 'countess']);
+  give(s2, 'p2', ['king']);
+  assert.equal(playCard(s2, me2, me2.hand.find(c => c.kind === 'countess').id, rng), true);
+  assert.equal(s2.roundResult.spyFavorId, null);
+  assert.equal(s2.players[1].tokens, 0);
+});
+
+t('Spy favor: the round winner who also played the only Spy gains +2', () => {
+  const s = mk(3);
+  const me = turnPlayer(s);
+  give(s, 'p1', ['guard']);
+  give(s, 'p2', ['guard']);
+  s.deck = [];
+  give(s, me.id, ['king', 'countess']);
+  me.discardPile = [{ id: 'spy-1', kind: 'spy', value: 0 }];
+  assert.equal(playCard(s, me, me.hand.find(c => c.kind === 'countess').id, rng), true);
+  assert.deepEqual(s.roundWinners, ['p0']);
+  assert.equal(s.roundResult.spyFavorId, 'p0');
+  assert.equal(me.tokens, 2);
+  assert.equal(me.roundWins, 1);
+});
+
+t('Spy favor can reach the token target and end the game', () => {
+  const s = mk(2, { quickMode: true }); // target 3
+  const me = turnPlayer(s);
+  me.tokens = 2;
+  s.players[1].tokens = 0;
+  give(s, 'p1', ['king']);
+  me.discardPile = [{ id: 'spy-1', kind: 'spy', value: 0 }];
+  s.deck = [];
+  give(s, me.id, ['guard', 'countess']);
+  assert.equal(playCard(s, me, me.hand.find(c => c.kind === 'countess').id, rng), true);
+  // p1 wins the round (king 7 > guard 1) but p0's Spy favor takes p0 to 3.
+  assert.deepEqual(s.roundWinners, ['p1']);
+  assert.equal(s.roundResult.spyFavorId, 'p0');
+  assert.equal(me.tokens, 3);
+  assert.equal(s.phase, 'results');
+  assert.equal(s.sessionWinner, 'p0');
+});
+
+t('Guard may guess Spy and Chancellor; a Spy in hand is a legal guess', () => {
+  const s = mk(3);
+  const me = turnPlayer(s);
+  give(s, 'p1', ['spy']);
+  assert.equal(playKind(s, 'guard'), true);
+  assert.equal(chooseTarget(s, me, 'p1', 'spy', rng), true);
+  assert.equal(s.lastPlay.outcome, 'hit');
+  assert.equal(s.players[1].inRound, false);
+  const s2 = mk(3);
+  const me2 = turnPlayer(s2);
+  give(s2, 'p1', ['chancellor']);
+  assert.equal(playKind(s2, 'guard'), true);
+  assert.equal(chooseTarget(s2, me2, 'p1', 'chancellor', rng), true);
+  assert.equal(s2.lastPlay.outcome, 'hit');
+});
+
+t('six players: setup deals 6 hands and the token target is 3', () => {
+  const s = mk(6);
+  assert.equal(s.players.length, 6);
+  assert.equal(s.tokensToWin, 3);
+  assert.equal(s.deck.length, 21 - 1 - 6 - 1);
+  assert.equal(turnPlayer(s).hand.length, 2);
 });

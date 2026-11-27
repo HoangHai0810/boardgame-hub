@@ -47,7 +47,7 @@ export function MeoCard({ kind, name, ability, size = 'md' }: {
       <span className={`block mx-1.5 rounded-lg overflow-hidden border-2 border-white/70 ${artH}`}>
         <img src={CAT_ART[kind] ?? CAT_ART.cat} alt={name} className="w-full h-full object-cover" draggable={false} />
       </span>
-      <span className={`block mx-1.5 mt-1 mb-1 rounded-md bg-[#FFFBef] text-[#2B2016] font-bold text-center px-1 py-0.5 line-clamp-2 ${abCls}`}>{ability}</span>
+      <span className={`mx-1.5 mt-1 mb-1 rounded-md bg-[#FFFBef] text-[#2B2016] font-bold text-center px-1 py-0.5 line-clamp-2 ${abCls}`}>{ability}</span>
       {size !== 'sm' && (
         <span className="block text-right pr-1.5 pb-0.5 text-[9px] font-extrabold text-white/75 uppercase tracking-wide" style={{ transform: 'rotate(180deg)', transformOrigin: 'center' }}>{name}</span>
       )}

@@ -4,29 +4,35 @@
 // (GAME_NOT_SUPPORTED); the public MQTT/PeerJS transports use the browser
 // host engine.
 //
-// Classic Love Letter (AEG 2012, 16 cards), 2–4 players. Each round you
-// hold one secret card; on your turn you draw one and play one, resolving
-// its effect. Guard guesses a hand, Priest peeks, Baron compares, Handmaid
-// protects, Prince forces a discard + redraw, King trades hands, Countess
-// must be discarded when held with the King or Prince, and discarding the
-// Princess knocks you out. The round ends when one player is left, or when
-// the deck runs out — highest hand wins, ties broken by discard-pile total,
-// still tied → all tied players win. Tokens of affection: 2p = 7, 3p = 5,
-// 4p = 4 (quick mode: 3 for everyone).
-export type CardKind = 'guard' | 'priest' | 'baron' | 'handmaid' | 'prince' | 'king' | 'countess' | 'princess';
+// Love Letter, Z-Man 2019 revised edition (21 cards), 2–6 players — the
+// edition on the reference card Hải Anh sent (photo 2026-11-27). Each round
+// you hold one secret card; on your turn you draw one and play one,
+// resolving its effect. Spy (0) has no effect but earns a favor if you are
+// the only player still in the round who played or discarded one. Guard
+// guesses a hand (never the Guard), Priest peeks, Baron compares, Handmaid
+// protects, Prince forces a discard + redraw (self allowed), Chancellor
+// draws 2 and keeps 1 (the other 2 go to the bottom of the deck), King
+// trades hands, Countess must be discarded when held with the King or
+// Prince, and discarding the Princess knocks you out. The round ends when
+// one player is left, or when the deck runs out — highest hand wins, and a
+// tie means ALL tied players win (no discard-pile tiebreak in this
+// edition). Favor tokens to win: 2p = 6, 3p = 5, 4p = 4, 5p = 3, 6p = 3
+// (quick mode: 3 for everyone). The 16-card classic version (remove 1
+// Guard + 2 Chancellors + 2 Spies) is NOT a separate mode in v1.
+export type CardKind = 'spy' | 'guard' | 'priest' | 'baron' | 'handmaid' | 'prince' | 'chancellor' | 'king' | 'countess' | 'princess';
 export type Phase = 'lobby' | 'playing' | 'roundEnd' | 'results';
-export type PendingType = 'guard' | 'priest' | 'baron' | 'king' | 'prince';
+export type PendingType = 'guard' | 'priest' | 'baron' | 'king' | 'prince' | 'chancellor';
 
 export const MIN_PLAYERS = 2;
-export const MAX_PLAYERS = 4;
+export const MAX_PLAYERS = 6;
 export const CARD_VALUE: Record<CardKind, number> = {
-  guard: 1, priest: 2, baron: 3, handmaid: 4, prince: 5, king: 6, countess: 7, princess: 8,
+  spy: 0, guard: 1, priest: 2, baron: 3, handmaid: 4, prince: 5, chancellor: 6, king: 7, countess: 8, princess: 9,
 };
 export const CARD_COUNT: Record<CardKind, number> = {
-  guard: 5, priest: 2, baron: 2, handmaid: 2, prince: 2, king: 1, countess: 1, princess: 1,
+  spy: 2, guard: 6, priest: 2, baron: 2, handmaid: 2, prince: 2, chancellor: 2, king: 1, countess: 1, princess: 1,
 };
 /** Cards a Guard may name (never the Guard itself). */
-export const GUESSABLE: CardKind[] = ['priest', 'baron', 'handmaid', 'prince', 'king', 'countess', 'princess'];
+export const GUESSABLE: CardKind[] = ['spy', 'priest', 'baron', 'handmaid', 'prince', 'chancellor', 'king', 'countess', 'princess'];
 
 export interface Config { turnSeconds: 30 | 60 | 90; quickMode: boolean }
 export const DEFAULT_CONFIG: Config = { turnSeconds: 60, quickMode: false };
@@ -42,14 +48,16 @@ export interface Player {
 
 export type LastPlayOutcome =
   | 'hit' | 'miss' | 'peek' | 'win' | 'lose' | 'tie' | 'trade'
-  | 'redraw' | 'princess' | 'no-target' | 'none';
+  | 'redraw' | 'princess' | 'chancellor' | 'no-target' | 'none';
 export interface LastPlay {
   by: string; card: CardKind; targetId?: string; guess?: CardKind; outcome: LastPlayOutcome;
 }
 export interface RoundResult {
-  reason: 'last-standing' | 'showdown' | 'showdown-tiebreak' | 'showdown-tie';
+  reason: 'last-standing' | 'showdown' | 'showdown-tie';
   /** Hands of the players still in at a deck-empty showdown (public then). */
   hands?: Record<string, Card>;
+  /** The player who gained the Spy favor this round, if exactly one did. */
+  spyFavorId?: string | null;
 }
 
 export interface GameState {
@@ -90,7 +98,7 @@ export function createGame(code: string): GameState {
   };
 }
 
-/** The 16-card deck. ids are unique per physical card. */
+/** The 21-card deck. ids are unique per physical card. */
 export function buildDeck(): Card[] {
   const deck: Card[] = [];
   (Object.keys(CARD_COUNT) as CardKind[]).forEach(kind => {
@@ -106,7 +114,8 @@ export function shuffle<T>(arr: T[], rng: () => number = Math.random): T[] {
 
 export function tokensFor(playerCount: number, quickMode: boolean): number {
   if (quickMode) return 3;
-  return playerCount === 2 ? 7 : playerCount === 3 ? 5 : 4;
+  // 2019 rulebook table: 2p = 6, 3p = 5, 4p = 4, 5p = 3, 6p = 3.
+  return playerCount === 2 ? 6 : playerCount === 3 ? 5 : playerCount === 4 ? 4 : 3;
 }
 
 const byId = (s: GameState, id?: string | null) => s.players.find(p => p.id === id);
@@ -211,18 +220,11 @@ function endTurn(s: GameState, rng: () => number = Math.random): void {
     return;
   }
   if (s.deck.length === 0) {
-    // Showdown: highest hand wins; tie → highest discard-pile total;
-    // still tied → all tied players win.
+    // Showdown (2019 edition): highest hand wins; a tie means ALL tied
+    // players win — there is no discard-pile tiebreak in this edition.
     const best = Math.max(...alivePlayers.map(p => p.hand[0]?.value ?? -1));
-    let tied = alivePlayers.filter(p => (p.hand[0]?.value ?? -1) === best);
-    let reason: RoundResult['reason'] = 'showdown';
-    if (tied.length > 1) {
-      const sum = (p: Player) => p.discardPile.reduce((a, c) => a + c.value, 0);
-      const bestSum = Math.max(...tied.map(sum));
-      const top = tied.filter(p => sum(p) === bestSum);
-      if (top.length < tied.length) { tied = top; reason = 'showdown-tiebreak'; }
-      else reason = 'showdown-tie';
-    }
+    const tied = alivePlayers.filter(p => (p.hand[0]?.value ?? -1) === best);
+    const reason: RoundResult['reason'] = tied.length > 1 ? 'showdown-tie' : 'showdown';
     const hands: Record<string, Card> = {};
     for (const p of alivePlayers) if (p.hand[0]) hands[p.id] = p.hand[0];
     finishRound(s, tied.map(p => p.id), { reason, hands }, rng);
@@ -238,7 +240,24 @@ function finishRound(s: GameState, winnerIds: string[], result: RoundResult, rng
     const p = byId(s, id);
     if (p) { p.tokens++; p.roundWins++; }
   }
+  // Spy favor (2019 rulebook): at the end of the round, if exactly one
+  // player still in the round played or discarded a Spy, they gain one
+  // favor token. Every Spy a player played or discarded this round sits
+  // in their discard pile (a Spy returned to the deck by a Chancellor
+  // does not — it was never played or discarded). This does not count as
+  // winning the round, so no roundWins — but it can take the player to
+  // the token target, even on top of a round win (+2 in one round).
+  const spyPlayers = s.players.filter(p => p.inRound && p.discardPile.some(c => c.kind === 'spy'));
+  let spyFavorId: string | null = null;
+  if (spyPlayers.length === 1) {
+    spyFavorId = spyPlayers[0].id;
+    spyPlayers[0].tokens++;
+  }
+  s.roundResult.spyFavorId = spyFavorId;
   const reached = winnerIds.filter(id => (byId(s, id)?.tokens ?? 0) >= s.tokensToWin);
+  if (spyFavorId && (byId(s, spyFavorId)?.tokens ?? 0) >= s.tokensToWin && !reached.includes(spyFavorId)) {
+    reached.push(spyFavorId);
+  }
   s.turn = null; s.turnEndsAt = null; s.pendingAction = null;
   if (reached.length) {
     // House rule for the vanishingly rare double-reach: the first winner
@@ -281,6 +300,23 @@ export function playCard(s: GameState, player: Player, cardId: string, rng: () =
       if (card.kind === 'handmaid') player.protected = true;
       endTurn(s, rng);
       return true;
+    case 'chancellor': {
+      // Draw two cards from the deck into the hand (one if only one is
+      // left, none if the deck is empty — then the card has no effect).
+      // The actor then keeps one of the cards in hand and returns the
+      // rest facedown to the bottom of the deck (resolveChancellor).
+      const drawn: Card[] = [];
+      for (let i = 0; i < 2; i++) { const c = s.deck.pop(); if (c) drawn.push(c); }
+      if (!drawn.length) {
+        s.lastPlay.outcome = 'no-target';
+        endTurn(s, rng);
+        return true;
+      }
+      player.hand.push(...drawn);
+      s.pendingAction = { type: 'chancellor', actorId: player.id, cardId: card.id };
+      s.turnEndsAt = Date.now() + s.config.turnSeconds * 1000;
+      return true;
+    }
     default: {
       const type = card.kind as PendingType;
       const targets = validTargets(s, player, type);
@@ -307,6 +343,7 @@ export function chooseTarget(
 ): boolean {
   const pending = s.pendingAction;
   if (!pending || s.phase !== 'playing' || pending.actorId !== player.id) return false;
+  if (pending.type === 'chancellor') return false; // resolved by resolveChancellor
   const target = byId(s, targetId);
   if (!target) return false;
   if (!validTargets(s, player, pending.type).some(p => p.id === targetId)) return false;
@@ -374,6 +411,54 @@ export function chooseTarget(
  *  held with King/Prince) and any effect it opens is resolved with a
  *  random valid target — Guard with a random guess, Prince possibly on
  *  themself. */
+
+/** Resolve an open Chancellor: the actor keeps one card from their hand
+ *  (3 cards, or 2 when only one was drawn) and the rest go facedown to
+ *  the bottom of the deck, in hand order. The Countess rule does NOT
+ *  apply here — the rulebook is explicit that it does not trigger when
+ *  you draw cards for other effects, so the Countess may be returned to
+ *  the deck. A Priest peek at the actor goes stale only if the seen card
+ *  is one of the returned cards. */
+export function resolveChancellor(
+  s: GameState, player: Player, keepCardId: string,
+  rng: () => number = Math.random,
+): boolean {
+  const pending = s.pendingAction;
+  if (!pending || pending.type !== 'chancellor' || s.phase !== 'playing' || pending.actorId !== player.id) return false;
+  const keep = player.hand.find(c => c.id === keepCardId);
+  if (!keep) return false;
+  const returned = player.hand.filter(c => c.id !== keepCardId);
+  player.hand = [keep];
+  // The deck's top is its END (pop); the bottom is index 0.
+  s.deck.unshift(...returned);
+  for (const viewerId of Object.keys(s.seenHands)) {
+    const seen = s.seenHands[viewerId];
+    if (seen.targetId === player.id && seen.card.id !== keepCardId) delete s.seenHands[viewerId];
+  }
+  s.pendingAction = null;
+  if (s.lastPlay) s.lastPlay.outcome = 'chancellor';
+  endTurn(s, rng);
+  return true;
+}
+
+/** Clear an open pending effect without resolving it (the actor left
+ *  mid-effect). For a Chancellor the extra drawn cards go back to the
+ *  bottom of the deck — the actor keeps only the card they held before
+ *  the draw — so the one-card hand invariant survives the fizzle. */
+export function cancelPending(s: GameState): void {
+  const pending = s.pendingAction;
+  if (!pending) return;
+  if (pending.type === 'chancellor') {
+    const actor = byId(s, pending.actorId);
+    if (actor && actor.hand.length > 1) {
+      const [first, ...rest] = actor.hand;
+      actor.hand = [first];
+      s.deck.unshift(...rest);
+    }
+  }
+  s.pendingAction = null;
+}
+
 export function autoTurn(s: GameState, rng: () => number = Math.random): void {
   if (s.phase !== 'playing' || !s.turn) return;
   const me = byId(s, s.turn);
@@ -391,6 +476,13 @@ function autoResolvePending(s: GameState, rng: () => number = Math.random): void
   if (!pending) return;
   const actor = byId(s, pending.actorId);
   if (!actor) { s.pendingAction = null; advanceTurn(s); return; }
+  if (pending.type === 'chancellor') {
+    // Sensible default: keep the highest-value card in hand.
+    const best = [...actor.hand].sort((a, b) => b.value - a.value)[0];
+    if (best) resolveChancellor(s, actor, best.id, rng);
+    else { s.pendingAction = null; endTurn(s, rng); }
+    return;
+  }
   const targets = validTargets(s, actor, pending.type);
   if (!targets.length) { s.pendingAction = null; endTurn(s, rng); return; }
   const target = targets[Math.floor(rng() * targets.length)];
