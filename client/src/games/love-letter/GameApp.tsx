@@ -156,6 +156,13 @@ export default function LoveLetterApp() {
   // Priest peek modal: shown once per new peek.
   const [peekOpen, setPeekOpen] = useState(false);
   const peekKeyRef = useRef('');
+  // Elimination verdict (v50): staged per market research — brief red pulse on
+  // the eliminated seat, face-up hand, one-line cause, then spectate.
+  const [elimOpen, setElimOpen] = useState(false);
+  const [elimInfo, setElimInfo] = useState<{ cause: string; cards: Card[] } | null>(null);
+  const [elimFlashId, setElimFlashId] = useState<string | null>(null);
+  const prevInRoundRef = useRef<boolean | null>(null);
+  const myHandRef = useRef<Card[]>([]);
   // Optimistic UI: the played card fades out at once (6s fallback).
   const [optPlayed, setOptPlayed] = useState<string | null>(null);
   useEffect(() => { if (!optPlayed) return; const t = setTimeout(() => setOptPlayed(null), 6000); return () => clearTimeout(t); }, [optPlayed]);
@@ -163,7 +170,7 @@ export default function LoveLetterApp() {
   const [seenChat, setSeenChat] = useState(0);
   const unreadChat = Math.max(0, (pub?.chat.length ?? 0) - seenChat);
   useEffect(() => { setSeenChat(pub?.chat.length ?? 0); }, [pub?.phase]);
-  useEffect(() => { setOptPlayed(null); setPickOpen(false); setPickTarget(null); setPickGuess(null); setChancellorOpen(false); setKeepPick(null); }, [pub?.phase]);
+  useEffect(() => { setOptPlayed(null); setPickOpen(false); setPickTarget(null); setPickGuess(null); setChancellorOpen(false); setKeepPick(null); setElimOpen(false); }, [pub?.phase]);
   useEffect(() => {
     if (optPlayed && priv && !priv.myHand.some(c => c.id === optPlayed)) setOptPlayed(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -400,6 +407,44 @@ export default function LoveLetterApp() {
     }
   };
 
+  // Elimination verdict (v50): remember the hand I held while still in the
+  // round — the server discards it face-up the moment I am out, so the
+  // private hand is empty by the time the public state arrives.
+  useEffect(() => { if (me?.inRound && myHand.length) myHandRef.current = myHand; }, [myHand, me?.inRound]);
+  // When *I* drop out of the round, stage the verdict card: one-line cause
+  // (the last play), my hand flipped face-up, then spectate. A new round
+  // (inRound back to true) clears it.
+  useEffect(() => {
+    if (phase !== 'playing' || !me) return;
+    const was = prevInRoundRef.current;
+    prevInRoundRef.current = me.inRound;
+    if (me.inRound) { setElimOpen(false); return; }
+    if (was === true && me.inRound === false) {
+      setElimInfo({ cause: playText(pub?.lastPlay) ?? '', cards: myHandRef.current });
+      setElimOpen(true);
+      sfx('pop', muted);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.inRound, phase]);
+  // Brief red ring pulse on ANY seat that just got eliminated.
+  const prevRoundMap = useRef<Record<string, boolean>>({});
+  useEffect(() => {
+    if (phase !== 'playing' || !pub) return;
+    const prev = prevRoundMap.current;
+    const next: Record<string, boolean> = {};
+    for (const p of pub.players) {
+      next[p.id] = p.inRound;
+      if (prev[p.id] === true && p.inRound === false) setElimFlashId(p.id);
+    }
+    prevRoundMap.current = next;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pub?.players, phase]);
+  useEffect(() => {
+    if (!elimFlashId) return;
+    const t = setTimeout(() => setElimFlashId(null), 1200);
+    return () => clearTimeout(t);
+  }, [elimFlashId]);
+
   const shareText = () => {
     const lines = [`💌 ${d.title} — ${playerName(pub?.sessionWinner)} ${d.winner}`];
     if (myRecord.w + myRecord.l > 0) lines.push('📊 ' + d.recordLine(myRecord.w, myRecord.l, myRecord.tokens));
@@ -490,7 +535,7 @@ export default function LoveLetterApp() {
               <button className="font-bold text-sm text-[#8A7B63] underline" onClick={() => setShowHelp(true)}>{d.viewCards}</button>
             </p>
           </div>
-          {showHelp && <HelpModal d={d} onClose={() => setShowHelp(false)} />}
+        {showHelp && <HelpModal d={d} onClose={() => setShowHelp(false)} />}
         </div>
       </div>
     );
@@ -498,7 +543,7 @@ export default function LoveLetterApp() {
 
   return (
     <div className={`min-h-dvh ${tone === 'navy' ? 'bg-[#14142B] text-[#FFF3CF]' : 'bg-[#FFF3CF] text-[#2B2016]'} transition-colors duration-1000`}>
-      <div className="max-w-3xl lg:max-w-6xl mx-auto px-3 py-4">
+      <div className="max-w-3xl lg:max-w-6xl mx-auto px-3 py-3">
         <TopBar logo={<span className="text-2xl">💌</span>} d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })} voice={voice} tone={tone} />
         {phase !== 'lobby' && (<button className="disp font-extrabold text-[#FFB020] text-sm mb-2" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>)}
         {connLost && <div className="bg-amber-100 border-2 border-amber-400 rounded-2xl px-3 py-2 mb-2 font-bold text-amber-800 text-center">{d.connLost}</div>}
@@ -610,13 +655,20 @@ export default function LoveLetterApp() {
         {phase === 'playing' && pub && (
           <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-4">
             <div className="min-w-0">
+              {/* spectating banner — labelled, with a way out (v50) */}
+              {me && !me.inRound && !elimOpen && (
+                <div className="flex items-center gap-2 bg-[#2B2016] text-[#FFF3CF] rounded-2xl px-3 py-1.5 mb-2 font-bold text-sm">
+                  <span className="flex-1">👀 {d.spectating}</span>
+                  <button className="font-extrabold text-[#FFB020] underline" onClick={() => { location.href = location.pathname; }}>{d.leaveTable}</button>
+                </div>
+              )}
               {/* opponents */}
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {others.map(p => (
-                  <div key={p.id} className={`flex-none rounded-2xl px-2.5 py-1.5 hard-xs min-w-[132px] border-2 border-[#2B2016] bg-[#4A1942] ${pub.turn === p.id ? 'ring-4 ring-amber-400' : ''} ${!p.inRound ? 'opacity-60' : ''}`}>
+                  <div key={p.id} className={`flex-none rounded-2xl px-2 py-1 hard-xs min-w-[132px] border-2 border-[#2B2016] bg-[#4A1942] ${pub.turn === p.id ? 'ring-4 ring-amber-400' : ''} ${!p.inRound ? 'opacity-60' : ''} ${elimFlashId === p.id ? 'anim-elim-flash' : ''}`}>
                     <div className="flex items-center gap-2">
                       <span className="relative flex-none">
-                        <PlayerAvatar avatarId={p.avatar} size={40} fallback={<MouseAvatar seed={p.id} size={40} state={p.inRound ? 'awake' : 'dead'} />} />
+                        <PlayerAvatar avatarId={p.avatar} size={36} fallback={<MouseAvatar seed={p.id} size={36} state={p.inRound ? 'awake' : 'dead'} />} />
                         {speakingIds.has(p.id) && <span className="absolute -bottom-1 -left-1 bg-green-500 text-white text-[10px] rounded-full px-1 shadow">🎙️</span>}
                       </span>
                       <span className="min-w-0">
@@ -631,28 +683,28 @@ export default function LoveLetterApp() {
                 ))}
               </div>
 
-              {/* table */}
-              <div className="mt-2 rounded-[28px] border-[3px] border-[#2B2016] hard p-4" style={{ background: '#7C2D4E' }}>
+              {/* table — glows amber on my turn (turn signal, no text needed) */}
+              <div className={`mt-2 rounded-[28px] border-[3px] border-[#2B2016] hard p-3 ${myTurn ? 'anim-turn-glow' : ''}`} style={{ background: '#7C2D4E' }}>
                 <div className="flex items-center justify-center gap-2 flex-wrap">
                   <span className="disp font-extrabold text-[#FFF3CF] text-lg">
                     {myTurn ? d.yourTurn : d.turnOf(turnPlayer?.name ?? '')}
                   </span>
                   <TimerPill endsAt={pub.turnEndsAt} dark />
+                  <span className="hidden sm:inline font-bold text-[#F3C6D8] text-xs">{d.turnTimeout}</span>
                 </div>
-                <p className="text-center font-bold text-[#F3C6D8] text-xs mt-1">{d.turnTimeout}</p>
-                <div className="flex items-start justify-center gap-4 sm:gap-8 mt-3">
+                <div className="flex items-start justify-center gap-4 sm:gap-8 mt-2">
                   <button data-testid="draw-pile" className="text-center" onClick={() => { /* draw is automatic at turn start */ }}>
-                    <LLCardBack size="lg" />
+                    <LLCardBack size="md" />
                     <span className="block font-extrabold text-[#FFF3CF] text-sm mt-1.5">{d.drawPile} · {pub.deckCount}</span>
                   </button>
                   <div className="text-center">
-                    {pub.setAsidePresent ? <LLCardBack size="lg" /> : <span className="inline-flex w-[92px] h-[134px] items-center justify-center rounded-xl border-[3px] border-dashed border-[#F3C6D8]/60 text-[#F3C6D8] font-bold text-xs text-center px-2">—</span>}
+                    {pub.setAsidePresent ? <LLCardBack size="md" /> : <span className="inline-flex w-[76px] h-[112px] items-center justify-center rounded-xl border-[3px] border-dashed border-[#F3C6D8]/60 text-[#F3C6D8] font-bold text-xs text-center px-2">—</span>}
                     <span className="block font-extrabold text-[#FFF3CF] text-sm mt-1.5">{d.setAside}</span>
                     <span className="block font-bold text-[#F3C6D8] text-xs mt-0.5">{pub.setAsidePresent ? '' : '✓'}</span>
                   </div>
                 </div>
                 {pub.faceUpRemoved.length > 0 && (
-                  <div className="mt-3 text-center">
+                  <div className="mt-2 text-center">
                     <span className="font-bold text-[#F3C6D8] text-xs">{d.removedFaceUp}: </span>
                     <span className="inline-flex gap-1 align-middle">
                       {pub.faceUpRemoved.map(c => <LLCardFace key={c.id} card={c} d={d} size="sm" />)}
@@ -670,9 +722,9 @@ export default function LoveLetterApp() {
                 )}
               </div>
 
-              {/* last play banner */}
+              {/* last play banner — phone only; on laptop the Diễn biến feed shows it */}
               {playText(pub?.lastPlay) && (
-                <div className="mt-2 bg-[#FFFBef] border-2 border-[#E5DCC0] rounded-2xl px-3 py-2 font-bold text-sm text-[#5C4B33]">📜 {playText(pub?.lastPlay)}</div>
+                <div className="mt-2 bg-[#FFFBef] border-2 border-[#E5DCC0] rounded-2xl px-3 py-1.5 font-bold text-[13px] text-[#5C4B33] lg:hidden">📜 {playText(pub?.lastPlay)}</div>
               )}
               {/* my peek memory (private) */}
               {mySeen && (
@@ -682,7 +734,7 @@ export default function LoveLetterApp() {
               )}
 
               {/* my hand */}
-              <div className="mt-3">
+              <div className="mt-2">
                 <div className="flex items-baseline justify-between">
                   <h3 className="disp font-extrabold text-lg">{d.myHand} · {myHand.length} {d.cards}</h3>
                   <span className="font-bold text-[#8A7B63] text-sm">❤ {me?.tokens ?? 0} / {pub.tokensToWin}</span>
@@ -703,7 +755,7 @@ export default function LoveLetterApp() {
                   {myHand.length === 0 && <p className="font-bold text-[#8A7B63] py-6">…</p>}
                 </div>
                 <p className="font-bold text-[#8A7B63] text-sm">{d.playHint}</p>
-                <div className="mt-2 flex items-center gap-2">
+                <div className="mt-1 flex items-center gap-2">
                   <span className="font-bold text-sm text-[#5C4B33] flex-none">{d.myDiscards}:</span>
                   <span className="overflow-x-auto"><DiscardChips pile={me?.discardPile ?? []} /></span>
                 </div>
@@ -811,15 +863,15 @@ export default function LoveLetterApp() {
         {myPending && myPending.type !== 'chancellor' && pickOpen && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setPickOpen(false)}>
             <div className={`${CARD} max-w-sm w-full text-center max-h-[85vh] overflow-auto`} onClick={e => e.stopPropagation()}>
-              <div className="disp font-extrabold text-xl">🎯 {d.chooseTarget}</div>
-              <p className="font-bold text-sm text-[#5C4B33] mt-1">
+              <div className="disp font-extrabold text-lg">🎯 {d.chooseTarget}</div>
+              <p className="font-bold text-[13px] leading-snug text-[#5C4B33] mt-1">
                 {myPending.type === 'guard' ? `${CARD_NAMES.guard} — ${d.effGuard}`
                   : myPending.type === 'priest' ? `${CARD_NAMES.priest} — ${d.effPriest}`
                   : myPending.type === 'baron' ? `${CARD_NAMES.baron} — ${d.effBaron}`
                   : myPending.type === 'king' ? `${CARD_NAMES.king} — ${d.effKing}`
                   : `${CARD_NAMES.prince} — ${d.effPrince}`}
               </p>
-              <div className="flex flex-col gap-2 mt-3 text-left">
+              <div className="flex flex-col gap-1.5 mt-2 text-left">
                 {pub!.players.filter(p => p.id !== joined.playerId || validTargets.some(v => v.id === p.id)).map(p => {
                   const isValid = validTargets.some(v => v.id === p.id);
                   const stateText = !p.inRound ? d.out : p.protected ? d.protected : d.discardedCount(p.discardPile.length);
@@ -827,8 +879,8 @@ export default function LoveLetterApp() {
                     <button key={p.id} data-testid="pick-target" data-player-id={p.id}
                       disabled={!isValid}
                       onClick={() => setPickTarget(p.id)}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-2xl font-extrabold text-sm push text-left ${pickTarget === p.id ? 'bg-[#FFB020] text-[#2B2016] ring-4 ring-[#FFB020]/50' : 'bg-white text-[#2B2016]'} ${!isValid ? 'opacity-50' : ''}`}>
-                      <PlayerAvatar avatarId={p.avatar} size={36} fallback={<MouseAvatar seed={p.id} size={36} state={p.inRound ? 'awake' : 'dead'} />} />
+                      className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-2xl font-extrabold text-sm push text-left ${pickTarget === p.id ? 'bg-[#FFB020] text-[#2B2016] ring-4 ring-[#FFB020]/50' : 'bg-white text-[#2B2016]'} ${!isValid ? 'opacity-50' : ''}`}>
+                      <PlayerAvatar avatarId={p.avatar} size={32} fallback={<MouseAvatar seed={p.id} size={32} state={p.inRound ? 'awake' : 'dead'} />} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
                         <span className="block text-xs font-bold text-[#8A7B63] uppercase">{stateText} · 🃏 {p.handCount}</span>
@@ -840,8 +892,8 @@ export default function LoveLetterApp() {
               </div>
               {myPending.type === 'guard' && (
                 <>
-                  <div className="disp font-extrabold text-lg mt-4">{d.chooseGuess}</div>
-                  <div className="flex flex-col gap-1.5 mt-2 text-left">
+                  <div className="disp font-extrabold text-base mt-3">{d.chooseGuess}</div>
+                  <div className="grid grid-cols-2 gap-1.5 mt-2 text-left">
                     {GUESSABLE.map(k => {
                       const remaining = Math.max(0, CARD_COUNT[k]
                         - (pub?.players ?? []).reduce((n, p) => n + p.discardPile.filter(c => c.kind === k).length, 0)
@@ -850,20 +902,22 @@ export default function LoveLetterApp() {
                       return (
                         <button key={k} data-testid="pick-guess" data-card-kind={k}
                           onClick={() => setPickGuess(k)}
-                          className={`flex items-center gap-3 rounded-xl border-[3px] px-3 py-2 font-extrabold text-sm push ${pickGuess === k ? 'border-[#FFB020] bg-[#FFB020] text-[#2B2016]' : 'border-[#2B2016] text-white'}`}
+                          className={`flex items-center gap-2 rounded-xl border-[3px] px-2 py-1.5 font-extrabold text-[13px] push ${pickGuess === k ? 'border-[#FFB020] bg-[#FFB020] text-[#2B2016]' : 'border-[#2B2016] text-white'}`}
                           style={{ background: pickGuess === k ? undefined : CARD_COLORS[k] }}>
-                          <span className="w-7 h-7 flex-none rounded-full bg-white/95 text-[#2B2016] flex items-center justify-center font-extrabold">{CARD_VALUE[k]}</span>
-                          <span className="flex-1 text-left">{CARD_NAMES[k]}</span>
-                          <span className="text-xs font-bold opacity-90">{d.remaining(remaining)}</span>
-                          {pickGuess === k && <span>✅</span>}
+                          <span className="w-6 h-6 flex-none rounded-full bg-white/95 text-[#2B2016] flex items-center justify-center font-extrabold text-sm">{CARD_VALUE[k]}</span>
+                          <span className="flex-1 text-left truncate min-w-0">{CARD_NAMES[k]}</span>
+                          <span className="text-[11px] font-bold opacity-90 flex-none">{d.remaining(remaining)}</span>
+                          {pickGuess === k && <span className="flex-none">✅</span>}
                         </button>
                       );
                     })}
                   </div>
                 </>
               )}
-              <button data-testid="pick-confirm" className={`${BTN} btn-amber w-full mt-4`} disabled={!pickTarget || (myPending.type === 'guard' && !pickGuess)} onClick={doChooseTarget}>{d.confirmTarget}</button>
-              <button className="font-bold text-sm text-[#8A7B63] underline mt-3" onClick={() => setPickOpen(false)}>{d.cancelPick}</button>
+              <div className="flex gap-2 mt-3">
+                <button data-testid="pick-confirm" className={`${BTN} btn-amber flex-1`} disabled={!pickTarget || (myPending.type === 'guard' && !pickGuess)} onClick={doChooseTarget}>{d.confirmTarget}</button>
+                <button className="px-3 py-2 rounded-2xl font-bold text-sm bg-white border-2 border-[#E5DCC0] text-[#8A7B63] push" onClick={() => setPickOpen(false)}>{d.cancelPick}</button>
+              </div>
             </div>
           </div>
         )}
@@ -897,6 +951,26 @@ export default function LoveLetterApp() {
               <div className="flex justify-center mt-3"><LLCardFace card={mySeen.card} d={d} size="lg" /></div>
               <p className="font-bold text-xs text-[#8A7B63] mt-2">{d.peekNote}</p>
               <button className={`${BTN} btn-amber w-full mt-3`} onClick={() => setPeekOpen(false)}>OK 👍</button>
+            </div>
+          </div>
+        )}
+        {/* Elimination verdict (v50): staged — face-up hand + one-line cause + spectate */}
+        {phase === 'playing' && elimOpen && elimInfo && (
+          <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setElimOpen(false)}>
+            <div data-testid="elim-overlay" className="card-cream max-w-sm w-full text-center p-5 anim-pop" onClick={e => e.stopPropagation()}>
+              <div className="text-5xl">💥</div>
+              <div className="disp font-extrabold text-3xl mt-2 text-[#D63A2F]">{d.elimTitle}</div>
+              {elimInfo.cause && <p className="font-bold text-sm text-[#5C4B33] mt-2">{elimInfo.cause}</p>}
+              {elimInfo.cards.length > 0 && (
+                <div className="flex justify-center gap-2 mt-3">
+                  {elimInfo.cards.map(c => <span key={c.id} className="anim-card-flip"><LLCardFace card={c} d={d} size="md" /></span>)}
+                </div>
+              )}
+              <p className="font-bold text-xs text-[#8A7B63] mt-2">{d.elimHandNote}</p>
+              <div className="flex gap-2 mt-4">
+                <button data-testid="elim-spectate" className={`${BTN} btn-amber flex-1`} onClick={() => setElimOpen(false)}>{d.spectate}</button>
+                <button className="px-3 py-2 rounded-2xl font-bold text-sm bg-white border-2 border-[#E5DCC0] text-[#8A7B63] push" onClick={() => { location.href = location.pathname; }}>{d.leaveTable}</button>
+              </div>
             </div>
           </div>
         )}
