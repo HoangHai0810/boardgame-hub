@@ -24,6 +24,10 @@ const io = new Server(http, { cors: { origin: '*' } });
 // The engine for each game lives in games/<id>/ — only cheese-thief has
 // one today, so the registry is a single-entry set until the next game lands.
 const GAME_IDS = new Set(['cheese-thief']);
+const AVATAR_IDS = new Set(['cat-orange', 'cat-grey', 'mouse', 'fox', 'wolf', 'bear', 'rabbit', 'panda', 'frog', 'owl', 'pig', 'dog']);
+function cleanAvatar(a: unknown): string | undefined {
+  return typeof a === 'string' && AVATAR_IDS.has(a) ? a : undefined;
+}
 const roomKey = (game: string, code: string) => `${game}:${code}`;
 interface Room { game: string; state: GameState; timers: NodeJS.Timeout[]; sockets: Map<string, string>; /* playerId -> socketId */ }
 const rooms = new Map<string, Room>();
@@ -126,7 +130,7 @@ io.on('connection', (socket: Socket) => {
   let room: Room | null = null;
   let player: Player | null = null;
 
-  socket.on('createRoom', ({ game, name, clientId }: { game: string; name: string; clientId: string }, cb: (r: unknown) => void) => {
+  socket.on('createRoom', ({ game, name, clientId, avatar }: { game: string; name: string; clientId: string; avatar?: string }, cb: (r: unknown) => void) => {
     const g = String(game || 'cheese-thief');
     if (!GAME_IDS.has(g)) return cb?.({ ok: false, error: 'GAME_NOT_SUPPORTED' });
     let code = makeRoomCode();
@@ -135,7 +139,7 @@ io.on('connection', (socket: Socket) => {
     state.discussionMs = DISC; // env override (tests) seeds the room option
     room = { game: g, state, timers: [], sockets: new Map() };
     rooms.set(roomKey(g, code), room);
-    player = { id: String(clientId), name: cleanName(name), isHost: true, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, peeks: [], wins: 0 };
+    player = { id: String(clientId), name: cleanName(name), isHost: true, connected: true, avatar: cleanAvatar(avatar), hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, peeks: [], wins: 0 };
     state.players.push(player);
     room.sockets.set(player.id, socket.id);
     socket.join(roomKey(g, code));
@@ -143,13 +147,13 @@ io.on('connection', (socket: Socket) => {
     broadcast(room);
   });
 
-  socket.on('joinRoom', ({ game, code, name, clientId }: { game: string; code: string; name: string; clientId: string }, cb: (r: unknown) => void) => {
+  socket.on('joinRoom', ({ game, code, name, clientId, avatar }: { game: string; code: string; name: string; clientId: string; avatar?: string }, cb: (r: unknown) => void) => {
     const r = rooms.get(roomKey(String(game || 'cheese-thief'), String(code || '').toUpperCase().trim()));
     if (!r) return cb?.({ ok: false, error: 'ROOM_NOT_FOUND' });
     room = r;
     const existing = r.state.players.find(p => p.id === String(clientId));
     if (existing) { // reconnection / session recovery
-      player = existing; player.connected = true;
+      player = existing; player.connected = true; if (cleanAvatar(avatar)) player.avatar = cleanAvatar(avatar);
       r.sockets.set(player.id, socket.id);
       socket.join(roomKey(r.game, r.state.roomCode));
       cb?.({ ok: true, code: r.state.roomCode, playerId: player.id, rejoined: true });
@@ -157,7 +161,7 @@ io.on('connection', (socket: Socket) => {
     }
     if (r.state.phase !== 'lobby') return cb?.({ ok: false, error: 'GAME_STARTED' });
     if (r.state.players.length >= MAX_PLAYERS) return cb?.({ ok: false, error: 'ROOM_FULL' });
-    player = { id: String(clientId), name: cleanName(name), isHost: false, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, peeks: [], wins: 0 };
+    player = { id: String(clientId), name: cleanName(name), isHost: false, connected: true, avatar: cleanAvatar(avatar), hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, peeks: [], wins: 0 };
     r.state.players.push(player);
     r.sockets.set(player.id, socket.id);
     socket.join(roomKey(r.game, r.state.roomCode));

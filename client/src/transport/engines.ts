@@ -15,7 +15,7 @@ export interface EngineLike {
   resumeTimers(): void;
   broadcast(): void;
   dispose?(): void;
-  addPlayer(id: string, name: string, isHost: boolean): any;
+  addPlayer(id: string, name: string, isHost: boolean, avatar?: string): any;
   disconnect(playerId: string): void;
   canAcceptJoin(playerId: string): 'ok' | 'started' | 'full';
   handle(player: any, msg: any): void;

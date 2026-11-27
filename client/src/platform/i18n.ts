@@ -33,6 +33,13 @@ const vi = {
   playable: 'ĐANG CHƠI ĐƯỢC',
   openNow: 'ĐANG MỞ',
   workingOn: 'Đang làm',
+  pickAvatar: 'Chọn avatar của bạn',
+  avatarHint: 'Mọi người sẽ thấy avatar này trong phòng chờ và trên bàn chơi.',
+  avatarBg: 'MÀU NỀN',
+  saveAvatar: 'Lưu avatar',
+  yourName: 'Tên của bạn',
+  back: 'Quay lại',
+  chooseAnimal: 'Chọn nhân vật',
 };
 
 const en: typeof vi = {
@@ -66,6 +73,13 @@ const en: typeof vi = {
   playable: 'PLAYABLE NOW',
   openNow: 'OPEN NOW',
   workingOn: 'In progress',
+  pickAvatar: 'Pick your avatar',
+  avatarHint: 'Everyone will see this avatar in the lobby and at the table.',
+  avatarBg: 'BACKGROUND',
+  saveAvatar: 'Save avatar',
+  yourName: 'Your name',
+  back: 'Back',
+  chooseAnimal: 'Pick a character',
 };
 
 export const t = (lang: Lang) => (lang === 'vi' ? vi : en);

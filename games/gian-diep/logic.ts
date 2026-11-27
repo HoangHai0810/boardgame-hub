@@ -102,7 +102,7 @@ export interface Config { roundMinutes: 6 | 8 | 12; roundsTotal: 3 | 5 | 7; role
 export const DEFAULT_CONFIG: Config = { roundMinutes: 8, roundsTotal: 5, rolesOn: true, pointsOn: true };
 
 export interface Player {
-  id: string; name: string; isHost: boolean; connected: boolean;
+  id: string; name: string; avatar?: string; isHost: boolean; connected: boolean;
   score: number; roundWins: number;
 }
 export interface ChatMsg { fromId: string; fromName: string; text: string; ts: number }
@@ -500,7 +500,7 @@ export function publicState(s: GameState) {
     roundResult: s.roundResult,
     chat: s.chat, feed: s.feed.slice(-20),
     players: s.players.map(p => ({
-      id: p.id, name: p.name, isHost: p.isHost, connected: p.connected,
+      id: p.id, name: p.name, avatar: p.avatar ?? null, isHost: p.isHost, connected: p.connected,
       score: p.score, roundWins: p.roundWins,
     })),
   };

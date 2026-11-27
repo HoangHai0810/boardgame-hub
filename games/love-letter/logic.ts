@@ -35,7 +35,7 @@ export interface Card { id: string; kind: CardKind; value: number }
 export interface ChatMsg { fromId: string; fromName: string; text: string; ts: number }
 
 export interface Player {
-  id: string; name: string; isHost: boolean; connected: boolean;
+  id: string; name: string; avatar?: string; isHost: boolean; connected: boolean;
   hand: Card[]; discardPile: Card[];
   protected: boolean; inRound: boolean; tokens: number; roundWins: number;
 }
@@ -419,7 +419,7 @@ export function publicState(s: GameState) {
     sessionWinner: s.sessionWinner,
     chat: s.chat,
     players: s.players.map(p => ({
-      id: p.id, name: p.name, isHost: p.isHost, connected: p.connected,
+      id: p.id, name: p.name, avatar: p.avatar ?? null, isHost: p.isHost, connected: p.connected,
       handCount: p.hand.length, discardPile: p.discardPile,
       protected: p.protected, inRound: p.inRound,
       tokens: p.tokens, roundWins: p.roundWins,

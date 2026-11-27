@@ -6,6 +6,7 @@ import { sfx, ensureCtx } from '../../transport/sound';
 import { joinVoice, VoiceHandle } from '../../transport/voice';
 import { TopBar, ChatPanel, ChatSheet, chatPreview, RetryDefaultButton } from '../../platform/ui';
 import { MouseAvatar } from '../../platform/avatars';
+import { NoticeBanner, PlayerAvatar } from '../../platform/GameCard';
 import { isPlayable, MIN_PLAYERS, MAX_PLAYERS, COLORS } from '../../../../games/uno/logic';
 import type { Card, Color } from '../../../../games/uno/logic';
 
@@ -48,7 +49,7 @@ function UnoCardFace({ card, size = 'md' }: { card: Card; size?: 'sm' | 'md' | '
   const bg = CARD_COLORS[card.color];
   const symColor = card.color === 'wild' ? '#2B2016' : bg;
   return (
-    <span className={`relative inline-flex flex-none items-center justify-center rounded-xl border-[3px] border-[#2B2016] overflow-hidden ${box}`} style={{ background: bg }}>
+    <span className={`relative inline-flex flex-none items-center justify-center rounded-xl border-[3px] border-white overflow-hidden ${box}`} style={{ background: bg, boxShadow: '0 3px 0 rgba(43,32,22,0.9), 0 8px 18px rgba(0,0,0,0.35)' }}>
       {card.color === 'wild' ? (
         <span className="absolute inset-[7px] rounded-[10px] overflow-hidden grid grid-cols-2 grid-rows-2 rotate-[-18deg] scale-110">
           <span style={{ background: '#D63A2F' }} /><span style={{ background: '#FFB020' }} />
@@ -68,9 +69,9 @@ function UnoCardFace({ card, size = 'md' }: { card: Card; size?: 'sm' | 'md' | '
 function UnoCardBack({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
   const box = size === 'lg' ? 'w-[76px] h-[110px]' : size === 'sm' ? 'w-[52px] h-[76px]' : 'w-[62px] h-[90px]';
   return (
-    <span className={`relative inline-flex flex-none items-center justify-center rounded-xl border-[3px] border-[#2B2016] ${box}`} style={{ background: '#D63A2F' }}>
-      <span className="absolute inset-x-[7px] top-1/2 -translate-y-1/2 h-[46%] bg-white rounded-[50%] rotate-[-24deg]" />
-      <span className="relative disp font-extrabold text-lg" style={{ color: '#D63A2F' }}>UNO</span>
+    <span className={`relative inline-flex flex-none items-center justify-center rounded-xl border-[3px] border-white ${box}`} style={{ background: '#2B2016', boxShadow: '0 3px 0 rgba(43,32,22,0.9), 0 8px 18px rgba(0,0,0,0.35)' }}>
+      <span className="absolute inset-x-[7px] top-1/2 -translate-y-1/2 h-[46%] bg-[#D63A2F] rounded-[50%] rotate-[-24deg]" />
+      <span className="relative disp font-extrabold italic text-lg" style={{ color: '#FFB020' }}>UNO</span>
     </span>
   );
 }
@@ -116,6 +117,7 @@ export default function UnoApp() {
   useEffect(() => { if (!optPlayed) return; const t = setTimeout(() => setOptPlayed(null), 6000); return () => clearTimeout(t); }, [optPlayed]);
   useEffect(() => { if (!optDrew) return; const t = setTimeout(() => setOptDrew(false), 6000); return () => clearTimeout(t); }, [optDrew]);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [ackOneCard, setAckOneCard] = useState('');
   const [seenChat, setSeenChat] = useState(0);
   const unreadChat = Math.max(0, (pub?.chat.length ?? 0) - seenChat);
   useEffect(() => { setSeenChat(pub?.chat.length ?? 0); }, [pub?.phase]);
@@ -315,7 +317,7 @@ export default function UnoApp() {
   };
 
   /* ---------- shared bits ---------- */
-  const tone = phase === 'results' ? 'navy' : 'cream';
+  const tone = phase === 'results' || phase === 'playing' ? 'navy' : 'cream';
   const connected = pub?.players.filter(p => p.connected).length ?? 0;
   const playerName = (id?: string | null) => pub?.players.find(p => p.id === id)?.name ?? '';
   const others = pub?.players.filter(p => p.id !== joined?.playerId) ?? [];
@@ -448,7 +450,7 @@ export default function UnoApp() {
               <div className="grid grid-cols-4 gap-2 my-3">
                 {pub!.players.map(p => (
                   <div key={p.id} className={`rounded-2xl p-2 text-center hard-xs ${p.id === joined.playerId ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'}`}>
-                    <span className="mx-auto block w-fit"><MouseAvatar seed={p.id} size={48} state="awake" /></span>
+                    <span className="mx-auto block w-fit"><PlayerAvatar avatarId={p.avatar} size={48} fallback={<MouseAvatar seed={p.id} size={48} state="awake" />} /></span>
                     <span className="block font-bold truncate text-sm mt-0.5 text-[#2B2016]">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
                     {p.isHost && <span className="text-amber-600 text-xs font-extrabold whitespace-nowrap">👑 {d.host}</span>}
                     {!p.connected && <span className="text-red-500 text-xs font-bold"> • {d.offline}</span>}
@@ -481,12 +483,18 @@ export default function UnoApp() {
         {phase === 'playing' && pub && (
           <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-4">
             <div className="min-w-0">
+              {/* One-card warning (design Uno3): stays until I tap "Đã hiểu" */}
+              {pub.unoPending && pub.unoPending !== joined.playerId && ackOneCard !== `${pub.unoPending}:${pub.round}` && (
+                <NoticeBanner
+                  text={d.oneCardBanner(unoPendingPlayer?.name ?? '')}
+                  ackLabel={d.gotIt} onAck={() => setAckOneCard(`${pub.unoPending}:${pub.round}`)} tone="red" />
+              )}
               {/* opponents */}
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {others.map(p => (
                   <div key={p.id} className={`flex-none flex items-center gap-2 rounded-2xl px-2.5 py-1.5 hard-xs ${pub.turn === p.id ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'}`}>
                     <span className="relative flex-none">
-                      <MouseAvatar seed={p.id} size={40} state="awake" />
+                      <PlayerAvatar avatarId={p.avatar} size={40} fallback={<MouseAvatar seed={p.id} size={40} state="awake" />} />
                       {speakingIds.has(p.id) && <span className="absolute -bottom-1 -left-1 bg-green-500 text-white text-[10px] rounded-full px-1 shadow">🎙️</span>}
                     </span>
                     <span className="min-w-0">
@@ -498,7 +506,7 @@ export default function UnoApp() {
               </div>
 
               {/* table */}
-              <div className="mt-2 rounded-[28px] border-[3px] border-[#2B2016] hard p-4" style={{ background: '#0E7C5B' }}>
+              <div className="mt-2 rounded-[28px] border-[3px] border-[#2B2016] hard p-4" style={{ background: '#14142B' }}>
                 <div className="flex items-center justify-center gap-2 flex-wrap">
                   <span className="disp font-extrabold text-[#FFF3CF] text-lg">
                     {myTurn ? d.yourTurn : d.turnOf(turnPlayer?.name ?? '')}
@@ -550,6 +558,9 @@ export default function UnoApp() {
                 )}
               </div>
 
+              {/* Special-card legend (design Uno3) */}
+              <div className="mt-2 bg-[#23233F] border-2 border-[#FFB020] rounded-2xl px-3 py-2 font-bold text-[13px] leading-snug text-[#FFF3CF]">{d.cardLegend}</div>
+
               {/* UNO row */}
               {pub.unoPending && (
                 <div className="mt-2">
@@ -574,7 +585,7 @@ export default function UnoApp() {
               <div className="mt-3">
                 <div className="flex items-baseline justify-between">
                   <h3 className="disp font-extrabold text-lg">{lang === 'vi' ? 'Bài của bạn' : 'Your hand'} · {(priv?.myHand.length ?? 0)} {d.cards}</h3>
-                  <span className="font-bold text-[#8A7B63] text-sm">{myTurn ? d.yourTurn : ''}</span>
+                  <span className="font-bold text-[#B9BCE0] text-sm">{myTurn ? d.yourTurn : ''}</span>
                 </div>
                 <div className="flex gap-1 overflow-x-auto pb-2 pt-2 -mx-1 px-1">
                   {(priv?.myHand ?? []).map((c, hi) => {
@@ -591,7 +602,7 @@ export default function UnoApp() {
                   })}
                   {(priv?.myHand.length ?? 0) === 0 && <p className="font-bold text-[#8A7B63] py-6">…</p>}
                 </div>
-                <p className="font-bold text-[#8A7B63] text-sm">{lang === 'vi' ? 'Chạm vào lá trùng màu / số / ký hiệu với lá trên cùng để đánh.' : 'Tap a card matching the top discard by color, number or symbol to play it.'}</p>
+                <p className="font-bold text-[#B9BCE0] text-sm">{lang === 'vi' ? 'Chạm vào lá trùng màu / số / ký hiệu với lá trên cùng để đánh.' : 'Tap a card matching the top discard by color, number or symbol to play it.'}</p>
               </div>
               {chatPreviewBar}
             </div>
@@ -609,7 +620,7 @@ export default function UnoApp() {
               <div className="mt-2 space-y-1.5">
                 {[...pub.players].sort((a, b) => b.points - a.points || b.wins - a.wins).map(p => (
                   <div key={p.id} className="flex items-center gap-2 font-bold">
-                    <span className="flex-none"><MouseAvatar seed={p.id} size={36} state="awake" /></span>
+                    <span className="flex-none"><PlayerAvatar avatarId={p.avatar} size={36} fallback={<MouseAvatar seed={p.id} size={36} state="awake" />} /></span>
                     <span className="flex-1 truncate">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}{p.id === pub.winner ? ' 👑' : ''}</span>
                     <span className="text-sm">🏆 {p.wins} · ⭐ {p.points} {d.points}</span>
                   </div>
@@ -639,6 +650,7 @@ export default function UnoApp() {
             <div className={`${CARD} max-w-xs w-full text-center`} onClick={e => e.stopPropagation()}>
               <div className="disp font-extrabold text-xl">{d.pickColor}</div>
               <div className="flex justify-center mt-3"><UnoCardFace card={wildPick} size="lg" /></div>
+              {wildPick.kind === 'wild4' && <p className="font-bold text-sm text-[#5C4B33] mt-2">{d.wild4Note}</p>}
               <div className="grid grid-cols-2 gap-2 mt-4">
                 {COLORS.map(c => (
                   <button key={c} data-testid="color-pick" data-color={c} onClick={() => doPlay(wildPick, c)}

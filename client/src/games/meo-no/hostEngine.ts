@@ -80,10 +80,10 @@ export class HostEngine {
       });
     }
   }
-  addPlayer(id: string, name: string, isHost: boolean): Player {
+  addPlayer(id: string, name: string, isHost: boolean, avatar?: string): Player {
     let p = this.state.players.find(x => x.id === id);
-    if (p) { p.connected = true; return p; }
-    p = { id, name: cleanName(name), isHost, connected: true, hand: [], wins: 0, alive: true, explodedTurn: null };
+    if (p) { p.connected = true; if (avatar) p.avatar = avatar; return p; }
+    p = { id, name: cleanName(name), isHost, connected: true, hand: [], wins: 0, alive: true, explodedTurn: null, avatar };
     this.state.players.push(p); return p;
   }
   startRound() {

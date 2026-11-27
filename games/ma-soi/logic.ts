@@ -29,7 +29,7 @@ export interface Peek { targetId: string; isWolf: boolean }
 export interface RoleConfig { wolves: number; witch: boolean; hunter: boolean }
 
 export interface Player {
-  id: string; name: string; isHost: boolean; connected: boolean;
+  id: string; name: string; avatar?: string; isHost: boolean; connected: boolean;
   /** Engine-side bot player (no network connection, driven by the host). */
   isBot?: boolean;
   role?: Role; alive: boolean;
@@ -358,7 +358,7 @@ export function publicState(s: GameState) {
     winner: s.winner,
     roleOverrides: s.roleOverrides,
     players: s.players.map(p => ({
-      id: p.id, name: p.name, isHost: p.isHost, connected: p.connected, isBot: !!p.isBot,
+      id: p.id, name: p.name, avatar: p.avatar ?? null, isHost: p.isHost, connected: p.connected, isBot: !!p.isBot,
       alive: p.alive, hasVoted: p.hasVoted, wins: p.wins,
       // Roles stay secret until the game ends — even the dead keep
       // theirs (the table must deduce, not be told; live report

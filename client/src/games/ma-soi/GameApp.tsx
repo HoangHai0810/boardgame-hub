@@ -6,6 +6,7 @@ import { sfx, ensureCtx } from '../../transport/sound';
 import { joinVoice, VoiceHandle } from '../../transport/voice';
 import { TopBar, ChatPanel, ChatSheet, chatPreview, RetryDefaultButton } from '../../platform/ui';
 import { WolfAvatar, MouseAvatar, RoleIcon, ROLE_STRONG, MoonVillage } from '../../platform/avatars';
+import { RoleCard, PlayerAvatar } from '../../platform/GameCard';
 import { roleTable, effectiveRoleConfig, MIN_PLAYERS, MAX_PLAYERS } from '../../../../games/ma-soi/logic';
 import type { RoleConfig } from '../../../../games/ma-soi/logic';
 import type { Role } from '../../../../games/ma-soi/logic';
@@ -326,7 +327,7 @@ export default function MaSoiApp() {
             const bg = p.role === 'wolf' ? 'bg-[#FBE3E0]' : dead ? 'bg-[#E5E5E5]' : 'bg-[#FFFBef]';
             return (
               <div key={p.id} className={`flex items-center gap-2.5 rounded-2xl px-3 py-2.5 hard-xs ${bg} anim-slide-up`} style={{ animationDelay: `${pi * 60}ms` }}>
-                <span className="flex-none">{isWolfCard ? <WolfAvatar seed={p.id} size={44} state="dead" /> : <MouseAvatar seed={p.id} size={44} state={dead ? 'dead' : 'awake'} />}</span>
+                <span className="flex-none"><PlayerAvatar avatarId={p.avatar} size={44} fallback={isWolfCard ? <WolfAvatar seed={p.id} size={44} state="dead" /> : <MouseAvatar seed={p.id} size={44} state={dead ? 'dead' : 'awake'} />} /></span>
                 <span className="min-w-0">
                   <span className={`block font-extrabold truncate ${dead ? 'line-through text-[#6B6257]' : 'text-[#2B2016]'}`}>{p.name}{isMe ? ` (${d.you})` : ''}</span>
                   {p.role && <span className={`block text-sm font-extrabold ${roleColor(p.role)}`}>{ROLE_EMOJI[p.role]} {roleLabel(d, p.role)}</span>}
@@ -341,7 +342,7 @@ export default function MaSoiApp() {
                 onClick={() => onPick?.(p.id)}
                 className={`relative rounded-[20px] p-3 text-center hard-sm ${dead ? 'bg-[#EFEFEF] opacity-70' : voted ? 'bg-[#DFF5E3]' : isMe ? 'bg-[#EFE7D3]' : 'bg-white'} ${canPick ? 'hover:scale-[1.03] transition cursor-pointer' : 'cursor-default'}`}>
                 {voted && <span className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-[#0E9F6E] text-white disp font-extrabold text-sm flex items-center justify-center border-2 border-[#2B2016] anim-badge-pop">✓</span>}
-                <span className="mx-auto block w-fit">{isWolfCard ? <WolfAvatar seed={p.id} size={56} state="wolf" /> : <MouseAvatar seed={p.id} size={56} state={dead ? 'dead' : 'awake'} />}</span>
+                <span className="mx-auto block w-fit"><PlayerAvatar avatarId={p.avatar} size={56} fallback={isWolfCard ? <WolfAvatar seed={p.id} size={56} state="wolf" /> : <MouseAvatar seed={p.id} size={56} state={dead ? 'dead' : 'awake'} />} /></span>
                 <span className={`block font-extrabold text-lg mt-1 ${dead ? 'line-through text-gray-500' : 'text-[#2B2016]'}`}>{p.name}{isMe ? ` (${d.you})` : ''}</span>
                 <span className="block text-sm font-bold text-[#8A7B63] mt-0.5">
                   {dead ? '' : p.hasVoted ? d.votedAlready : isMe ? d.cantSelfVote : d.thinking}
@@ -357,8 +358,7 @@ export default function MaSoiApp() {
               <div key={p.id} className={`relative rounded-2xl text-[#2B2016] p-1.5 text-center hard-xs ${dead ? 'bg-[#D8D8D8]' : isMe ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'}`}>
                 {speakingIds.has(p.id) && <span className="absolute -bottom-2 -left-2 bg-green-500 text-white text-xs rounded-full px-1.5 py-0.5 shadow anim-pulse-soft">🎙️</span>}
                 <span className="mx-auto block w-fit">
-                  {isWolfCard ? <WolfAvatar seed={p.id} size={avSize} state={dead ? 'dead' : 'wolf'} />
-                    : <MouseAvatar seed={p.id} size={avSize} state={dead ? 'dead' : phase === 'night' ? 'asleep' : 'awake'} />}
+                  <PlayerAvatar avatarId={p.avatar} size={avSize} fallback={isWolfCard ? <WolfAvatar seed={p.id} size={avSize} state={dead ? 'dead' : 'wolf'} /> : <MouseAvatar seed={p.id} size={avSize} state={dead ? 'dead' : phase === 'night' ? 'asleep' : 'awake'} />} />
                 </span>
                 <span className={`block font-bold truncate text-sm mt-0.5 ${dead ? 'line-through text-gray-500' : ''}`}>{p.name}{isMe ? ` (${d.you})` : ''}</span>
                 {(p as any).isBot && <span className="text-xs font-extrabold bg-[#23233F] text-[#FFB020] rounded-full px-2 py-0.5 mt-0.5 inline-block">🤖 {d.botTag}</span>}
@@ -377,8 +377,7 @@ export default function MaSoiApp() {
               className={`relative rounded-2xl text-[#2B2016] p-1.5 text-center hard-xs ${selected ? 'bg-[#FFE3E0] ring-4 ring-[#D63A2F]' : dead ? 'bg-[#D8D8D8]' : isMe ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'} ${onPick ? 'hover:scale-105 transition cursor-pointer' : 'cursor-default'} disabled:opacity-70 disabled:hover:scale-100`}>
               {speakingIds.has(p.id) && <span className="absolute -bottom-2 -left-2 bg-green-500 text-white text-xs rounded-full px-1.5 py-0.5 shadow anim-pulse-soft">🎙️</span>}
               <span className="mx-auto block w-fit">
-                {isWolfCard ? <WolfAvatar seed={p.id} size={avSize} state={dead ? 'dead' : 'wolf'} />
-                  : <MouseAvatar seed={p.id} size={avSize} state={dead ? 'dead' : phase === 'night' ? 'asleep' : 'awake'} />}
+                <PlayerAvatar avatarId={p.avatar} size={avSize} fallback={isWolfCard ? <WolfAvatar seed={p.id} size={avSize} state={dead ? 'dead' : 'wolf'} /> : <MouseAvatar seed={p.id} size={avSize} state={dead ? 'dead' : phase === 'night' ? 'asleep' : 'awake'} />} />
               </span>
               <span className={`block font-bold truncate text-sm mt-0.5 ${dead ? 'line-through text-gray-500' : ''}`}>{p.name}{isMe ? ` (${d.you})` : ''}</span>
               {selected && variant === 'pick' && <span className="block text-xs font-extrabold text-[#D63A2F] mt-0.5">{lang === 'vi' ? 'đã chọn' : 'picked'}</span>}
@@ -688,19 +687,18 @@ export default function MaSoiApp() {
           <div className="max-w-md mx-auto text-center">
             <p className="disp text-[#FFB020] font-extrabold tracking-[0.22em] text-xs">{d.revealKicker}</p>
             <p className="text-[#B9BCE0] font-bold mt-1">{d.revealHide}</p>
-            <div className="card-cream !rounded-[28px] p-5 mt-4 anim-card-flip">
-              <RoleIcon role={priv?.myRole ?? 'villager'} size={112} />
-              <div className="mt-3">
-                <span className="inline-block disp font-extrabold text-xl tracking-wide text-white rounded-full px-5 py-1.5" style={{ background: ROLE_STRONG[priv?.myRole ?? 'villager'] }}>{roleLabel(d, priv?.myRole)}</span>
-              </div>
-              <div className="mt-2">
-                <span className="inline-block font-extrabold text-sm border-2 border-[#2B2016] rounded-full px-3 py-1">{priv?.myRole === 'wolf' ? d.factionWolves : d.factionVillagers}</span>
-              </div>
-              <p className="font-bold leading-snug mt-3 text-[#2B2016]">{priv?.myRole ? d[priv.myRole + 'Desc' as keyof typeof d] as string : ''}</p>
-              {priv?.myRole === 'wolf' && priv.wolfTeam.length > 1 && (
-                <p className="text-[#D63A2F] font-bold mt-3">{d.wolfTeammates}: {priv.wolfTeam.filter(w => w.id !== joined.playerId).map(w => w.name).join(', ')}</p>
-              )}
+            <div className="mt-4 anim-card-flip flex justify-center">
+              <RoleCard
+                color={ROLE_STRONG[priv?.myRole ?? 'villager']}
+                title={roleLabel(d, priv?.myRole)}
+                sub={priv?.myRole === 'wolf' ? d.factionWolves : d.factionVillagers}
+                artKey={priv?.myRole ?? 'villager'}
+                ability={priv?.myRole ? d[priv.myRole + 'Desc' as keyof typeof d] as string : ''}
+                size="lg" />
             </div>
+            {priv?.myRole === 'wolf' && priv.wolfTeam.length > 1 && (
+              <p className="text-[#F87171] font-bold mt-3">{d.wolfTeammates}: {priv.wolfTeam.filter(w => w.id !== joined.playerId).map(w => w.name).join(', ')}</p>
+            )}
             {pub!.revealReady.includes(joined.playerId) || optReady
               ? <p className="text-center font-extrabold text-[#0E9F6E] mt-5">{d.imReady}</p>
               : <button className={`${BTN} btn-amber w-full mt-5`} onClick={() => { setOptReady(true); pendingRef.current.ready = { kind: 'ready' }; getNet().ready(); }}>
@@ -799,7 +797,7 @@ export default function MaSoiApp() {
                 ) : pub!.nightStep === 'witch' && amWitch ? (
                   <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-[28px] p-4">
                     <div className="bg-[#2B2140] border-2 border-[#7C4DBD] rounded-2xl p-3 flex items-center gap-3">
-                      <MouseAvatar seed={priv!.nightVictim ?? 'witch-none'} size={48} state="dead" />
+                      <PlayerAvatar avatarId={pub!.players.find(x => x.id === priv!.nightVictim)?.avatar} size={48} fallback={<MouseAvatar seed={priv!.nightVictim ?? 'witch-none'} size={48} state="dead" />} />
                       <div className="min-w-0">
                         <div className="text-[#B9BCE0] font-bold text-sm">{d.witchVictimTitle}</div>
                         <div className="disp font-extrabold text-xl text-[#FFF3CF] truncate">{priv!.nightVictim ? playerName(priv!.nightVictim) : d.witchVictimNone}</div>
@@ -893,7 +891,7 @@ export default function MaSoiApp() {
                     <div className="grid sm:grid-cols-2 gap-2 mt-2">
                       {pub!.nightDeaths.map((x, di) => (
                         <div key={x.id} className="flex items-center gap-2 bg-white hard-sm rounded-2xl px-3 py-2 anim-slide-up" style={{ animationDelay: `${di * 90}ms` }}>
-                          <MouseAvatar seed={x.id} size={40} state="dead" />
+                          <PlayerAvatar avatarId={pub!.players.find(pp => pp.id === x.id)?.avatar} size={40} fallback={<MouseAvatar seed={x.id} size={40} state="dead" />} />
                           <div className="font-bold min-w-0 truncate">{x.name}</div>
                         </div>
                       ))}

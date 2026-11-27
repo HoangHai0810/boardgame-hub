@@ -29,6 +29,7 @@ import { makeRoomCode } from './util';
 import type { Net, Handlers } from './net';
 import { getClientId } from './util';
 import { brokerOrder, connectMqttSequential, connectMqttParallel, connectMqttRacePreferred } from './brokers';
+import { myAvatarId } from '../platform/art';
 import type { EngineHooks } from '../games/cheese-thief/hostEngine';
 
 const cleanName = (n: string) => n.replace(/[<>]/g, '').trim().slice(0, 20) || 'Mouse';
@@ -195,7 +196,7 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
           const key = await deriveAesKey(myKeys!.pair.privateKey, msg.pubJwk);
           hostAes.set(pid, key);
         } catch { return; }
-        engine!.addPlayer(pid, String(msg.name || 'Mouse'), false);
+        engine!.addPlayer(pid, String(msg.name || 'Mouse'), false, typeof msg.avatar === 'string' ? msg.avatar : undefined);
         c.publish(topic(roomCode, 'p/' + pid),
           JSON.stringify({ type: 'joined', code: roomCode, playerId: pid, isHost: false, hostPubJwk: myKeys!.pubJwk }), { qos: 1 });
         engine!.broadcast();
@@ -242,7 +243,7 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
     client = rh.client; brokerIdx = rh.idx;
     watchLifecycle(client);
     bindCurrent();
-    engine.addPlayer(myId, cleanName(name), true);
+    engine.addPlayer(myId, cleanName(name), true, myAvatarId());
     fireJoinedOnce(true);
     engine.broadcast();
   }
@@ -256,7 +257,7 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
     // with the current connection's nonce restores us seamlessly.
     const sendJoin = () => {
       c.publish(topic(roomCode, 'in'), JSON.stringify({
-        type: 'join', clientId: myId, name: cleanName(myName), pubJwk: myKeys!.pubJwk, conn: willConn,
+        type: 'join', clientId: myId, name: cleanName(myName), avatar: myAvatarId(), pubJwk: myKeys!.pubJwk, conn: willConn,
       }), { qos: 1 });
     };
     c.on('message', async (t, payload, packet) => {
@@ -486,7 +487,7 @@ export function createMqttNet(h: Handlers, gameId = 'cheese-thief'): Net {
           else if (msg.type === 'error') finish({ error: String(msg.msg || 'HOST_UNREACHABLE') });
         });
         c.publish(topic(roomCode, 'in'), JSON.stringify({
-          type: 'join', clientId: myId, name: cleanName(myName), pubJwk: myKeys!.pubJwk, conn,
+          type: 'join', clientId: myId, name: cleanName(myName), avatar: myAvatarId(), pubJwk: myKeys!.pubJwk, conn,
         }), { qos: 1 });
       };
       const extraFactory = () => { const opts = makeExtra!(); return { opts, tag: willConn }; };

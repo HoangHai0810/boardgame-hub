@@ -35,10 +35,10 @@ export class HostEngine {
     this.hooks.sendPub(pub);
     for (const p of this.state.players) this.hooks.sendPriv(p.id, privateState(this.state, p));
   }
-  addPlayer(id: string, name: string, isHost: boolean): Player {
+  addPlayer(id: string, name: string, isHost: boolean, avatar?: string): Player {
     let p = this.state.players.find(x => x.id === id);
-    if (p) { p.connected = true; return p; }
-    p = { id, name: cleanName(name), isHost, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, peeks: [], wins: 0 };
+    if (p) { p.connected = true; if (avatar) p.avatar = avatar; return p; }
+    p = { id, name: cleanName(name), isHost, connected: true, hasActedThisHour: false, hasVoted: false, vote: null, inspectedDice: null, peeks: [], wins: 0, avatar };
     this.state.players.push(p); return p;
   }
   startRound() {

@@ -24,7 +24,7 @@ const mk = (hands, config) => {
 
 t('limits 2-5, 30s turns, 5s nope window', () => {
   assert.equal(MIN_PLAYERS, 2); assert.equal(MAX_PLAYERS, 5);
-  assert.equal(TURN_MS, 30000); assert.equal(NOPE_MS, 5000);
+  assert.equal(TURN_MS, 30000); assert.equal(NOPE_MS, 8000);
 });
 
 t('deck is 50 cards before EKs (6 defuse, 4x6 actions, 20 cats)', () => {

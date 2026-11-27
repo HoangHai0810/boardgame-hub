@@ -12,6 +12,7 @@ import { engineFor, EngineLike } from './engines';
 import { makeRoomCode } from './util';
 import { createMqttNet } from './net-mqtt';
 import { getClientId } from './util';
+import { myAvatarId } from '../platform/art';
 
 
 export interface Net {
@@ -91,7 +92,7 @@ export function createPeerNet(h: Handlers, gameId = 'cheese-thief'): Net {
           return;
         }
         conns.set(pid, conn);
-        engine.addPlayer(pid, String(raw.name || 'Mouse'), false);
+        engine.addPlayer(pid, String(raw.name || 'Mouse'), false, typeof raw.avatar === 'string' ? raw.avatar : undefined);
         conn.send({ type: 'joined', code: roomCode, playerId: pid, isHost: false });
         engine.broadcast();
       } else if (raw?.type === 'intent' && raw.playerId) {
@@ -131,7 +132,7 @@ export function createPeerNet(h: Handlers, gameId = 'cheese-thief'): Net {
             conns.get(pid)?.send({ type: 'error', msg });
           },
         });
-        engine.addPlayer(myId, cleanName(name), true);
+        engine.addPlayer(myId, cleanName(name), true, myAvatarId());
         h.onJoined(roomCode, myId, true);
         engine.broadcast();
       });
@@ -150,7 +151,7 @@ export function createPeerNet(h: Handlers, gameId = 'cheese-thief'): Net {
       }, 30000);
       peer.on('open', () => {
         hostConn = peer!.connect(peerPrefix(gameId) + roomCode, { reliable: true });
-        hostConn.on('open', () => { if (joinTimer) { clearTimeout(joinTimer); joinTimer = null; } hostConn!.send({ type: 'join', clientId: myId, name: cleanName(name) }); });
+        hostConn.on('open', () => { if (joinTimer) { clearTimeout(joinTimer); joinTimer = null; } hostConn!.send({ type: 'join', clientId: myId, name: cleanName(name), avatar: myAvatarId() }); });
         hostConn.on('data', handleHostMsg);
         hostConn.on('close', () => h.onError('HOST_DISCONNECTED'));
       });
@@ -198,14 +199,14 @@ export function createSocketNet(serverUrl: string, h: Handlers, gameId = 'cheese
     getBrokerUrl: () => undefined, // Socket.IO has no MQTT broker
     createRoom(name: string) {
       const att = ++sockAttempt;
-      socket.emit('createRoom', { game: gameId, name: cleanName(name), clientId: myId }, (r: any) => {
+      socket.emit('createRoom', { game: gameId, name: cleanName(name), clientId: myId, avatar: myAvatarId() }, (r: any) => {
         if (att !== sockAttempt) return; // cancelled meanwhile
         r?.ok ? h.onJoined(r.code, r.playerId, true) : h.onError(r?.error || 'FAILED');
       });
     },
     joinRoom(code: string, name: string) {
       const att = ++sockAttempt;
-      socket.emit('joinRoom', { game: gameId, code, name: cleanName(name), clientId: myId }, (r: any) => {
+      socket.emit('joinRoom', { game: gameId, code, name: cleanName(name), clientId: myId, avatar: myAvatarId() }, (r: any) => {
         if (att !== sockAttempt) return; // cancelled meanwhile
         r?.ok ? h.onJoined(r.code, r.playerId, false) : h.onError(r?.error || 'FAILED');
       });

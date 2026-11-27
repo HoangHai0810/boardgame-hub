@@ -6,6 +6,7 @@ import { sfx, ensureCtx } from '../../transport/sound';
 import { joinVoice, VoiceHandle } from '../../transport/voice';
 import { TopBar, ChatPanel, ChatSheet, chatPreview, RetryDefaultButton } from '../../platform/ui';
 import { MouseAvatar } from '../../platform/avatars';
+import { PlayerAvatar } from '../../platform/GameCard';
 import { legalPlays, MIN_PLAYERS, MAX_PLAYERS, GUESSABLE, CARD_VALUE } from '../../../../games/love-letter/logic';
 import type { Card, CardKind } from '../../../../games/love-letter/logic';
 
@@ -491,7 +492,7 @@ export default function LoveLetterApp() {
               <div className="grid grid-cols-4 gap-2 my-3">
                 {pub!.players.map(p => (
                   <div key={p.id} className={`rounded-2xl p-2 text-center hard-xs ${p.id === joined.playerId ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'}`}>
-                    <span className="mx-auto block w-fit"><MouseAvatar seed={p.id} size={48} state="awake" /></span>
+                    <span className="mx-auto block w-fit"><PlayerAvatar avatarId={p.avatar} size={48} fallback={<MouseAvatar seed={p.id} size={48} state="awake" />} /></span>
                     <span className="block font-bold truncate text-sm mt-0.5 text-[#2B2016]">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
                     {p.isHost && <span className="text-amber-600 text-xs font-extrabold whitespace-nowrap">👑 {d.host}</span>}
                     {!p.connected && <span className="text-red-500 text-xs font-bold"> • {d.offline}</span>}
@@ -559,7 +560,7 @@ export default function LoveLetterApp() {
                   <div key={p.id} className={`flex-none rounded-2xl px-2.5 py-1.5 hard-xs min-w-[132px] ${pub.turn === p.id ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'}`}>
                     <div className="flex items-center gap-2">
                       <span className="relative flex-none">
-                        <MouseAvatar seed={p.id} size={40} state={p.inRound ? 'awake' : 'dead'} />
+                        <PlayerAvatar avatarId={p.avatar} size={40} fallback={<MouseAvatar seed={p.id} size={40} state={p.inRound ? 'awake' : 'dead'} />} />
                         {speakingIds.has(p.id) && <span className="absolute -bottom-1 -left-1 bg-green-500 text-white text-[10px] rounded-full px-1 shadow">🎙️</span>}
                       </span>
                       <span className="min-w-0">
@@ -683,7 +684,7 @@ export default function LoveLetterApp() {
               <div className="mt-2 space-y-1.5">
                 {[...pub.players].sort((a, b) => b.tokens - a.tokens || b.roundWins - a.roundWins).map(p => (
                   <div key={p.id} className="flex items-center gap-2 font-bold">
-                    <span className="flex-none"><MouseAvatar seed={p.id} size={36} state="awake" /></span>
+                    <span className="flex-none"><PlayerAvatar avatarId={p.avatar} size={36} fallback={<MouseAvatar seed={p.id} size={36} state="awake" />} /></span>
                     <span className="flex-1 truncate">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
                     <span className="text-sm">❤ {p.tokens} / {pub.tokensToWin} · 🏆 {p.roundWins}</span>
                   </div>
@@ -709,7 +710,7 @@ export default function LoveLetterApp() {
               <div className="mt-2 space-y-1.5">
                 {[...pub.players].sort((a, b) => b.tokens - a.tokens || b.roundWins - a.roundWins).map(p => (
                   <div key={p.id} className="flex items-center gap-2 font-bold">
-                    <span className="flex-none"><MouseAvatar seed={p.id} size={36} state="awake" /></span>
+                    <span className="flex-none"><PlayerAvatar avatarId={p.avatar} size={36} fallback={<MouseAvatar seed={p.id} size={36} state="awake" />} /></span>
                     <span className="flex-1 truncate">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}{p.id === pub.sessionWinner ? ' 👑' : ''}</span>
                     <span className="text-sm">❤ {p.tokens} · 🏆 {p.roundWins} {d.wins}</span>
                   </div>

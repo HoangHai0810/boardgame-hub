@@ -10,6 +10,7 @@ export type Phase = 'lobby' | 'roleReveal' | 'night' | 'recruit' | 'day' | 'voti
 export interface Player {
   id: string;
   name: string;
+  avatar?: string;
   isHost: boolean;
   connected: boolean;
   role?: Role;
@@ -353,7 +354,7 @@ export function publicState(state: GameState, forPlayerId?: string) {
     revealReady: state.revealReady,
     dayReady: state.dayReady,
     players: state.players.map(p => ({
-      id: p.id, name: p.name, isHost: p.isHost, connected: p.connected,
+      id: p.id, name: p.name, avatar: p.avatar ?? null, isHost: p.isHost, connected: p.connected,
       hasVoted: p.hasVoted, wins: p.wins ?? 0,
       ...(inResults ? { role: p.role, dice: p.dice, vote: p.vote, isFollower: !!p.isFollower } : {}),
     })),

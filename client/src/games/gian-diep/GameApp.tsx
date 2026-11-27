@@ -6,6 +6,7 @@ import { sfx, ensureCtx } from '../../transport/sound';
 import { joinVoice, VoiceHandle } from '../../transport/voice';
 import { TopBar, ChatPanel, ChatSheet, chatPreview, RetryDefaultButton } from '../../platform/ui';
 import { MouseAvatar } from '../../platform/avatars';
+import { PlayerAvatar } from '../../platform/GameCard';
 import { MIN_PLAYERS, MAX_PLAYERS, LOCATIONS } from '../../../../games/gian-diep/logic';
 import type { FeedEvent } from '../../../../games/gian-diep/logic';
 
@@ -499,7 +500,7 @@ export default function GianDiepApp() {
                   {pub!.players.map(p => (
                     <div key={p.id} className={`rounded-2xl p-1.5 text-center hard-xs ${p.id === joined.playerId ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'}`}>
                       <span className="mx-auto block w-fit relative">
-                        <MouseAvatar seed={p.id} size={40} state={p.connected ? 'awake' : 'asleep'} />
+                        <PlayerAvatar avatarId={p.avatar} size={40} fallback={<MouseAvatar seed={p.id} size={40} state={p.connected ? 'awake' : 'asleep'} />} />
                         {speakingIds.has(p.id) && <span className="absolute -bottom-1 -left-1 bg-green-500 text-white text-[10px] rounded-full px-1 shadow">🎙️</span>}
                       </span>
                       <span className="block font-bold truncate text-sm mt-0.5 text-[#2B2016]">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
@@ -678,7 +679,7 @@ export default function GianDiepApp() {
                       onClick={() => onPlayerTap(p)}
                       className={`rounded-2xl p-1.5 text-center hard-xs ${isAsker ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'} ${tapped ? 'ring-4 ring-[#0E9F6E]' : ''} ${!p.connected ? 'opacity-60' : ''}`}>
                       <span className="mx-auto block w-fit relative">
-                        <MouseAvatar seed={p.id} size={40} state={p.connected ? 'awake' : 'asleep'} />
+                        <PlayerAvatar avatarId={p.avatar} size={40} fallback={<MouseAvatar seed={p.id} size={40} state={p.connected ? 'awake' : 'asleep'} />} />
                         {speakingIds.has(p.id) && <span className="absolute -bottom-1 -left-1 bg-green-500 text-white text-[10px] rounded-full px-1 shadow">🎙️</span>}
                       </span>
                       <span className="block font-bold truncate text-sm mt-0.5 text-[#2B2016]">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
@@ -740,7 +741,7 @@ export default function GianDiepApp() {
             </p>
             <div className="card-cream rounded-[28px] p-5 mt-4 hard text-left">
               <div className="flex items-center gap-3">
-                <MouseAvatar seed={pub.roundResult.spyId} size={56} state="thief" />
+                <PlayerAvatar avatarId={pub.players.find(x => x.id === pub.roundResult?.spyId)?.avatar} size={56} fallback={<MouseAvatar seed={pub.roundResult.spyId} size={56} state="thief" />} />
                 <div>
                   <div className="font-extrabold text-lg leading-tight">{d.spyWas(playerName(pub.roundResult.spyId))}</div>
                   <div className="font-bold text-[#8A7B63] text-sm">{locIcon(pub.roundResult.locationIdx)} {d.locationWas(locName(pub.roundResult.locationIdx))}</div>

@@ -184,13 +184,14 @@ export class HostEngine {
     }
   }
 
-  addPlayer(id: string, name: string, isHost: boolean): Player {
+  addPlayer(id: string, name: string, isHost: boolean, avatar?: string): Player {
     let p = this.state.players.find(x => x.id === id);
-    if (p) { p.connected = true; return p; }
+    if (p) { p.connected = true; if (avatar) p.avatar = avatar; return p; }
     p = {
       id, name: cleanName(name), isHost, connected: true,
       alive: true, hasVoted: false, vote: null, wins: 0,
       seerPeeks: [], witchSaveLeft: true, witchKillLeft: true, witchActedNight: 0,
+      avatar,
     };
     this.state.players.push(p); return p;
   }

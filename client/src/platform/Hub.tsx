@@ -8,6 +8,9 @@
 import { useState } from 'react';
 import { t, Lang } from './i18n';
 import { CheeseWedge, MouseAvatar, WolfAvatar, CatAvatar } from './avatars';
+import AvatarPicker from './AvatarPicker';
+import { MyAvatar } from './GameCard';
+import { CAT_ART, ROLE_ART } from './art';
 
 function playUrl(id: string) {
   const q = new URLSearchParams(location.search);
@@ -50,46 +53,70 @@ function LetterIcon({ size = 44 }: { size?: number }) {
   );
 }
 
+/** Uno banner = two overlapping cards (design: "hai lá bài Uno"). */
+function UnoBanner() {
+  const card = (bg: string, sym: string, rot: string, ml: string) => (
+    <span className={`relative inline-flex flex-none w-[54px] h-[78px] rounded-lg border-[3px] border-white items-center justify-center ${rot} ${ml}`} style={{ background: bg, boxShadow: '0 3px 0 rgba(43,32,22,0.9)' }}>
+      <span className="absolute inset-x-[6px] top-1/2 -translate-y-1/2 h-[46%] bg-white rounded-[50%] rotate-[-24deg]" />
+      <span className="relative disp font-extrabold text-2xl" style={{ color: bg }}>{sym}</span>
+    </span>
+  );
+  return (
+    <span className="inline-flex items-center">
+      {card('#D63A2F', '7', 'rotate-[-10deg]', '')}
+      {card('#FFB020', '+2', 'rotate-[10deg] translate-y-1', '-ml-2')}
+    </span>
+  );
+}
+
 export default function Hub() {
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('ct_lang') as Lang) || 'vi');
   const d = t(lang);
   const setL = (l: Lang) => { localStorage.setItem('ct_lang', l); setLang(l); };
+  const [showAvatar, setShowAvatar] = useState(false);
+  const myName = sessionStorage.getItem('ct_name') || '';
   const live = [
     {
       id: 'cheese-thief', name: d.cheeseName, tag: d.cheeseTag, tagWide: d.cheeseTagWide,
       color: '#FFB020', min: 4, max: 8, minsMobile: 10, minsWide: 10,
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#F5E9C8] border-2 border-[#2B2016] flex-none"><MouseAvatar seed="hub-thief" size={48} state="thief" /></span>,
       bannerIcon: <CheeseWedge size={72} />,
+      bannerArt: ROLE_ART.thief,
     },
     {
       id: 'ma-soi', name: d.wolfName, tag: d.wolfTag, tagWide: d.wolfTagWide,
       color: '#D63A2F', min: 6, max: 12, minsMobile: 20, minsWide: 20,
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#E8E8E8] border-2 border-[#2B2016] flex-none"><WolfAvatar seed="hub-wolf" size={48} state="wolf" /></span>,
       bannerIcon: <WolfAvatar seed="hub-wolf" size={72} state="wolf" />,
+      bannerArt: ROLE_ART.wolf,
     },
     {
       id: 'uno', name: d.unoName, tag: d.unoTag, tagWide: d.unoTag,
       color: '#2E7CD6', min: 2, max: 10, minsMobile: 15, minsWide: 15,
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#14142B] border-2 border-[#2B2016] flex-none"><UnoIcon size={44} /></span>,
-      bannerIcon: <UnoIcon size={72} />,
+      bannerIcon: <UnoBanner />,
+      bannerArt: undefined,
     },
     {
       id: 'meo-no', name: d.meoName, tag: d.meoTag, tagWide: d.meoTagWide,
       color: '#F08A1D', min: 2, max: 5, minsMobile: 10, minsWide: 10,
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#F5E9C8] border-2 border-[#2B2016] flex-none"><CatAvatar seed="hub-cat" size={48} /></span>,
       bannerIcon: <CatAvatar seed="hub-cat" size={72} />,
+      bannerArt: CAT_ART.exploding,
     },
     {
       id: 'gian-diep', name: d.spyName, tag: d.spyTag, tagWide: d.spyTagWide,
       color: '#7C4DBD', min: 3, max: 8, minsMobile: 60, minsWide: 60,
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#14142B] border-2 border-[#2B2016] flex-none"><SpyIcon size={44} /></span>,
       bannerIcon: <SpyIcon size={72} />,
+      bannerArt: undefined,
     },
     {
       id: 'love-letter', name: d.loveName, tag: d.loveTag, tagWide: d.loveTagWide,
       color: '#D63A6B', min: 2, max: 4, minsMobile: 20, minsWide: 20,
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#F5E9C8] border-2 border-[#2B2016] flex-none"><LetterIcon size={44} /></span>,
       bannerIcon: <LetterIcon size={72} />,
+      bannerArt: undefined,
     },
   ];
   const soon: { name: string; tag: string; min: number; max: number; mins: number; icon: React.ReactNode }[] = [];
@@ -100,6 +127,10 @@ export default function Hub() {
           <CheeseWedge size={34} />
           <span className="disp text-[#FFF3CF] font-extrabold text-2xl leading-none">Sảnh Board Game</span>
           <span className="flex-1" />
+          <button className="flex items-center gap-2 rounded-full bg-[#23233F] border-2 border-[#3D3D63] pl-1 pr-3 py-1 push" onClick={() => setShowAvatar(true)} title={d.pickAvatar}>
+            <MyAvatar size={32} />
+            <span className="font-extrabold text-sm text-[#FFF3CF] max-w-[150px] truncate">{myName || d.pickAvatar}</span>
+          </button>
           <span className="inline-flex rounded-full overflow-hidden border-2 border-[#3D3D63] text-sm font-black">
             <button className={`px-2.5 py-1 ${lang === 'vi' ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#23233F] text-[#B9BCE0]'}`} onClick={() => setL('vi')}>VI</button>
             <button className={`px-2.5 py-1 ${lang === 'en' ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#23233F] text-[#B9BCE0]'}`} onClick={() => setL('en')}>EN</button>
@@ -118,10 +149,12 @@ export default function Hub() {
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-2.5 mt-4 sm:mt-5">
           {live.map((g, gi) => (
             <a key={g.id} href={playUrl(g.id)} className="col-span-2 lg:col-span-1 card-cream !rounded-[28px] overflow-hidden flex flex-col no-underline anim-enter lift" style={{ animationDelay: `${gi * 70}ms` }}>
-              {/* mobile: thin color strip; laptop: tall banner with icon + pill */}
+              {/* mobile: thin color strip; laptop: tall banner with art/icon + pill */}
               <div className="h-2.5 lg:hidden flex-none" style={{ background: g.color }} />
-              <div className="hidden lg:flex relative items-center px-5 h-[110px] flex-none" style={{ background: g.color }}>
-                <span className="inline-block">{g.bannerIcon}</span>
+              <div className="hidden lg:flex relative items-center px-5 h-[110px] flex-none overflow-hidden" style={{ background: g.color }}>
+                {g.bannerArt
+                  ? <img src={g.bannerArt} alt="" className="absolute inset-0 w-full h-full object-cover" draggable={false} />
+                  : <span className="inline-block">{g.bannerIcon}</span>}
                 <span className="absolute top-3 right-3 bg-[#0E9F6E] text-white text-[11px] font-black rounded-full px-2.5 py-1">{d.openNow}</span>
               </div>
               <div className="p-3 sm:p-5 flex flex-col flex-1">
@@ -167,6 +200,7 @@ export default function Hub() {
           ))}
         </div>
       </div>
+      {showAvatar && <AvatarPicker lang={lang} onClose={() => setShowAvatar(false)} />}
     </div>
   );
 }

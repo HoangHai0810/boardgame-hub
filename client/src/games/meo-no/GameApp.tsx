@@ -6,6 +6,8 @@ import { sfx, ensureCtx } from '../../transport/sound';
 import { joinVoice, VoiceHandle } from '../../transport/voice';
 import { TopBar, ChatPanel, ChatSheet, chatPreview, RetryDefaultButton } from '../../platform/ui';
 import { CatAvatar } from '../../platform/avatars';
+import { MeoCard, NoticeBanner, PlayerAvatar } from '../../platform/GameCard';
+import { CAT_ART } from '../../platform/art';
 import { MIN_PLAYERS, MAX_PLAYERS, NOPE_MS } from '../../../../games/meo-no/logic';
 import type { Card, Kind, FeedEvent } from '../../../../games/meo-no/logic';
 
@@ -86,43 +88,29 @@ function cardLabel(d: any, card: Card): string {
     : card.kind === 'peek' ? d.cardPeek : card.kind === 'attack' ? d.cardAttack
     : card.kind === 'favor' ? d.cardFavor : card.kind === 'cat' ? d.cardCat : d.cardEK;
 }
-function MeoCardFace({ card, d, size = 'md' }: { card: Card; d: any; size?: 'sm' | 'md' | 'lg' }) {
-  const box = size === 'lg' ? 'w-[86px] h-[122px]' : size === 'sm' ? 'w-[56px] h-[80px]' : 'w-[68px] h-[96px]';
-  const icon = size === 'sm' ? 26 : size === 'lg' ? 40 : 32;
-  const lab = size === 'sm' ? 'text-[10px]' : size === 'lg' ? 'text-sm' : 'text-xs';
-  const bg = CARD_COLORS[card.kind];
-  return (
-    <span className={`relative inline-flex flex-none flex-col overflow-hidden rounded-xl border-[3px] border-[#2B2016] ${box}`}>
-      <span className="flex-1 flex items-center justify-center" style={{ background: bg }}>
-        <CardIcon kind={card.kind} variant={card.variant} size={icon} />
-      </span>
-      <span className={`flex-none bg-[#FFFBef] text-center disp font-extrabold text-[#2B2016] leading-tight py-1 px-0.5 ${lab}`}>{cardLabel(d, card)}</span>
-    </span>
-  );
+function cardAbility(d: any, card: Card): string {
+  return card.kind === 'defuse' ? d.abDefuse : card.kind === 'nope' ? d.abNope
+    : card.kind === 'skip' ? d.abSkip : card.kind === 'shuffle' ? d.abShuffle
+    : card.kind === 'peek' ? d.abPeek : card.kind === 'attack' ? d.abAttack
+    : card.kind === 'favor' ? d.abFavor : card.kind === 'cat' ? d.abCat : d.abEK;
 }
+/** All 9 kinds, for the card guide (design MN9). */
+const ALL_KINDS: Kind[] = ['defuse', 'nope', 'skip', 'shuffle', 'peek', 'attack', 'favor', 'cat', 'exploding'];
 /** The draw pile: a dark card-back with a bomb (design MN3). */
 function DeckBack({ count, shake }: { count: number; shake: boolean }) {
   return (
-    <span className={`relative inline-flex flex-none items-center justify-center w-[86px] h-[122px] rounded-xl border-[3px] border-[#2B2016] ${shake ? 'anim-pile-shake' : ''}`} style={{ background: '#2B2016' }}>
-      <span className="absolute inset-x-[10px] top-1/2 -translate-y-1/2 h-[42%] bg-[#3D3D63] rounded-[50%] rotate-[-24deg] opacity-60" />
-      <span className="relative"><CardIcon kind="exploding" size={44} /></span>
+    <span className={`relative inline-flex flex-none items-center justify-center w-[100px] h-[140px] rounded-xl border-[3px] border-[#2B2016] ${shake ? 'anim-pile-shake' : ''}`} style={{ background: '#2B2016' }}>
+      <span className="absolute inset-x-[12px] top-1/2 -translate-y-1/2 h-[42%] bg-[#3D3D63] rounded-[50%] rotate-[-24deg] opacity-60" />
+      <span className="relative"><CardIcon kind="exploding" size={48} /></span>
       <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-[#FFB020] text-[#2B2016] disp font-extrabold text-sm rounded-full px-2.5 py-0.5 border-2 border-[#2B2016]">{count}</span>
     </span>
   );
 }
-/** Landing art (design MN1): the cat peeking out beside a lit bomb. */
+/** Landing art (design MN1): the exploding-kitten 3D art. */
 function CatBomb({ size = 150 }: { size?: number }) {
   return (
-    <span className="inline-flex items-end gap-1">
-      <CatAvatar seed="landing-cat" size={size} />
-      <svg width={size * 0.72} height={size * 0.72} viewBox="0 0 100 100" aria-hidden className="anim-bob">
-        <circle cx="48" cy="58" r="34" fill="#2B2016" stroke="#3D3D63" strokeWidth="3" />
-        <circle cx="38" cy="50" r="7" fill="#3D3D63" opacity="0.7" />
-        <path d="M66 34 Q78 16 90 12" fill="none" stroke="#FFF3CF" strokeWidth="4" strokeLinecap="round" />
-        <circle cx="91" cy="11" r="7" fill="#FFB020" stroke="#2B2016" strokeWidth="2.5" />
-        <path d="M36 52 l10 10 M46 52 l-10 10" stroke="#FFFBef" strokeWidth="4" strokeLinecap="round" />
-        <path d="M38 74 q10 6 20 0" stroke="#FFFBef" strokeWidth="4" fill="none" strokeLinecap="round" />
-      </svg>
+    <span className="inline-block rounded-3xl overflow-hidden border-4 border-[#3D3D63] anim-bob" style={{ width: size, height: size, boxShadow: '0 6px 0 rgba(0,0,0,0.4), 0 16px 32px rgba(0,0,0,0.4)' }}>
+      <img src={CAT_ART.exploding} alt="Exploding Kitten" className="w-full h-full object-cover" draggable={false} />
     </span>
   );
 }
@@ -135,6 +123,18 @@ function HelpModal({ d, onClose }: { d: any; onClose: () => void }) {
         <ol className="space-y-2 text-left text-[15px] leading-snug">
           {d.tutorial.map((s: string, i: number) => <li key={i}>{s}</li>)}
         </ol>
+        <h3 className="disp font-extrabold text-xl mt-5 mb-2">🃏 {d.cardGuide}</h3>
+        <div className="space-y-2">
+          {ALL_KINDS.map(k => (
+            <div key={k} className="flex items-center gap-3 bg-white rounded-2xl border-2 border-[#E5DCC0] p-2">
+              <MeoCard kind={k} name={cardLabel(d, { id: '', kind: k } as Card)} ability={cardAbility(d, { id: '', kind: k } as Card)} size="sm" />
+              <span className="min-w-0">
+                <span className="block disp font-extrabold">{cardLabel(d, { id: '', kind: k } as Card)}</span>
+                <span className="block font-bold text-sm text-[#5C4B33] leading-snug">{cardAbility(d, { id: '', kind: k } as Card)}</span>
+              </span>
+            </div>
+          ))}
+        </div>
         <button className={`${BTN} btn-amber w-full mt-4`} onClick={onClose}>OK 👍</button>
       </div>
     </div>
@@ -234,6 +234,7 @@ export default function MeoNoApp() {
   const [showPeek, setShowPeek] = useState(false);
   const [showEliminated, setShowEliminated] = useState(false);
   const [dismissedNope, setDismissedNope] = useState('');
+  const [ackAttack, setAckAttack] = useState('');
   const [seenChat, setSeenChat] = useState(0);
   const unreadChat = Math.max(0, (pub?.chat.length ?? 0) - seenChat);
   useEffect(() => { setSeenChat(pub?.chat.length ?? 0); }, [pub?.phase]);
@@ -445,7 +446,7 @@ export default function MeoNoApp() {
   };
 
   /* ---------- shared bits ---------- */
-  const tone = phase === 'results' ? 'navy' : 'cream';
+  const tone = phase === 'results' || phase === 'playing' ? 'navy' : 'cream';
   const connected = pub?.players.filter(p => p.connected).length ?? 0;
   const playerName = (id?: string | null) => pub?.players.find(p => p.id === id)?.name ?? '';
   const others = pub?.players.filter(p => p.id !== joined?.playerId) ?? [];
@@ -471,6 +472,11 @@ export default function MeoNoApp() {
   const favorFrom = pub?.pendingFavor ? pub.players.find(p => p.id === pub.pendingFavor!.fromId) : null;
   const lastDrewEk = pub?.feed.length ? [...pub.feed].reverse().find(e => e.kind === 'drew-ek') : null;
   const pileShake = !!lastDrewEk && Date.now() - lastDrewEk.ts < 1200;
+  // The Attack banner: who hit me, so the banner can name them. The banner
+  // stays until I tap "Đã hiểu" (design MN3) — never auto-dismissed.
+  const attackKey = myTurn && (pub?.debt ?? 0) > 0 ? `${pub?.turnCount}:${pub?.debt}` : '';
+  const attackEvent = pub?.feed ? [...pub.feed].reverse().find(e => e.kind === 'attack' && e.targetId === joined?.playerId) : null;
+  const attackActor = attackEvent ? playerName(attackEvent.actorId) : '';
 
   const shareText = () => {
     const lines = [`💣 ${d.title} — ${playerName(pub?.winner)} ${d.winner}`];
@@ -611,7 +617,7 @@ export default function MeoNoApp() {
                 <div className="grid grid-cols-4 lg:grid-cols-5 gap-2 my-3">
                   {pub!.players.map(p => (
                     <div key={p.id} className={`rounded-2xl p-1.5 text-center hard-xs ${p.id === joined.playerId ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'}`}>
-                      <span className="mx-auto block w-fit"><CatAvatar seed={p.id} size={40} /></span>
+                      <span className="mx-auto block w-fit"><PlayerAvatar avatarId={p.avatar} size={40} fallback={<CatAvatar seed={p.id} size={40} />} /></span>
                       <span className="block font-bold truncate text-sm mt-0.5 text-[#2B2016]">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
                       {p.isHost && <span className="text-amber-600 text-xs font-extrabold whitespace-nowrap">👑 {d.host}</span>}
                       {!p.connected && <span className="text-red-500 text-xs font-bold"> • {d.offline}</span>}
@@ -680,18 +686,22 @@ export default function MeoNoApp() {
                 <h2 className="disp font-extrabold text-2xl leading-none">
                   {myTurn ? d.yourTurn : d.turnOf(turnPlayer?.name ?? '')}
                 </h2>
-                {pub.debt > 0 && myTurn && <span className="font-extrabold text-[#D63A2F] text-sm">{d.attackedNote(pub.debt)}</span>}
                 {pub.config.timerEnabled && <TimerPill endsAt={pub.turnEndsAt} dark />}
-                {!me?.alive && <span className="font-extrabold text-[#D63A2F] text-sm">💥 {d.exploded} — {d.keepWatching}</span>}
+                {!me?.alive && <span className="font-extrabold text-[#F87171] text-sm">💥 {d.exploded} — {d.keepWatching}</span>}
               </div>
-              {pub.config.timerEnabled && <p className="font-bold text-[#8A7B63] text-xs mt-1">{d.ruleTimerSub}</p>}
+              {pub.config.timerEnabled && <p className="font-bold text-[#B9BCE0] text-xs mt-1">{d.ruleTimerSub}</p>}
+              {myTurn && (pub.debt ?? 0) > 0 && ackAttack !== attackKey && (
+                <NoticeBanner
+                  text={attackActor ? d.attackBanner(attackActor, pub.debt) : d.attackedNote(pub.debt)}
+                  ackLabel={d.gotIt} onAck={() => setAckAttack(attackKey)} tone="red" />
+              )}
 
               {/* opponents (design MN3) */}
               <div className="flex gap-2 overflow-x-auto pb-1 mt-2">
                 {others.map(p => (
                   <div key={p.id} data-testid="opponent" data-player-id={p.id} className={`flex-none flex items-center gap-2 rounded-2xl px-2.5 py-1.5 hard-xs ${pub.turn === p.id ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'} ${!p.alive ? 'opacity-60' : ''}`}>
                     <span className="relative flex-none">
-                      <CatAvatar seed={p.id} size={40} state={p.alive ? 'awake' : 'dead'} />
+                      <PlayerAvatar avatarId={p.avatar} size={40} fallback={<CatAvatar seed={p.id} size={40} state={p.alive ? 'awake' : 'dead'} />} />
                       {speakingIds.has(p.id) && <span className="absolute -bottom-1 -left-1 bg-green-500 text-white text-[10px] rounded-full px-1 shadow">🎙️</span>}
                     </span>
                     <span className="min-w-0">
@@ -722,7 +732,7 @@ export default function MeoNoApp() {
               )}
 
               {/* table: draw pile + last played + danger meter */}
-              <div className="mt-2 rounded-[28px] border-[3px] border-[#2B2016] hard p-4" style={{ background: '#14142B' }}>
+              <div className="mt-2 rounded-[28px] border-[3px] border-[#2B2016] hard p-3" style={{ background: '#14142B' }}>
                 <div className="flex items-start justify-center gap-4 sm:gap-8">
                   <button data-testid="draw-pile" disabled={!canDraw} onClick={doDraw} className="text-center disabled:opacity-60">
                     <DeckBack count={pub.deckCount} shake={pileShake} />
@@ -731,15 +741,15 @@ export default function MeoNoApp() {
                   </button>
                   <div className="text-center">
                     {pub.topCard ? (
-                      <span key={pub.topCard.id} className="inline-block anim-card-fall"><MeoCardFace card={pub.topCard} d={d} size="lg" /></span>
+                      <span key={pub.topCard.id} className="inline-block anim-card-fall"><MeoCard kind={pub.topCard.kind} name={cardLabel(d, pub.topCard)} ability={cardAbility(d, pub.topCard)} size="md" /></span>
                     ) : (
-                      <span className="inline-flex items-center justify-center w-[86px] h-[122px] rounded-xl border-[3px] border-dashed border-[#3D3D63] text-[#B9BCE0] font-extrabold">?</span>
+                      <span className="inline-flex items-center justify-center w-[100px] h-[140px] rounded-xl border-[3px] border-dashed border-[#3D3D63] text-[#B9BCE0] font-extrabold">?</span>
                     )}
                     <span className="block font-extrabold text-[#FFF3CF] text-sm mt-1.5">{d.lastPlayed}</span>
                   </div>
                 </div>
                 {/* danger meter (design MN3) */}
-                <div className="mt-3 bg-[#23233F] border-2 border-[#3D3D63] rounded-2xl px-3 py-2">
+                <div className="mt-2 bg-[#23233F] border-2 border-[#3D3D63] rounded-2xl px-3 py-1.5">
                   <div className="flex items-baseline justify-between gap-2 font-bold text-[13px]">
                     <span className="text-[#EDEDF7] whitespace-nowrap">{d.pileLeft(pub.deckCount, pub.ekInDeck)}</span>
                     <span className="text-[#F87171] font-extrabold whitespace-nowrap">{d.risk(risk)}</span>
@@ -750,27 +760,39 @@ export default function MeoNoApp() {
                 </div>
               </div>
 
-              {/* my hand */}
+              {/* my hand — horizontal scroll, no overlap, so the ability
+               *  text on each card stays readable (design MN3) */}
               <div className="mt-3">
                 <div className="flex items-baseline justify-between">
                   <h3 className="disp font-extrabold text-lg">{d.yourHand} · {myHand.length} {d.cards}</h3>
-                  <span className="font-bold text-[#8A7B63] text-sm">{myTurn ? d.yourTurn : ''}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="font-bold text-[#B9BCE0] text-sm">{myTurn ? d.yourTurn : ''}</span>
+                    <button className="w-8 h-8 rounded-full bg-[#23233F] border-2 border-[#3D3D63] text-[#FFB020] font-extrabold push" onClick={() => setShowHelp(true)} title={d.cardGuide}>?</button>
+                  </span>
                 </div>
-                <div className="flex pb-2 pt-2 -mx-1 px-1 overflow-x-auto">
+                <div className="flex py-1 px-1 overflow-x-auto gap-2">
                   {myHand.map((c, hi) => {
                     const playable = canPlay(c);
                     const selected = c.id === selectedCardId;
                     return (
-                      <span key={c.id} className="flex-none anim-card-fall -ml-1 first:ml-0" style={{ animationDelay: `${hi * 45}ms` }}>
+                      <span key={c.id} className="flex-none anim-card-fall" style={{ animationDelay: `${hi * 45}ms` }}>
                       <button data-testid="hand-card" data-card-id={c.id} data-kind={c.kind} disabled={!playable} onClick={() => setSelectedCardId(selected ? null : c.id)}
                         className={`flex-none rounded-xl transition ${playable ? 'hover:-translate-y-2 cursor-pointer' : 'opacity-45 cursor-default'} ${selected && playable ? 'ring-4 ring-[#FFB020] -translate-y-2 z-10' : ''}`}>
-                        <MeoCardFace card={c} d={d} size="md" />
+                        <MeoCard kind={c.kind} name={cardLabel(d, c)} ability={cardAbility(d, c)} size="md" />
                       </button>
                       </span>
                     );
                   })}
-                  {myHand.length === 0 && <p className="font-bold text-[#8A7B63] py-6">…</p>}
+                  {myHand.length === 0 && <p className="font-bold text-[#B9BCE0] py-6">…</p>}
                 </div>
+                {selectedCard ? (
+                  <div className="mt-1 bg-[#23233F] border-2 border-[#FFB020] rounded-2xl px-3 py-2 flex items-center gap-2">
+                    <span className="font-bold text-sm flex-1 text-[#FFF3CF] leading-snug"><span className="disp font-extrabold">{cardLabel(d, selectedCard)}</span> — {cardAbility(d, selectedCard)}</span>
+                    <button className="flex-none w-11 h-11 rounded-full bg-[#FFB020] text-[#2B2016] font-extrabold text-lg border-2 border-[#2B2016] push" onClick={() => setShowHelp(true)} title={d.cardGuide}>?</button>
+                  </div>
+                ) : myTurn ? (
+                  <p className="font-bold text-[11px] text-[#B9BCE0] mt-0.5">{d.tapCardHint}</p>
+                ) : null}
                 <div className="flex gap-2 mt-1">
                   <button data-testid="play-selected-btn" className={`${BTN} btn-amber flex-1`} disabled={!selectedCard || !canPlay(selectedCard)} onClick={doPlaySelected}>{d.playSelected}</button>
                   <button data-testid="draw-btn" className={`${BTN} btn-dark flex-1`} disabled={!canDraw} onClick={doDraw}>
@@ -793,7 +815,7 @@ export default function MeoNoApp() {
             <Confetti />
             <div className="relative max-w-md lg:max-w-2xl mx-auto text-center">
               <p className="disp text-[#FFB020] font-extrabold tracking-[0.22em] text-xs">{d.roundOver}</p>
-              <div className="flex justify-center mt-1"><CatAvatar seed={pub.winner ?? 'w'} size={56} /></div>
+              <div className="flex justify-center mt-1"><PlayerAvatar avatarId={pub.players.find(x => x.id === pub.winner)?.avatar} size={56} fallback={<CatAvatar seed={pub.winner ?? 'w'} size={56} />} /></div>
               <h2 className="disp font-extrabold text-3xl mt-1">{playerName(pub.winner)} {d.winner}</h2>
               <p className="text-[#B9BCE0] font-bold mt-0.5">{playerName(pub.winner)} {d.winnerSub}</p>
               <div className="lg:grid lg:grid-cols-[1fr_300px] lg:gap-4 lg:text-left">
@@ -801,7 +823,7 @@ export default function MeoNoApp() {
                   {rankings.map((p, i) => (
                     <div key={p.id} className={`flex items-center gap-3 rounded-2xl px-3 py-1.5 hard-sm ${i === 0 ? 'bg-[#FFD97A]' : 'bg-[#FFFBef]'} text-[#2B2016]`}>
                       <span className="disp font-extrabold text-xl w-6 text-center flex-none">{i + 1}</span>
-                      <CatAvatar seed={p.id} size={36} state={p.alive ? 'awake' : 'dead'} />
+                      <PlayerAvatar avatarId={p.avatar} size={36} fallback={<CatAvatar seed={p.id} size={36} state={p.alive ? 'awake' : 'dead'} />} />
                       <span className="flex-1 min-w-0">
                         <span className="block font-extrabold truncate">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
                         <span className="block font-bold text-sm text-[#5C4B33]">{p.id === pub.winner ? (p.handCount === null ? (lang === 'vi' ? 'Sống sót' : 'Survived') : d.survived(p.handCount)) : d.explodedAt(p.explodedTurn ?? 0)}</span>
@@ -868,11 +890,11 @@ export default function MeoNoApp() {
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setFavorPick(null)}>
             <div className={`${CARD} max-w-xs w-full text-center`} onClick={e => e.stopPropagation()}>
               <div className="disp font-extrabold text-xl">{d.favorPickTarget}</div>
-              <div className="flex justify-center mt-3"><MeoCardFace card={favorPick} d={d} size="lg" /></div>
+              <div className="flex justify-center mt-3"><MeoCard kind={favorPick.kind} name={cardLabel(d, favorPick)} ability={cardAbility(d, favorPick)} size="lg" /></div>
               <div className="space-y-2 mt-4">
                 {others.filter(p => p.alive).map(p => (
                   <button key={p.id} data-testid="favor-target" data-player-id={p.id} className={`${BTN} btn-amber w-full !py-2.5`} onClick={() => doPlayFavor(p.id)}>
-                    <span className="inline-flex items-center gap-2"><CatAvatar seed={p.id} size={28} /> {p.name} · {p.handCount ?? '?'} {d.cards}</span>
+                    <span className="inline-flex items-center gap-2"><PlayerAvatar avatarId={p.avatar} size={28} fallback={<CatAvatar seed={p.id} size={28} />} /> {p.name} · {p.handCount ?? '?'} {d.cards}</span>
                   </button>
                 ))}
               </div>
@@ -891,7 +913,7 @@ export default function MeoNoApp() {
                 {myHand.map(c => (
                   <button key={c.id} data-testid="favor-give-card" data-card-id={c.id} onClick={() => setFavorGiveId(c.id)}
                     className={`rounded-xl transition ${favorGiveId === c.id ? 'ring-4 ring-[#FFB020] -translate-y-1' : 'hover:-translate-y-1'}`}>
-                    <MeoCardFace card={c} d={d} size="md" />
+                    <MeoCard kind={c.kind} name={cardLabel(d, c)} ability={cardAbility(d, c)} size="md" />
                   </button>
                 ))}
               </div>
@@ -906,7 +928,7 @@ export default function MeoNoApp() {
             <div className="w-full max-w-md text-center text-[#FFF3CF]">
               <p className="disp text-[#F87171] font-extrabold tracking-[0.22em] text-xs">{lang === 'vi' ? 'BẠN VỪA BỐC ĐƯỢC' : 'YOU JUST DREW'}</p>
               <h2 className="disp font-extrabold text-4xl mt-1 anim-ek-shake">{d.youDrewEK}</h2>
-              <div className="flex justify-center mt-4"><span className="anim-card-fall inline-block"><MeoCardFace card={{ id: 'ek-show', kind: 'exploding' }} d={d} size="lg" /></span></div>
+              <div className="flex justify-center mt-4"><span className="anim-card-fall inline-block"><MeoCard kind="exploding" name={d.cardEK} ability={d.abEK} size="lg" /></span></div>
               <p className="font-bold mt-4 leading-snug">{d.ekNoDefuse}</p>
               <p className="font-bold text-sm text-[#B9BCE0] mt-1">{d.ekDefuseHint}</p>
               <button data-testid="defuse-btn" className={`${BTN} btn-green w-full mt-4 !text-xl`} onClick={doDefuse}>🛡️ {d.defuseBtn}</button>
@@ -951,7 +973,7 @@ export default function MeoNoApp() {
               <div className="flex justify-center gap-2 mt-5">
                 {priv.peekCards.map((c, i) => (
                   <div key={c.id + '-' + i} className="anim-card-flip" style={{ animationDelay: `${i * 0.15}s` }}>
-                    <MeoCardFace card={c} d={d} size="lg" />
+                    <MeoCard kind={c.kind} name={cardLabel(d, c)} ability={cardAbility(d, c)} size="lg" />
                     <div className="mt-2">
                       <span className={`disp font-extrabold text-xs rounded-full px-2 py-0.5 ${c.kind === 'exploding' ? 'bg-[#D63A2F] text-white' : 'bg-[#23233F] text-[#B9BCE0] border border-[#3D3D63]'}`}>{d.peekCardN(i + 1)}{c.kind === 'exploding' ? ` · ${d.peekDanger}` : ''}</span>
                     </div>
@@ -973,7 +995,7 @@ export default function MeoNoApp() {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'radial-gradient(circle at 50% 30%, #7A1F18, #14142B 75%)' }}>
             <div className="w-full max-w-md text-center text-[#FFF3CF]">
               <h2 className="disp font-extrabold text-4xl anim-ek-shake">{d.eliminatedTitle}</h2>
-              <div className="flex justify-center mt-4"><CatAvatar seed={joined.playerId} size={96} state="dead" /></div>
+              <div className="flex justify-center mt-4"><PlayerAvatar avatarId={pub?.players.find(x => x.id === joined.playerId)?.avatar} size={96} fallback={<CatAvatar seed={joined.playerId} size={96} state="dead" />} /></div>
               <p className="font-bold mt-4 leading-snug">{d.eliminatedSub}</p>
               <button className={`${BTN} btn-amber w-full mt-5`} onClick={() => setShowEliminated(false)}>{d.keepWatching}</button>
             </div>

@@ -7,6 +7,7 @@ import { HOUR_MS } from '../../../../games/cheese-thief/logic';
 import { sfx, ensureCtx } from '../../transport/sound';
 import { joinVoice, VoiceHandle } from '../../transport/voice';
 import { MouseAvatar, CheeseWedge } from '../../platform/avatars';
+import { RoleCard, PlayerAvatar } from '../../platform/GameCard';
 
 const MICE = ['🐭', '🐹', '🐰', '🦊', '🐱', '🐶', '🐷', '🐨'];
 const mouseFor = (id: string) => MICE[[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % MICE.length];
@@ -115,7 +116,7 @@ function PlayerChips({ players, myId, phase, d, roleLabel, onPick, pickable, onK
           {(markFollowerIds?.includes(p.id) || (p.id === myId && iAmFollower)) && <span className="absolute -top-2 -left-2 text-2xl anim-pop">🤝</span>}
           {peeks?.some(x => x.targetId === p.id) && <span className="absolute -top-2 -right-2 bg-sky-500 text-white text-xs font-extrabold rounded-full px-2 py-0.5 shadow">🎲{peeks!.find(x => x.targetId === p.id)!.dice}</span>}
           {speakingIds?.has(p.id) && <span className="absolute -bottom-2 -left-2 bg-green-500 text-white text-xs rounded-full px-1.5 py-0.5 shadow anim-pulse-soft">🎙️</span>}
-          <div className={`${compact ? 'text-2xl w-9 h-9' : 'text-3xl w-12 h-12'} anim-bob mx-auto rounded-full flex items-center justify-center ${avatarBg(p.id)} shadow-inner`}>{mouseFor(p.id)}</div>
+          <div className={`${compact ? 'w-9 h-9' : 'w-12 h-12'} anim-bob mx-auto rounded-full flex items-center justify-center ${avatarBg(p.id)} shadow-inner overflow-hidden`}><PlayerAvatar avatarId={p.avatar} size={compact ? 36 : 48} fallback={<span className={compact ? 'text-2xl' : 'text-3xl'}>{mouseFor(p.id)}</span>} /></div>
           <div className={`font-bold truncate ${compact ? 'text-sm' : ''}`}>{p.name} {p.id === myId && <span className="text-amber-600">({d.you})</span>}</div>
           <div className="text-xs">{p.isHost && <span className="bg-purple-500 text-white rounded-full px-2 py-0.5">👑 {d.host}</span>} {!p.connected && <span className="text-red-500">• {d.offline}</span>}</div>
           {(p.wins ?? 0) > 0 && <div className="text-xs mt-1 font-extrabold text-amber-600">🏆 ×{p.wins}</div>}
@@ -658,7 +659,7 @@ export default function App() {
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
               {pub.players.map(p => (
                 <div key={p.id} className={`relative flex items-center gap-2.5 rounded-2xl px-3 py-2 hard-sm ${p.id === joined.playerId ? 'bg-[#FFE9B8]' : 'bg-[#FFFBef]'}`}>
-                  <MouseAvatar seed={p.id} size={42} halo="#FFF3CF" state={p.connected ? 'awake' : 'asleep'} />
+                  <PlayerAvatar avatarId={p.avatar} size={42} fallback={<MouseAvatar seed={p.id} size={42} halo="#FFF3CF" state={p.connected ? 'awake' : 'asleep'} />} />
                   <div className="min-w-0 flex-1">
                     <div className="font-extrabold truncate text-[15px] text-[#2B2016] leading-tight">{p.name} {p.isHost && '👑'}</div>
                     <div className="text-xs font-bold text-[#8A7B63] truncate">
@@ -712,23 +713,21 @@ export default function App() {
           <div className="anim-pop flex flex-col flex-1 min-h-0 w-full">
             <p className="disp text-center text-[#FFB020] font-extrabold tracking-[0.22em] text-xs uppercase">{d.yourRole}</p>
             <p className="text-center text-[#B9BCE0] font-bold mt-1">{d.revealSub}</p>
-            <div className="card-cream max-w-md sm:max-w-2xl w-full mx-auto mt-4 px-5 py-6 text-center sm:text-left anim-card-flip">
-              <div className="flex flex-col sm:flex-row items-center gap-5">
-              <div className="flex-1 text-center">
-              <MouseAvatar seed={joined.playerId} size={118} halo="#FFF3CF" state={priv.role === 'thief' ? 'thief' : priv.role === 'fallmouse' ? 'dead' : 'awake'} />
-              <div className="mt-3">
-                <span className={`disp inline-block text-white font-extrabold text-xl rounded-2xl px-5 py-1.5 border-[2.5px] border-[#2B2016] shadow-[0_3px_0_#2B2016] ${priv.role === 'thief' ? 'bg-[#D63A2F]' : priv.role === 'fallmouse' ? 'bg-[#7C4DBD]' : 'bg-[#2E7CD6]'}`}>
-                  {(priv.role === 'thief' ? d.thief : priv.role === 'fallmouse' ? d.fall : d.sleepy).toUpperCase()}
-                </span>
-              </div>
-              <p className="mt-3 font-bold text-[#5C4B33] leading-snug">{priv.role === 'thief' ? d.thiefDesc : priv.role === 'fallmouse' ? d.fallDesc : d.sleepyDesc}</p>
-              </div>
-              <div className="border-t-2 sm:border-2 border-dashed border-[#D8C69A] mt-4 sm:mt-0 pt-4 sm:py-5 sm:px-5 sm:rounded-3xl sm:bg-[#FFFBEF] flex items-center justify-center gap-4 sm:w-[280px] flex-none">
+            <div className="max-w-md sm:max-w-2xl w-full mx-auto mt-4 px-2 text-center anim-card-flip">
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-5">
+              <RoleCard
+                color={priv.role === 'thief' ? '#D63A2F' : priv.role === 'fallmouse' ? '#7C4DBD' : '#2E7CD6'}
+                title={priv.role === 'thief' ? d.thief : priv.role === 'fallmouse' ? d.fall : d.sleepy}
+                sub={priv.role === 'thief' ? d.thiefSub : priv.role === 'fallmouse' ? d.fallSub : d.sleepySub}
+                artKey={priv.role === 'thief' ? 'thief' : 'mouse'}
+                ability={priv.role === 'thief' ? d.thiefDesc : priv.role === 'fallmouse' ? d.fallDesc : d.sleepyDesc}
+                size="md" />
+              <div className="border-2 border-dashed border-[#3D3D63] mt-4 sm:mt-0 py-5 px-5 rounded-3xl bg-[#23233F] flex items-center justify-center gap-4 sm:w-[280px] flex-none">
                 <DiceFace value={priv.dice ?? 1} size={76} />
                 <div className="text-left">
-                  <div className="text-[11px] font-black tracking-[0.16em] text-[#8A7B63] uppercase">{d.yourDice}</div>
-                  <div className="disp text-5xl font-extrabold text-[#2B2016] leading-none mt-0.5">{priv.dice}</div>
-                  <div className="font-bold text-[#5C4B33] text-sm mt-1">{d.wakeLine(priv.dice ?? 0)}</div>
+                  <div className="text-[11px] font-black tracking-[0.16em] text-[#B9BCE0] uppercase">{d.yourDice}</div>
+                  <div className="disp text-5xl font-extrabold text-[#FFF3CF] leading-none mt-0.5">{priv.dice}</div>
+                  <div className="font-bold text-[#B9BCE0] text-sm mt-1">{d.wakeLine(priv.dice ?? 0)}</div>
                 </div>
               </div>
               </div>
@@ -797,7 +796,7 @@ export default function App() {
                 const knownThief = priv.knownThiefId === p.id || priv.witnessedThiefId === p.id;
                 return (
                 <div key={p.id} id={`pcard-${p.id}`} className={`rounded-3xl border-2 p-2 text-center relative transition-all duration-300 ${isMe && priv.awake ? 'bg-[#FFB020] border-[#2B2016] shadow-[0_3px_0_#2B2016] text-[#2B2016]' : awakeNow ? 'bg-[#2E7CD6] border-[#9CC3F5] text-white' : 'bg-[#1D1D38] border-[#3D3D63] text-[#B9BCE0]'} ${flyHit === p.id ? 'ring-4 ring-[#FFB020] scale-[1.07] z-10' : ''}`}>
-                  <MouseAvatar seed={p.id} size={50} state={awakeNow ? (knownThief ? 'thief' : 'awake') : 'asleep'} />
+                  <PlayerAvatar avatarId={p.avatar} size={50} fallback={<MouseAvatar seed={p.id} size={50} state={awakeNow ? (knownThief ? 'thief' : 'awake') : 'asleep'} />} />
                   {!awakeNow && <span className="absolute top-1.5 right-2.5 text-[#7C83B8] font-black text-sm">z</span>}
                   <div className="font-extrabold truncate text-[13px] leading-tight">{p.name}{isMe ? ` (${d.you})` : ''}</div>
                   {priv.stealById === p.id && <span className="absolute -top-2 -left-2 text-2xl anim-pop">🧀</span>}
@@ -820,7 +819,7 @@ export default function App() {
                     <div className="font-extrabold mb-2 text-[#7C4DBD]">{d.chooseWitnessTitle}</div>
                     <div className="flex flex-wrap gap-2 justify-center">
                       {priv.followerCandidates.map(id => (
-                        <button key={id} className={`${BTN} !bg-[#7C4DBD] text-white !px-3.5 !py-1.5 text-sm inline-flex items-center gap-1.5`} onClick={() => getNet().nightAction('chooseFollower', id)}><MouseAvatar seed={id} size={22} /> {nameOf(id)}</button>))}
+                        <button key={id} className={`${BTN} !bg-[#7C4DBD] text-white !px-3.5 !py-1.5 text-sm inline-flex items-center gap-1.5`} onClick={() => getNet().nightAction('chooseFollower', id)}><PlayerAvatar avatarId={pub.players.find(x => x.id === id)?.avatar} size={22} fallback={<MouseAvatar seed={id} size={22} />} /> {nameOf(id)}</button>))}
                     </div>
                   </div>)}
                 {priv.isFollower && (
@@ -832,7 +831,7 @@ export default function App() {
                     <div className="font-bold mb-2 text-[#5C4B33]">{d.inspectTitle}</div>
                     <div className="flex flex-wrap gap-2 justify-center">
                       {pub.players.filter(p => p.id !== joined.playerId).map(p => (
-                        <button key={p.id} className={`${BTN} btn-blue !px-3.5 !py-1.5 text-sm inline-flex items-center gap-1.5`} onClick={() => { setOptPeek(true); getNet().nightAction('inspect', p.id); }}><MouseAvatar seed={p.id} size={22} /> {p.name}</button>))}
+                        <button key={p.id} className={`${BTN} btn-blue !px-3.5 !py-1.5 text-sm inline-flex items-center gap-1.5`} onClick={() => { setOptPeek(true); getNet().nightAction('inspect', p.id); }}><PlayerAvatar avatarId={p.avatar} size={22} fallback={<MouseAvatar seed={p.id} size={22} />} /> {p.name}</button>))}
                     </div>
                   </div>)}
                 {priv.canInspect && optPeek && !priv.inspected && (
@@ -859,7 +858,7 @@ export default function App() {
             {priv.role === 'thief' && priv.followerCandidates ? (
               <div className="card-cream anim-pop max-w-xl w-full mx-auto mt-4 relative z-10 px-4 py-4">
                 <div className="flex items-center gap-3">
-                  <MouseAvatar seed={joined.playerId} size={52} state="thief" halo="#FFF3CF" />
+                  <PlayerAvatar avatarId={pub.players.find(x => x.id === joined.playerId)?.avatar} size={52} fallback={<MouseAvatar seed={joined.playerId} size={52} state="thief" halo="#FFF3CF" />} />
                   <div className="min-w-0">
                     <div className="disp font-extrabold text-lg text-[#2B2016] leading-tight">{d.recruitTitle}</div>
                     <div className="text-sm font-bold text-[#8A7B63]">{d.recruitHint(priv.followersNeeded, priv.followersChosen)}</div>
@@ -868,7 +867,7 @@ export default function App() {
                 <div className="mt-3 space-y-2">
                   {priv.followerCandidates.map(id => (
                     <div key={id} className="flex items-center gap-2.5 bg-white rounded-2xl hard-sm px-3 py-2">
-                      <MouseAvatar seed={id} size={40} halo="#FFF3CF" />
+                      <PlayerAvatar avatarId={pub.players.find(x => x.id === id)?.avatar} size={40} fallback={<MouseAvatar seed={id} size={40} halo="#FFF3CF" />} />
                       <span className="flex-1 font-extrabold text-[#2B2016] truncate">{nameOf(id)}</span>
                       <button className={`${BTN} btn-green !px-4 !py-1.5 text-sm flex-none`} onClick={() => getNet().nightAction('chooseFollower', id)}>+ {d.inviteBtn}</button>
                     </div>))}
@@ -911,7 +910,7 @@ export default function App() {
             <div className="flex lg:hidden gap-1.5 mt-3 pb-1">
               {pub.players.map(p => (
                 <div key={p.id} className={`relative flex-1 min-w-0 rounded-2xl border-2 px-1 py-1.5 text-center ${p.id === joined.playerId ? 'bg-[#FFE9B8] border-[#2B2016] shadow-[0_2px_0_#2B2016]' : 'bg-[#FFFBef] border-[#E3D3AC]'}`}>
-                  <MouseAvatar seed={p.id} size={36} state={(priv?.knownThiefId === p.id || priv?.witnessedThiefId === p.id) ? 'thief' : 'awake'} />
+                  <PlayerAvatar avatarId={p.avatar} size={36} fallback={<MouseAvatar seed={p.id} size={36} state={(priv?.knownThiefId === p.id || priv?.witnessedThiefId === p.id) ? 'thief' : 'awake'} />} />
                   <div className="text-[11px] font-extrabold truncate text-[#2B2016]">{p.name}</div>
                   {priv?.peeks?.some(x => x.targetId === p.id) && <span className="absolute -top-2 -right-1.5 bg-[#2E7CD6] text-white text-[11px] font-black rounded-full w-5 h-5 flex items-center justify-center border-2 border-[#2B2016] z-10">{priv.peeks.find(x => x.targetId === p.id)!.dice}</span>}
                   {speakingIds.has(p.id) && <span className="absolute -bottom-2 left-0 bg-[#0E9F6E] text-white text-[10px] rounded-full px-1 py-0.5 anim-pulse-soft z-10">🎙️</span>}
@@ -921,7 +920,7 @@ export default function App() {
             <div className="hidden lg:grid grid-cols-3 gap-2.5 mt-3">
               {pub.players.map(p => (
                 <div key={p.id} className={`relative rounded-2xl border-2 px-3 py-3 text-center ${p.id === joined.playerId ? 'bg-[#FFE9B8] border-[#2B2016] shadow-[0_3px_0_#2B2016]' : 'bg-[#FFFBef] border-[#E3D3AC]'}`}>
-                  <MouseAvatar seed={p.id} size={56} state={(priv?.knownThiefId === p.id || priv?.witnessedThiefId === p.id) ? 'thief' : 'awake'} />
+                  <PlayerAvatar avatarId={p.avatar} size={56} fallback={<MouseAvatar seed={p.id} size={56} state={(priv?.knownThiefId === p.id || priv?.witnessedThiefId === p.id) ? 'thief' : 'awake'} />} />
                   <div className="disp font-extrabold text-lg text-[#2B2016] mt-1 leading-tight">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</div>
                   {priv?.peeks?.some(x => x.targetId === p.id) && <span className="absolute -top-2.5 right-2 bg-[#2E7CD6] text-white text-xs font-extrabold rounded-full px-2.5 py-0.5 border-2 border-[#2B2016] whitespace-nowrap z-10">{d.peekPill(priv.peeks.find(x => x.targetId === p.id)!.dice)}</span>}
                   {speakingIds.has(p.id) && <span className="absolute top-2 left-2 bg-[#0E9F6E] text-white text-[11px] rounded-full px-1.5 py-0.5 anim-pulse-soft">🎙️</span>}

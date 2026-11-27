@@ -27,7 +27,7 @@ export const CAT_VARIANTS: CatVariant[] = ['tabby', 'siamese', 'calico', 'black'
 export const MIN_PLAYERS = 2;
 export const MAX_PLAYERS = 5;
 export const TURN_MS = 30000;
-export const NOPE_MS = 5000;
+export const NOPE_MS = 8000;
 /** Fallback for a pending decision (defuse / reinsert / give a card)
  *  when the 30s turn timer is OFF — a forgotten decision still gets a
  *  sensible default instead of stalling the table. */
@@ -41,7 +41,7 @@ export interface Config { nopeEnabled: boolean; showCounts: boolean; timerEnable
 export const DEFAULT_CONFIG: Config = { nopeEnabled: true, showCounts: true, timerEnabled: false };
 
 export interface Player {
-  id: string; name: string; isHost: boolean; connected: boolean;
+  id: string; name: string; avatar?: string; isHost: boolean; connected: boolean;
   hand: Card[]; wins: number; alive: boolean; explodedTurn: number | null;
 }
 
@@ -474,7 +474,7 @@ export function publicState(s: GameState) {
     winner: s.winner,
     chat: s.chat,
     players: s.players.map(p => ({
-      id: p.id, name: p.name, isHost: p.isHost, connected: p.connected,
+      id: p.id, name: p.name, avatar: p.avatar ?? null, isHost: p.isHost, connected: p.connected,
       handCount: s.config.showCounts ? p.hand.length : null,
       alive: p.alive, explodedTurn: p.explodedTurn, wins: p.wins,
     })),
