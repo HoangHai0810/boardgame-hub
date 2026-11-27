@@ -10,7 +10,7 @@
 // without knowing Mèo Nổ from Uno, Ma Sói or Cheese Thief.
 import {
   GameState, Player, createGame, deal, publicState, privateState,
-  playCard, playNope, resolvePendingAction, drawCard, defuse, reinsert,
+  playCard, playNope, passNope, canResolveNopeEarly, resolvePendingAction, drawCard, defuse, reinsert,
   giveFavorCard, autoTurn, autoResolvePending, advanceTurn, addBot, removeBot,
   MIN_PLAYERS, MAX_PLAYERS, TURN_MS, NOPE_MS, DECISION_MS,
 } from '../../../../games/meo-no/logic';
@@ -78,7 +78,7 @@ export class HostEngine {
     const s = this.state;
     if (s.phase !== 'playing') { this.botPending.clear(); this.botNopeDecided.clear(); return; }
     const phaseKey = `${s.turn}:${s.turnCount}:${s.debt}:`
-      + `${s.pendingAction ? `${s.pendingAction.cardId}:${s.pendingAction.nopes.length}` : ''}:`
+      + `${s.pendingAction ? `${s.pendingAction.cardId}:${s.pendingAction.nopes.length}:${s.pendingAction.passes.length}` : ''}:`
       + `${s.pendingExplode?.playerId ?? ''}:${s.pendingReinsert ?? ''}:`
       + `${s.pendingFavor?.targetId ?? ''}:${s.peekShownFor ?? ''}`;
     if (phaseKey !== this.botPhaseKey) { this.botPhaseKey = phaseKey; this.botPending.clear(); }
@@ -106,6 +106,9 @@ export class HostEngine {
         let want = this.botNopeDecided.get(decidedKey);
         if (want === undefined) { want = botShouldNope(s, b); this.botNopeDecided.set(decidedKey, want); }
         if (want) this.scheduleBot(`nope:${s.pendingAction.cardId}:${s.pendingAction.nopes.length}:${b.id}`, this.botDelay(1000, 1500), () => this.botNope(b));
+        // A bot that won't block passes quickly (0.7–1.2s) so the window
+        // closes early instead of idling out its 5s.
+        else this.scheduleBot(`pass:${s.pendingAction.cardId}:${s.pendingAction.nopes.length}:${b.id}`, this.botDelay(700, 500), () => this.botPass(b));
       }
       return;
     }
@@ -160,12 +163,22 @@ export class HostEngine {
     // last noper, and a bot may never Nope its own Nope.
     if (botShouldNope(s, b, () => 0) && playNope(s, b)) this.sync();
   }
+  private botPass(b: Player) {
+    const s = this.state;
+    if (passNope(s, b)) this.sync();
+  }
 
   /** Broadcast + re-arm every timer the current state needs. armTimers
    *  runs FIRST: it clears the timer list, and driveBots() (inside
    *  broadcast) schedules the bots' timers after that — the other order
    *  would wipe every bot timer the moment it was scheduled. */
-  private sync() { this.armTimers(); this.broadcast(); }
+  private sync() {
+    // Nope early-resolve (v48): when everyone who could still block has
+    // passed (or nobody can block), the window closes at once instead of
+    // running out its 5s — the dead wait Hải Anh reported.
+    if (this.state.pendingAction && canResolveNopeEarly(this.state)) resolvePendingAction(this.state);
+    this.armTimers(); this.broadcast();
+  }
   private armTimers() {
     this.clear();
     const s = this.state;
@@ -260,6 +273,7 @@ export class HostEngine {
         if (msg.cardId && playCard(s, player, msg.cardId, msg.targetId)) this.sync();
         break;
       case 'playNope': if (playNope(s, player)) this.sync(); break;
+      case 'passNope': if (passNope(s, player)) this.sync(); break;
       case 'drawCard': {
         const card = drawCard(s, player);
         if (card !== null || s.turn !== player.id) this.sync();

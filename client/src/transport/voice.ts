@@ -208,6 +208,11 @@ export async function joinVoice(roomCode: string, myId: string, cb: VoiceCallbac
       }
     };
     pc.onconnectionstatechange = () => {
+      // Stale-handler guard (v48): closePeer/ensurePeer rebuilds the pair
+      // synchronously (mic enable), but the OLD pc's 'closed'/'failed'
+      // event can fire afterwards — it must not kill the NEW peer. Only
+      // act when this pc is still the live one for pid.
+      if (peers.get(pid)?.pc !== pc) return;
       if (pc.connectionState === 'failed') {
         closePeer(pid);
         // Self-heal: presence is retained and never redelivered, so a

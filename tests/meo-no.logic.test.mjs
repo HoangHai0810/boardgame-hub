@@ -2,7 +2,7 @@
 import { strict as assert } from 'node:assert';
 import {
   createGame, buildDeck, deal, shuffle,
-  playCard, playNope, resolvePendingAction, drawCard, defuse, reinsert,
+  playCard, playNope, passNope, nopePassProgress, canResolveNopeEarly, resolvePendingAction, drawCard, defuse, reinsert,
   reinsertPositions, giveFavorCard, autoTurn, autoResolvePending, advanceTurn,
   publicState, privateState, ekInDeck,
   MIN_PLAYERS, MAX_PLAYERS, TURN_MS, NOPE_MS,
@@ -24,7 +24,7 @@ const mk = (hands, config) => {
 
 t('limits 2-5, 30s turns, 5s nope window', () => {
   assert.equal(MIN_PLAYERS, 2); assert.equal(MAX_PLAYERS, 5);
-  assert.equal(TURN_MS, 30000); assert.equal(NOPE_MS, 8000);
+  assert.equal(TURN_MS, 30000); assert.equal(NOPE_MS, 5000);
 });
 
 t('deck is 50 cards before EKs (6 defuse, 4x6 actions, 20 cats)', () => {
@@ -193,6 +193,74 @@ t('nope: a single unanswered nope blocks the action', () => {
   resolvePendingAction(s, rng);
   assert.equal(s.turn, 'p0'); // skip never happened
   assert.equal(s.discard.some(c => c.id === 'sk'), true); // noped card is discarded
+});
+
+t('nope: early resolve when nobody holds a Nope', () => {
+  const s = mk([
+    [C('sk', 'skip')],
+    [C('c1', 'cat', 'tabby')],
+    [C('c2', 'cat', 'black')],
+  ]);
+  playCard(s, s.players[0], 'sk');
+  assert.equal(canResolveNopeEarly(s), true);
+  const pub = publicState(s);
+  assert.equal(pub.pendingAction.passed, 0);
+  assert.equal(pub.pendingAction.passNeeded, 0);
+});
+
+t('nope: pass ends the window early once every Nope-holder passes', () => {
+  const s = mk([
+    [C('sk', 'skip')],
+    [C('np', 'nope')],
+    [C('c2', 'cat', 'black')],
+  ]);
+  playCard(s, s.players[0], 'sk');
+  assert.equal(canResolveNopeEarly(s), false);
+  assert.deepEqual(nopePassProgress(s), { passed: 0, needed: 1 });
+  assert.equal(passNope(s, s.players[1]), true);
+  assert.equal(passNope(s, s.players[1]), false); // already passed
+  assert.equal(canResolveNopeEarly(s), true);
+  // The non-holder (p2, no Nope in hand) never blocks and needs no pass.
+  assert.deepEqual(nopePassProgress(s), { passed: 1, needed: 1 });
+});
+
+t('nope: passing is binding for the round — a passer cannot Nope after', () => {
+  const s = mk([[C('sk', 'skip')], [C('np', 'nope')]]);
+  playCard(s, s.players[0], 'sk');
+  assert.equal(passNope(s, s.players[1]), true);
+  assert.equal(playNope(s, s.players[1]), false);
+});
+
+t('nope: a new Nope resets passes — actor and first passer must pass again', () => {
+  const s = mk([
+    [C('sk', 'skip'), C('np0', 'nope')],
+    [C('np', 'nope')],
+    [C('np2', 'nope')],
+  ]);
+  playCard(s, s.players[0], 'sk');
+  assert.equal(passNope(s, s.players[1]), true);
+  assert.equal(canResolveNopeEarly(s), false); // p2 still owes a pass
+  // p2 nopes the skip — fresh round, passes reset.
+  assert.equal(playNope(s, s.players[2]), true);
+  assert.equal(s.pendingAction.passes.length, 0);
+  assert.equal(canResolveNopeEarly(s), false); // p0 (actor) and p1 can both nope the nope
+  assert.deepEqual(nopePassProgress(s), { passed: 0, needed: 2 });
+  assert.equal(passNope(s, s.players[0]), true);
+  assert.equal(canResolveNopeEarly(s), false); // p1 still owes a pass
+  assert.equal(passNope(s, s.players[1]), true);
+  assert.equal(canResolveNopeEarly(s), true);
+});
+
+t('nope: a disconnected Nope-holder does not block early resolve', () => {
+  const s = mk([
+    [C('sk', 'skip')],
+    [C('np', 'nope')],
+  ]);
+  playCard(s, s.players[0], 'sk');
+  assert.equal(canResolveNopeEarly(s), false);
+  s.players[1].connected = false;
+  assert.equal(canResolveNopeEarly(s), true);
+  assert.deepEqual(nopePassProgress(s), { passed: 0, needed: 0 });
 });
 
 t('nope disabled: actions resolve at once', () => {

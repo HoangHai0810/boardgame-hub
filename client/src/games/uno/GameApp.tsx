@@ -76,6 +76,26 @@ function UnoCardBack({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
   );
 }
 
+/* Card-fly (v48): a played card flies from the hand (or the player's
+ * seat) to the discard pile. Fixed-position clone, pure translate —
+ * hand and discard use the same lg size, so no scaling is needed.
+ * The real discard card stays hidden until the clone lands. */
+type FlyRect = { x: number; y: number; w: number; h: number };
+function FlyCard({ card, from, to, onDone }: { card: Card; from: FlyRect; to: FlyRect; onDone: () => void }) {
+  const [go, setGo] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => requestAnimationFrame(() => setGo(true)));
+    const t = setTimeout(onDone, 540);
+    return () => { cancelAnimationFrame(raf); clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div className="fixed z-50 pointer-events-none" style={{ left: from.x, top: from.y, width: from.w, height: from.h, transform: go ? `translate(${to.x - from.x}px, ${to.y - from.y}px)` : 'translate(0,0)', transition: 'transform .48s cubic-bezier(.3,.7,.3,1)' }}>
+      <UnoCardFace card={card} size="lg" />
+    </div>
+  );
+}
+
 function HelpModal({ d, onClose }: { d: any; onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -129,12 +149,17 @@ export default function UnoApp() {
   }, [pub?.phase]);
   useEffect(() => { if (!optPlayed) return; const t = setTimeout(() => setOptPlayed(null), 6000); return () => clearTimeout(t); }, [optPlayed]);
   useEffect(() => { if (!optDrew) return; const t = setTimeout(() => setOptDrew(false), 6000); return () => clearTimeout(t); }, [optDrew]);
+  // Card-fly (v48): the rect of the card I just tapped (captured before
+  // the optimistic update removes it) + the running fly overlay.
+  const [fly, setFly] = useState<{ card: Card; from: FlyRect; to: FlyRect } | null>(null);
+  const flyFromRef = useRef<{ cardId: string; card: Card; rect: FlyRect } | null>(null);
+  const prevTurnRef = useRef<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [ackOneCard, setAckOneCard] = useState('');
   const [seenChat, setSeenChat] = useState(0);
   const unreadChat = Math.max(0, (pub?.chat.length ?? 0) - seenChat);
   useEffect(() => { setSeenChat(pub?.chat.length ?? 0); }, [pub?.phase]);
-  useEffect(() => { setOptPlayed(null); setOptDrew(false); }, [pub?.phase]);
+  useEffect(() => { setOptPlayed(null); setOptDrew(false); setFly(null); }, [pub?.phase]);
   useEffect(() => {
     if (optPlayed && priv && !priv.myHand.some(c => c.id === optPlayed)) setOptPlayed(null);
     if (optDrew && pub?.turnDrawn) setOptDrew(false);
@@ -316,6 +341,10 @@ export default function UnoApp() {
     if (card.color === 'wild' && !color) { setWildPick(card); return; }
     setWildPick(null);
     setOptPlayed(card.id);
+    // Card-fly (v48): capture the tapped card's rect before it leaves my hand.
+    const el = document.querySelector(`[data-card-id="${card.id}"]`);
+    const r = el?.getBoundingClientRect();
+    if (r) flyFromRef.current = { cardId: card.id, card, rect: { x: r.x, y: r.y, w: r.width, h: r.height } };
     getNet().nightAction('playCard', undefined, { cardId: card.id, ...(color ? { color } : {}) });
   };
   const doDraw = () => { setOptDrew(true); getNet().nightAction('drawCard'); };
@@ -328,6 +357,35 @@ export default function UnoApp() {
     setWildPick(null);
     getNet().nightAction('pickColor', undefined, { color });
   };
+
+  // Card-fly trigger (v48): when the top card changes, fly the played
+  // card from its source — my tapped card, or the previous turn player's
+  // seat chip — to the discard pile.
+  const topCardId = pub?.topCard?.id;
+  useEffect(() => {
+    if (!pub || !pub.topCard || !topCardId) return;
+    const pending = flyFromRef.current;
+    let from: FlyRect | null = null;
+    if (pending && pending.cardId === topCardId) {
+      from = pending.rect;
+      flyFromRef.current = null;
+    } else {
+      flyFromRef.current = null;
+      const actor = prevTurnRef.current;
+      if (actor && actor !== joined?.playerId) {
+        const chip = document.querySelector(`[data-player-id="${actor}"]`);
+        const r = chip?.getBoundingClientRect();
+        if (r) from = { x: r.x, y: r.y, w: r.width, h: r.height };
+      }
+    }
+    prevTurnRef.current = pub.turn;
+    if (!from) return;
+    const target = document.querySelector('[data-testid="discard-pile"]');
+    const tr = target?.getBoundingClientRect();
+    if (!tr || tr.width === 0) return;
+    setFly({ card: pub.topCard, from, to: { x: tr.x, y: tr.y, w: tr.width, h: tr.height } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topCardId]);
 
   /* ---------- shared bits ---------- */
   const tone = phase === 'results' || phase === 'playing' ? 'navy' : 'cream';
@@ -350,6 +408,7 @@ export default function UnoApp() {
     return lang === 'vi' ? `Đảo ${col}` : `Reverse ${col}`;
   };
   const myHand = priv?.myHand ?? [];
+  const anyPlayable = myHand.some(canPlay);
   const hoverCard = myHand.find(c => c.id === hoverCardId) ?? null;
   const fan = fanLayout(myHand.length, 76, fanW, null, 4, 1.6, 110);
 
@@ -442,7 +501,7 @@ export default function UnoApp() {
     <div className={`min-h-dvh ${tone === 'navy' ? 'bg-[#14142B] text-[#FFF3CF]' : 'bg-[#FFF3CF] text-[#2B2016]'} transition-colors duration-1000`}>
       <div className="max-w-3xl lg:max-w-6xl mx-auto px-3 py-4">
         <TopBar logo={<span className="text-2xl">🃏</span>} d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })} voice={voice} tone={tone} />
-        <button className="disp font-extrabold text-[#FFB020] text-sm mb-2" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
+        {phase !== 'lobby' && (<button className="disp font-extrabold text-[#FFB020] text-sm mb-2" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>)}
         {connLost && <div className="bg-amber-100 border-2 border-amber-400 rounded-2xl px-3 py-2 mb-2 font-bold text-amber-800 text-center">{d.connLost}</div>}
         {migrating && <div className="bg-amber-100 border-2 border-amber-400 rounded-2xl px-3 py-2 mb-2 font-bold text-amber-800 text-center">🔄 {d.statusMigrating}</div>}
         {error && <><div className="bg-red-100 border-2 border-red-400 rounded-2xl px-3 py-2 mb-2 font-bold text-red-700 text-center">{error}</div><RetryDefaultButton d={d} /></>}
@@ -479,7 +538,7 @@ export default function UnoApp() {
                     <span className="mx-auto block w-fit"><PlayerAvatar avatarId={p.avatar} size={48} fallback={<MouseAvatar seed={p.id} size={48} state="awake" />} /></span>
                     <span className="block font-bold truncate text-sm mt-0.5 text-[#2B2016]">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
                     {(p as any).isBot && <span className="text-xs font-extrabold bg-[#23233F] text-[#FFB020] rounded-full px-2 py-0.5 mt-0.5 inline-block">🤖 {d.botTag}</span>}
-                    {p.isHost && <span className="text-amber-600 text-xs font-extrabold whitespace-nowrap">👑 {d.host}</span>}
+                    {p.isHost && <span className="block text-amber-600 text-xs font-extrabold leading-tight">👑 {d.host}</span>}
                     {!p.connected && <span className="text-red-500 text-xs font-bold"> • {d.offline}</span>}
                     {joined.isHost && p.id !== joined.playerId && (
                       <span role="button" title={(p as any).isBot ? d.removeBot : d.kick}
@@ -525,7 +584,7 @@ export default function UnoApp() {
               {/* opponents */}
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {others.map(p => (
-                  <div key={p.id} className={`flex-none flex items-center gap-2 rounded-2xl px-2.5 py-1.5 hard-xs ${pub.turn === p.id ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'}`}>
+                  <div key={p.id} data-player-id={p.id} className={`flex-none flex items-center gap-2 rounded-2xl px-2.5 py-1.5 hard-xs ${pub.turn === p.id ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'}`}>
                     <span className="relative flex-none">
                       <PlayerAvatar avatarId={p.avatar} size={40} fallback={<MouseAvatar seed={p.id} size={40} state="awake" />} />
                       {speakingIds.has(p.id) && <span className="absolute -bottom-1 -left-1 bg-green-500 text-white text-[10px] rounded-full px-1 shadow">🎙️</span>}
@@ -539,9 +598,9 @@ export default function UnoApp() {
               </div>
 
               {/* table */}
-              <div className="mt-2 rounded-[28px] border-[3px] border-[#2B2016] hard p-4" style={{ background: '#14142B' }}>
+              <div className={`mt-2 rounded-[28px] border-[3px] border-[#2B2016] hard p-4 ${myTurn ? 'anim-turn-glow' : ''}`} style={{ background: '#14142B' }}>
                 <div className="flex items-center justify-center gap-2 flex-wrap">
-                  <span className="disp font-extrabold text-[#FFF3CF] text-lg">
+                  <span className={`disp font-extrabold text-[#FFF3CF] text-lg ${myTurn ? 'animate-pulse' : ''}`}>
                     {myTurn ? d.yourTurn : d.turnOf(turnPlayer?.name ?? '')}
                   </span>
                   <span className="text-[#FFF3CF] font-extrabold text-lg" title={pub.direction === 1 ? 'clockwise' : 'counter-clockwise'}>{pub.direction === 1 ? '⟳' : '⟲'}</span>
@@ -549,13 +608,13 @@ export default function UnoApp() {
                 </div>
                 <p className="text-center font-bold text-[#BFE8D2] text-xs mt-1">{d.turnTimer} — {d.turnTimeout}</p>
                 <div className="flex items-start justify-center gap-4 sm:gap-8 mt-3">
-                  <button data-testid="draw-pile" disabled={!canDraw || optDrew} onClick={doDraw} className="text-center disabled:opacity-60">
+                  <button data-testid="draw-pile" disabled={!canDraw || optDrew} onClick={doDraw} className={`text-center disabled:opacity-60 ${canDraw && !anyPlayable && !optDrew ? 'anim-turn-glow rounded-2xl' : ''}`}>
                     <UnoCardBack size="lg" />
                     <span className="block font-extrabold text-[#FFF3CF] text-sm mt-1.5">{d.drawPile} · {pub.deckCount}</span>
                     <span className="block font-bold text-[#BFE8D2] text-xs mt-0.5">{optDrew && !pub.turnDrawn ? '…' : canDraw ? d.draw : pub.turnDrawn ? (drawnIsPlayable ? d.drawnPlayable : d.drawnNotPlayable) : ''}</span>
                   </button>
                   <div className="text-center">
-                    {pub.topCard ? <UnoCardFace card={pub.topCard} size="lg" /> : <UnoCardBack size="lg" />}
+                    {pub.topCard ? <span data-testid="discard-pile" className="inline-block" style={{ opacity: fly ? 0 : 1 }}><UnoCardFace card={pub.topCard} size="lg" /></span> : <UnoCardBack size="lg" />}
                     <span className="mt-1.5 flex items-center justify-center gap-1.5 font-extrabold text-[#FFF3CF] text-sm">
                       <span className="inline-block w-4 h-4 rounded-full border-2 border-white" style={{ background: CARD_COLORS[pub.currentColor] }} />
                       {d.currentColor}: {colorLabel(pub.currentColor)}
@@ -591,11 +650,12 @@ export default function UnoApp() {
                 )}
               </div>
 
-              {/* Detail bar (design v47): hovered card's ability on line 1,
-               *  the special-card legend on line 2 — sits above the fan. */}
+              {/* Detail bar (v48): one line only — hovered card's ability, or
+               *  the top-card hint. The special-card legend used to sit here
+               *  as a second line; it now lives only in Help (Hải Anh: too
+               *  much text on the table). */}
               <div className="mt-2 bg-[#221D45] border-2 border-[#F5B02E] rounded-2xl px-3 py-2 font-bold leading-snug text-[#FFF3CF]">
                 <p className="text-[13px]">{hoverCard ? d.cardAb(hoverCard.kind, unoLabel(hoverCard)) : pub.topCard ? d.topHint(unoLabel(pub.topCard)) : ''}</p>
-                <p className="text-xs text-[#B9BCE0] mt-0.5">{d.cardLegend}</p>
               </div>
 
               {/* UNO row */}
@@ -639,7 +699,7 @@ export default function UnoApp() {
                         <button data-testid="hand-card" data-card-id={c.id} disabled={!playable || optPlayed === c.id}
                           onMouseEnter={() => setHoverCardId(c.id)} onMouseLeave={() => setHoverCardId(null)}
                           onClick={() => doPlay(c)}
-                          className={`flex-none rounded-xl ${playable ? 'cursor-pointer' : 'opacity-40 cursor-default'} ${isDrawn ? 'ring-4 ring-[#FFB020]' : ''} ${optPlayed === c.id ? 'opacity-30 scale-90 pointer-events-none' : ''}`}>
+                          className={`flex-none rounded-xl ${playable ? 'cursor-pointer' : 'opacity-40 cursor-default'} ${isDrawn ? 'ring-4 ring-[#FFB020]' : ''} ${playable && myTurn && !isDrawn ? 'ring-2 ring-[#FFB020]' : ''} ${optPlayed === c.id ? 'opacity-30 scale-90 pointer-events-none' : ''}`}>
                           <UnoCardFace card={c} size="lg" />
                         </button>
                         </span>
@@ -649,6 +709,8 @@ export default function UnoApp() {
                   </div>
                 </div>
               </div>
+              {/* Card-fly overlay (v48): the played card, mid-flight. */}
+              {fly && <FlyCard card={fly.card} from={fly.from} to={fly.to} onDone={() => setFly(null)} />}
               {chatPreviewBar}
             </div>
             {chatAside}

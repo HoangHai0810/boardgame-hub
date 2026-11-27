@@ -27,7 +27,7 @@ export const CAT_VARIANTS: CatVariant[] = ['tabby', 'siamese', 'calico', 'black'
 export const MIN_PLAYERS = 2;
 export const MAX_PLAYERS = 5;
 export const TURN_MS = 30000;
-export const NOPE_MS = 8000;
+export const NOPE_MS = 5000;
 /** Fallback for a pending decision (defuse / reinsert / give a card)
  *  when the 30s turn timer is OFF — a forgotten decision still gets a
  *  sensible default instead of stalling the table. */
@@ -50,6 +50,9 @@ export interface Player {
 export interface PendingAction {
   cardId: string; kind: ActionKind; actorId: string; targetId?: string;
   nopes: string[]; endsAt: number;
+  /** Players who tapped "let it pass" this Nope round (reset on each
+   *  new Nope — everyone gets a fresh chance to block the block). */
+  passes: string[];
 }
 export interface PendingExplode { playerId: string; hasDefuse: boolean }
 export interface PendingFavor { fromId: string; targetId: string }
@@ -244,7 +247,7 @@ export function playCard(s: GameState, player: Player, cardId: string, targetId?
   }
   player.hand = player.hand.filter(c => c.id !== cardId);
   if (s.config.nopeEnabled) {
-    s.pendingAction = { cardId, kind: card.kind, actorId: player.id, targetId, nopes: [], endsAt: Date.now() + NOPE_MS };
+    s.pendingAction = { cardId, kind: card.kind, actorId: player.id, targetId, nopes: [], passes: [], endsAt: Date.now() + NOPE_MS };
     feed(s, player.id, 'play-' + card.kind, targetId);
     return true;
   }
@@ -324,14 +327,54 @@ export function playNope(s: GameState, player: Player): boolean {
   if (!pa || s.phase !== 'playing' || !player.alive) return false;
   if (pa.nopes.length === 0 && player.id === pa.actorId) return false;
   if (pa.nopes.length > 0 && player.id === pa.nopes[pa.nopes.length - 1]) return false;
+  if (pa.passes.includes(player.id)) return false; // passed this round — binding
   const idx = player.hand.findIndex(c => c.kind === 'nope');
   if (idx < 0) return false;
   const [nope] = player.hand.splice(idx, 1);
   s.discard.push(nope);
   pa.nopes.push(player.id);
+  pa.passes = [];
   pa.endsAt = Date.now() + NOPE_MS;
   feed(s, player.id, 'nope', pa.actorId);
   return true;
+}
+
+/** Decline to block the pending action this round. Anyone alive may pass;
+ *  the pass only counts until the next Nope lands (fresh round). */
+export function passNope(s: GameState, player: Player): boolean {
+  const pa = s.pendingAction;
+  if (!pa || s.phase !== 'playing' || !player.alive) return false;
+  if (pa.passes.includes(player.id)) return false;
+  pa.passes.push(player.id);
+  return true;
+}
+
+/** Who still has to decide before the Nope window can close early:
+ *  alive players who hold a Nope and are allowed to play one right now
+ *  (not the actor before the first Nope, not the last Noper). Players
+ *  without a Nope, dead players and disconnected players count as
+ *  passed — they cannot block anything. */
+export function nopePassProgress(s: GameState): { passed: number; needed: number } {
+  const pa = s.pendingAction;
+  if (!pa) return { passed: 0, needed: 0 };
+  const barred = pa.nopes.length === 0 ? pa.actorId : pa.nopes[pa.nopes.length - 1];
+  let needed = 0; let passed = 0;
+  for (const p of s.players) {
+    if (!p.alive || p.id === barred) continue;
+    if (!p.hand.some(c => c.kind === 'nope')) continue;
+    if (!p.connected) continue;
+    needed++;
+    if (pa.passes.includes(p.id)) passed++;
+  }
+  return { passed, needed };
+}
+
+/** The window may close at once when everyone who could still block it
+ *  has passed (or nobody can block at all — then it never waits). */
+export function canResolveNopeEarly(s: GameState): boolean {
+  if (!s.pendingAction) return false;
+  const { passed, needed } = nopePassProgress(s);
+  return passed >= needed;
 }
 
 /** Draw a card to end (part of) the turn. Drawing an Exploding Kitten
@@ -482,6 +525,7 @@ export function autoResolvePending(s: GameState, rng: () => number = Math.random
 /* ---------- state views ---------- */
 
 export function publicState(s: GameState) {
+  const nope = s.pendingAction ? nopePassProgress(s) : null;
   return {
     roomCode: s.roomCode, phase: s.phase, round: s.round, config: s.config,
     turn: s.turn, turnCount: s.turnCount, turnEndsAt: s.turnEndsAt, debt: s.debt,
@@ -494,6 +538,7 @@ export function publicState(s: GameState) {
       targetId: s.pendingAction.targetId, nopes: s.pendingAction.nopes.length,
       lastNoper: s.pendingAction.nopes[s.pendingAction.nopes.length - 1] ?? null,
       endsAt: s.pendingAction.endsAt,
+      passed: nope?.passed ?? 0, passNeeded: nope?.needed ?? 0,
     } : null,
     pendingExplode: s.pendingExplode ? { playerId: s.pendingExplode.playerId } : null,
     pendingReinsert: s.pendingReinsert,

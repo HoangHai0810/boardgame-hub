@@ -73,7 +73,7 @@ const dict = {
     nopeYouHaveNone: 'Bạn không có lá Nope!.',
     nopeBtn: 'KHÔNG!', nopePass: 'Để nó qua',
     nopePlayedBy: (n: string) => `${n} vừa đánh lá`,
-    nopeWaitOnly: 'Chờ hết 8s để chặn', nopeDismissed: 'Đã bỏ qua.',
+    nopeWaitOnly: 'Chờ hết 5s để chặn', nopeDismissed: 'Đã bỏ qua.',
     nopeBlocked: (n: string) => `${n} đã chặn bằng Nope!!`,
     // Exploding kitten (design MN5-6)
     youDrewEK: 'BẠN VỪA BỐC ĐƯỢC MÈO NỔ!',
@@ -221,7 +221,7 @@ const dict = {
     nopeYouHaveNone: 'You have no Nope.',
     nopeBtn: 'NOPE!', nopePass: 'Let it pass',
     nopePlayedBy: (n: string) => `${n} just played a card`,
-    nopeWaitOnly: 'Waiting 8s to block', nopeDismissed: 'Skipped.',
+    nopeWaitOnly: 'Waiting 5s to block', nopeDismissed: 'Skipped.',
     nopeBlocked: (n: string) => `${n} blocked it with a Nope!`,
     youDrewEK: 'YOU DREW AN EXPLODING CAT!',
     ekNoDefuse: 'Without a Defuse you are out. But you have a Defuse.',

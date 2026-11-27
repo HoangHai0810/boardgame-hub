@@ -96,11 +96,12 @@ function cardAbility(d: any, card: Card): string {
 }
 /** All 9 kinds, for the card guide (design MN9). */
 const ALL_KINDS: Kind[] = ['defuse', 'nope', 'skip', 'shuffle', 'peek', 'attack', 'favor', 'cat', 'exploding'];
-/** The draw pile: a dark card-back with a bomb (design MN3). */
+/** The draw pile: a dark card-back with a bomb (design MN3). Lighter than
+ *  the table so the pile reads at a glance (v48: was near-invisible). */
 function DeckBack({ count, shake }: { count: number; shake: boolean }) {
   return (
-    <span className={`relative inline-flex flex-none items-center justify-center w-[100px] h-[140px] rounded-xl border-[3px] border-[#2B2016] ${shake ? 'anim-pile-shake' : ''}`} style={{ background: '#2B2016' }}>
-      <span className="absolute inset-x-[12px] top-1/2 -translate-y-1/2 h-[42%] bg-[#3D3D63] rounded-[50%] rotate-[-24deg] opacity-60" />
+    <span className={`relative inline-flex flex-none items-center justify-center w-[88px] h-[124px] rounded-xl border-[3px] border-[#2B2016] ${shake ? 'anim-pile-shake' : ''}`} style={{ background: '#3D3D63' }}>
+      <span className="absolute inset-x-[12px] top-1/2 -translate-y-1/2 h-[42%] bg-[#565687] rounded-[50%] rotate-[-24deg] opacity-70" />
       <span className="relative"><CardIcon kind="exploding" size={48} /></span>
       <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-[#FFB020] text-[#2B2016] disp font-extrabold text-sm rounded-full px-2.5 py-0.5 border-2 border-[#2B2016]">{count}</span>
     </span>
@@ -474,12 +475,12 @@ export default function MeoNoApp() {
     && (pendingNope.nopes === 0 ? pendingNope.actorId !== joined?.playerId : pendingNope.lastNoper !== joined?.playerId)
     && dismissedNope !== nopeKey;
   const showNopeSheet = !!pendingNope && iCanNope;
-  // The Nope drain bar ticks at 250ms — but ONLY while a Nope window is
-  // open; the rest of the game no longer re-renders 4×/second (A3).
+  // The Nope drain bar ticks at 1s — the countdown shows whole seconds,
+  // so 250ms only bought 4×/second full re-renders during the window.
   const [nopeNow, setNopeNow] = useState(Date.now());
   useEffect(() => {
     if (!pendingNope) return;
-    const i = setInterval(() => setNopeNow(Date.now()), 250);
+    const i = setInterval(() => setNopeNow(Date.now()), 1000);
     return () => clearInterval(i);
   }, [pendingNope]);
   const nopeSecs = pendingNope ? secsLeft(pendingNope.endsAt, nopeNow) : null;
@@ -595,7 +596,7 @@ export default function MeoNoApp() {
     <div className={`min-h-dvh ${tone === 'navy' ? 'bg-[#14142B] text-[#FFF3CF]' : 'bg-[#FFF3CF] text-[#2B2016]'} transition-colors duration-1000`}>
       <div className="max-w-3xl lg:max-w-6xl mx-auto px-3 py-3">
         <TopBar logo={<span className="text-2xl">💣</span>} d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })} voice={voice} tone={tone} />
-        <button className="disp font-extrabold text-[#FFB020] text-sm mb-2" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
+        {phase !== 'lobby' && (<button className="disp font-extrabold text-[#FFB020] text-sm mb-2" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>)}
         {connLost && <div className="bg-amber-100 border-2 border-amber-400 rounded-2xl px-3 py-2 mb-2 font-bold text-amber-800 text-center">{d.connLost}</div>}
         {migrating && <div className="bg-amber-100 border-2 border-amber-400 rounded-2xl px-3 py-2 mb-2 font-bold text-amber-800 text-center">🔄 {d.statusMigrating}</div>}
         {error && <><div className="bg-red-100 border-2 border-red-400 rounded-2xl px-3 py-2 mb-2 font-bold text-red-700 text-center">{error}</div><RetryDefaultButton d={d} /></>}
@@ -636,7 +637,7 @@ export default function MeoNoApp() {
                       <span className="mx-auto block w-fit"><PlayerAvatar avatarId={p.avatar} size={40} fallback={<CatAvatar seed={p.id} size={40} />} /></span>
                       <span className="block font-bold truncate text-sm mt-0.5 text-[#2B2016]">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
                       {p.isBot && <span className="text-xs font-extrabold bg-[#23233F] text-[#FFB020] rounded-full px-2 py-0.5 mt-0.5 inline-block">🤖 {d.botTag}</span>}
-                      {p.isHost && <span className="text-amber-600 text-xs font-extrabold whitespace-nowrap">👑 {d.host}</span>}
+                      {p.isHost && <span className="block text-amber-600 text-xs font-extrabold leading-tight">👑 {d.host}</span>}
                       {!p.connected && <span className="text-red-500 text-xs font-bold"> • {d.offline}</span>}
                       {joined.isHost && p.id !== joined.playerId && (
                         <span role="button" title={p.isBot ? d.removeBot : d.kick}
@@ -706,13 +707,12 @@ export default function MeoNoApp() {
             <div className="min-w-0">
               {/* header: turn + attack debt + timer */}
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="disp font-extrabold text-2xl leading-none">
+                <h2 className={`disp font-extrabold text-2xl leading-none ${myTurn ? 'animate-pulse' : ''}`}>
                   {myTurn ? d.yourTurn : d.turnOf(turnPlayer?.name ?? '')}
                 </h2>
                 {pub.config.timerEnabled && <TimerPill endsAt={pub.turnEndsAt} dark />}
                 {!me?.alive && <span className="font-extrabold text-[#F87171] text-sm">💥 {d.exploded} — {d.keepWatching}</span>}
               </div>
-              {pub.config.timerEnabled && <p className="font-bold text-[#B9BCE0] text-xs mt-1">{d.ruleTimerSub}</p>}
               {myTurn && (pub.debt ?? 0) > 0 && ackAttack !== attackKey && (
                 <NoticeBanner
                   text={attackActor ? d.attackBanner(attackActor, pub.debt) : d.attackedNote(pub.debt)}
@@ -720,7 +720,7 @@ export default function MeoNoApp() {
               )}
 
               {/* opponents (design MN3) */}
-              <div className="flex gap-2 overflow-x-auto pb-1 mt-2">
+              <div className="flex gap-2 overflow-x-auto pb-1 mt-1">
                 {others.map(p => (
                   <div key={p.id} data-testid="opponent" data-player-id={p.id} className={`flex-none flex items-center gap-2 rounded-2xl px-2.5 py-1.5 hard-xs ${pub.turn === p.id ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'} ${!p.alive ? 'opacity-60' : ''}`}>
                     <span className="relative flex-none">
@@ -738,7 +738,7 @@ export default function MeoNoApp() {
               {/* Nope window banner (when I cannot / do not nope) */}
               {pendingNope && !showNopeSheet && (
                 <div className="mt-2 bg-[#EDE9FE] border-2 border-[#7C4DBD] rounded-2xl px-3 py-2 flex items-center gap-2">
-                  <span className="font-bold text-sm flex-1 text-[#4C1D95]">{dismissedNope === nopeKey ? d.nopeDismissed : !iHoldNope ? d.nopeWaitOnly : <>{d.nopePlayedBy(playerName(pendingNope.actorId))} — {d.nopeSecondsLeft(nopeSecs ?? 0)}</>}</span>
+                  <span className="font-bold text-sm flex-1 text-[#4C1D95]">{dismissedNope === nopeKey ? d.nopeDismissed : !iHoldNope ? <>{d.nopeWaitOnly} · {pendingNope.passed}/{pendingNope.passNeeded} ✓</> : <>{d.nopePlayedBy(playerName(pendingNope.actorId))} — {d.nopeSecondsLeft(nopeSecs ?? 0)}</>}</span>
                   <span className="w-full max-w-[120px] h-2 bg-white rounded-full overflow-hidden border border-[#7C4DBD]"><span className="block h-full bg-[#7C4DBD]" style={{ width: `${Math.max(0, Math.min(100, ((nopeSecs ?? 0) / (NOPE_MS / 1000)) * 100))}%` }} /></span>
                 </div>
               )}
@@ -755,9 +755,9 @@ export default function MeoNoApp() {
               )}
 
               {/* table: draw pile + last played + danger meter */}
-              <div className="mt-2 rounded-[28px] border-[3px] border-[#2B2016] hard p-3" style={{ background: '#14142B' }}>
+              <div className={`mt-2 rounded-[28px] border-[3px] border-[#2B2016] hard p-2 ${myTurn ? 'anim-turn-glow' : ''}`} style={{ background: '#14142B' }}>
                 <div className="flex items-start justify-center gap-4 sm:gap-8">
-                  <button data-testid="draw-pile" disabled={!canDraw} onClick={doDraw} className="text-center disabled:opacity-60">
+                  <button data-testid="draw-pile" disabled={!canDraw} onClick={doDraw} className={`text-center disabled:opacity-60 ${myTurn && canDraw ? 'anim-turn-glow rounded-2xl' : ''}`}>
                     <DeckBack count={pub.deckCount} shake={pileShake} />
                     <span className="block font-extrabold text-[#FFF3CF] text-sm mt-1.5">{d.drawPile}</span>
                     <span className="block font-bold text-[#B9BCE0] text-xs mt-0.5">{canDraw ? d.drawCardBtn : ''}</span>
@@ -766,13 +766,13 @@ export default function MeoNoApp() {
                     {pub.topCard ? (
                       <span key={pub.topCard.id} className="inline-block anim-card-fall"><MeoCard kind={pub.topCard.kind} name={cardLabel(d, pub.topCard)} ability={cardAbility(d, pub.topCard)} size="md" /></span>
                     ) : (
-                      <span className="inline-flex items-center justify-center w-[100px] h-[140px] rounded-xl border-[3px] border-dashed border-[#3D3D63] text-[#B9BCE0] font-extrabold">?</span>
+                      <span className="inline-flex items-center justify-center w-[88px] h-[124px] rounded-xl border-[3px] border-dashed border-[#8A8AB0] bg-[#23233F] text-[#FFF3CF] font-extrabold">?</span>
                     )}
                     <span className="block font-extrabold text-[#FFF3CF] text-sm mt-1.5">{d.lastPlayed}</span>
                   </div>
                 </div>
                 {/* danger meter (design MN3) */}
-                <div className="mt-2 bg-[#23233F] border-2 border-[#3D3D63] rounded-2xl px-3 py-1.5">
+                <div className="mt-1 bg-[#23233F] border-2 border-[#3D3D63] rounded-2xl px-3 py-1">
                   <div className="flex items-baseline justify-between gap-2 font-bold text-[13px]">
                     <span className="text-[#EDEDF7] whitespace-nowrap">{d.pileLeft(pub.deckCount, pub.ekInDeck)}</span>
                     <span className="text-[#F87171] font-extrabold whitespace-nowrap">{d.risk(risk)}</span>
@@ -795,13 +795,18 @@ export default function MeoNoApp() {
                       <span className="font-bold text-[13px] flex-1 text-[#FFF3CF] leading-snug"><span className="disp font-extrabold">{cardLabel(d, selectedCard)}</span> — {cardAbility(d, selectedCard)}</span>
                     </>
                   ) : (
-                    <span className="font-bold text-[13px] flex-1 text-[#B9BCE0] leading-snug">{myTurn ? d.tapCardHint : `${d.yourHand} · ${myHand.length} ${d.cards}`}</span>
+                    <span className="font-bold text-[13px] flex-1 text-[#EDEDF7] leading-snug">{myTurn ? d.tapCardHint : `${d.yourHand} · ${myHand.length} ${d.cards}`}</span>
                   )}
                   <button className="flex-none w-11 h-11 rounded-full bg-[#FFB020] text-[#2B2016] font-extrabold text-lg border-2 border-[#2B2016] push" onClick={() => setShowHelp(true)} title={d.cardGuide}>?</button>
                 </div>
-                <div ref={fanRef} className="relative" style={{ height: fanFrameH(myHand.length, 170, 1.2) }}>
-                  <div className="absolute inset-x-0 flex justify-center" style={{ top: 36 }}>
-                    {myHand.map((c, hi) => {
+                {/* Hand + actions (v48): on laptop the two action buttons sit
+                 *  BESIDE the fan (design MN3 laptop board) instead of below
+                 *  it — below the fan they fell off-screen and the player had
+                 *  to scroll to reach them. On phone they stay below. */}
+                <div className="lg:flex lg:items-center lg:gap-3">
+                  <div ref={fanRef} className="relative flex-1 min-w-0" style={{ height: fanFrameH(myHand.length, 170, 1.2) }}>
+                    <div className="absolute inset-x-0 flex justify-center" style={{ top: 36 }}>
+                      {myHand.map((c, hi) => {
                       const playable = canPlay(c);
                       const selected = c.id === selectedCardId;
                       const hovered = hoverCardId === c.id && !selected && playable;
@@ -822,13 +827,14 @@ export default function MeoNoApp() {
                       );
                     })}
                     {myHand.length === 0 && <p className="font-bold text-[#B9BCE0] py-6">…</p>}
+                    </div>
                   </div>
-                </div>
-                <div className="flex gap-2 mt-1">
-                  <button data-testid="play-selected-btn" className={`${BTN} btn-amber flex-1`} disabled={!selectedCard || !canPlay(selectedCard)} onClick={doPlaySelected}>{d.playSelected}</button>
-                  <button data-testid="draw-btn" className={`${BTN} btn-dark flex-1`} disabled={!canDraw} onClick={doDraw}>
-                    <span>{d.drawCardBtnWide}</span>
-                  </button>
+                  <div className="flex gap-2 mt-1 lg:mt-0 lg:flex-col lg:w-[220px] lg:flex-none">
+                    <button data-testid="play-selected-btn" className={`${BTN} btn-amber flex-1 lg:flex-none lg:w-full ${selectedCard && canPlay(selectedCard) ? 'anim-turn-glow' : ''}`} disabled={!selectedCard || !canPlay(selectedCard)} onClick={doPlaySelected}>{d.playSelected}</button>
+                    <button data-testid="draw-btn" className={`${BTN} btn-dark flex-1 lg:flex-none lg:w-full`} disabled={!canDraw} onClick={doDraw}>
+                      <span>{d.drawCardBtnWide}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
               {chatPreviewBar}
@@ -907,7 +913,7 @@ export default function MeoNoApp() {
               </div>
               <p className="font-bold text-sm text-[#B9BCE0] mt-2">{d.nopeYouHave(myHand.filter(c => c.kind === 'nope').length)}</p>
               <button data-testid="nope-btn" className={`${BTN} w-full mt-3 !bg-[#7C4DBD] !text-white`} onClick={doNope}>⊘ {d.nopeBtn}</button>
-              <button data-testid="nope-pass-btn" className={`${BTN} w-full mt-2 bg-[#FFFBef] !text-[#2B2016]`} onClick={() => setDismissedNope(nopeKey)}>{d.nopePass}</button>
+              <button data-testid="nope-pass-btn" className={`${BTN} w-full mt-2 bg-[#FFFBef] !text-[#2B2016]`} onClick={() => { getNet().nightAction('passNope'); setDismissedNope(nopeKey); }}>{d.nopePass}</button>
             </div>
           </div>
         )}
