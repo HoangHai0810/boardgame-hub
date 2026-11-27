@@ -80,6 +80,8 @@ export interface GameState {
   /** Priest peeks, keyed by viewer — cleared when the target's hand changes. */
   seenHands: Record<string, { targetId: string; card: Card }>;
   lastPlay: LastPlay | null;
+  /** Last few plays (newest first) — the "Diễn biến" feed. */
+  recentPlays: LastPlay[];
   roundWinners: string[];
   roundResult: RoundResult | null;
   tokensToWin: number;
@@ -94,7 +96,7 @@ export function createGame(code: string): GameState {
     roomCode: code, phase: 'lobby', round: 1, config: { ...DEFAULT_CONFIG },
     players: [], deck: [], setAside: null, faceUpRemoved: [],
     turn: null, turnEndsAt: null, pendingAction: null, seenHands: {},
-    lastPlay: null, roundWinners: [], roundResult: null,
+    lastPlay: null, recentPlays: [], roundWinners: [], roundResult: null,
     tokensToWin: 4, sessionWinner: null, nextFirstPlayerId: null, chat: [],
   };
 }
@@ -186,7 +188,7 @@ export function startRound(s: GameState, rng: () => number = Math.random): void 
     p.hand = []; p.discardPile = []; p.protected = false; p.inRound = true;
     const c = s.deck.pop(); if (c) p.hand.push(c);
   }
-  s.pendingAction = null; s.seenHands = {}; s.lastPlay = null;
+  s.pendingAction = null; s.seenHands = {}; s.lastPlay = null; s.recentPlays = [];
   s.roundWinners = []; s.roundResult = null;
   s.tokensToWin = tokensFor(s.players.length, s.config.quickMode);
   s.phase = 'playing';
@@ -320,6 +322,7 @@ export function playCard(s: GameState, player: Player, cardId: string, rng: () =
     if (seen.targetId === player.id && seen.card.id === card.id) delete s.seenHands[viewerId];
   }
   s.lastPlay = { by: player.id, card: card.kind, outcome: 'none' };
+  s.recentPlays = [s.lastPlay, ...s.recentPlays].slice(0, 6);
   switch (card.kind) {
     case 'princess':
       knockOut(s, player);
@@ -536,6 +539,7 @@ export function publicState(s: GameState) {
     setAsidePresent: s.setAside !== null,
     faceUpRemoved: s.faceUpRemoved,
     lastPlay: s.lastPlay,
+    recentPlays: s.recentPlays,
     roundWinners: s.roundWinners,
     roundResult: s.roundResult,
     tokensToWin: s.tokensToWin,

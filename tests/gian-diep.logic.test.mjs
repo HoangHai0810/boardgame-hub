@@ -69,6 +69,47 @@ t('question chain: dealer asks, answerer asks next, no self-ask', () => {
   assert.equal(s.currentAskerId, 'p3');
 });
 
+t('typed question rides along in the ask feed event', () => {
+  const s = mk(4);
+  const asker = s.players[0];
+  assert.equal(askTarget(s, asker, 'p2', 'Bạn đến đây bằng gì?'), true);
+  const last = s.feed[s.feed.length - 1];
+  assert.equal(last.kind, 'ask');
+  assert.equal(last.actorId, 'p0');
+  assert.equal(last.targetId, 'p2');
+  assert.equal(last.text, 'Bạn đến đây bằng gì?');
+  // A blank question is the same as no question.
+  assert.equal(askTarget(s, s.players[2], 'p3', '   '), true);
+  assert.equal(s.feed[s.feed.length - 1].text, undefined);
+  // Over-long questions are trimmed to 140 chars.
+  assert.equal(askTarget(s, s.players[3], 'p0', 'x'.repeat(200)), true);
+  assert.equal(s.feed[s.feed.length - 1].text.length, 140);
+});
+
+t('public accusation carries the yes count', () => {
+  const s = mk(4);
+  accuse(s, s.players[0], 'p1');
+  voteAccuse(s, s.players[0], true);
+  voteAccuse(s, s.players[2], true);
+  // p3 has not voted yet, so the accusation is still open.
+  const pub = publicState(s);
+  assert.equal(pub.accusation.yes, 2);
+  assert.deepEqual(pub.accusation.voted.sort(), ['p0', 'p2']);
+});
+
+t('roundResult reveals each local role (spy has none)', () => {
+  const s = mk(4);
+  const spy = s.spyId;
+  const accuser = s.players.find(p => p.id !== spy);
+  accuse(s, accuser, spy);
+  voteAllYes(s, voteAccuse);
+  assert.equal(s.phase, 'roundEnd');
+  for (const p of s.players) {
+    if (p.id === spy) assert.equal(s.roundResult.roles[p.id], undefined);
+    else assert.equal(s.roundResult.roles[p.id], s.roleIdx[p.id]);
+  }
+});
+
 t('autoAsk picks a random other player (never self)', () => {
   const s = mk(4);
   autoAsk(s, () => 0.99);

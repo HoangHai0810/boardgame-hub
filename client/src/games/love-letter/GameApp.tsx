@@ -7,7 +7,9 @@ import { joinVoice, VoiceHandle } from '../../transport/voice';
 import { TopBar, ChatPanel, ChatSheet, chatPreview, RetryDefaultButton } from '../../platform/ui';
 import { MouseAvatar } from '../../platform/avatars';
 import { PlayerAvatar } from '../../platform/GameCard';
-import { legalPlays, MIN_PLAYERS, MAX_PLAYERS, GUESSABLE, CARD_VALUE, tokensFor } from '../../../../games/love-letter/logic';
+import { legalPlays, MIN_PLAYERS, MAX_PLAYERS, GUESSABLE, CARD_VALUE, CARD_COUNT, tokensFor } from '../../../../games/love-letter/logic';
+import type { LastPlay } from '../../../../games/love-letter/logic';
+import { LL_ART } from '../../platform/art';
 import type { Card, CardKind } from '../../../../games/love-letter/logic';
 
 const SESSION_KEY = 'ct_guest_session:love-letter';
@@ -48,18 +50,26 @@ const CARD_EFFECTS = (d: any): Record<CardKind, string> => ({
   spy: d.effSpy, guard: d.effGuard, priest: d.effPriest, baron: d.effBaron, handmaid: d.effHandmaid,
   prince: d.effPrince, chancellor: d.effChancellor, king: d.effKing, countess: d.effCountess, princess: d.effPrincess,
 });
+/** Illustrated card face (design v48). The artwork is the design's
+ *  flat-style animal portrait per card; the Spy reuses the Spyfall
+ *  portrait and the Chancellor panda is drawn in the same style. The
+ *  values, names and counts are the 2019 edition, not the design's
+ *  2012 numbering. Layout: art fills the card, value badge top-left,
+ *  name + effect in a band at the bottom (the design's card layout). */
 function LLCardFace({ card, d, size = 'md' }: { card: Card; d: any; size?: 'sm' | 'md' | 'lg' }) {
   const box = size === 'lg' ? 'w-[92px] h-[134px]' : size === 'sm' ? 'w-[46px] h-[66px]' : 'w-[76px] h-[112px]';
-  const val = size === 'sm' ? 'text-lg' : size === 'lg' ? 'text-4xl' : 'text-3xl';
-  const nm = size === 'sm' ? 'text-[9px]' : size === 'lg' ? 'text-base' : 'text-[13px]';
+  const val = size === 'sm' ? 'text-sm w-5 h-5' : size === 'lg' ? 'text-lg w-7 h-7' : 'text-base w-6 h-6';
+  const nm = size === 'sm' ? 'hidden' : size === 'lg' ? 'text-[11px]' : 'text-[9px]';
   const eff = CARD_EFFECTS(d)[card.kind];
   return (
-    <span className={`relative inline-flex flex-none flex-col items-center rounded-xl border-[3px] border-[#2B2016] overflow-hidden ${box}`} style={{ background: CARD_COLORS[card.kind] }}>
-      <span className="absolute inset-x-[7px] top-1/2 -translate-y-1/2 h-[46%] bg-white/90 rounded-[50%] rotate-[-24deg]" />
-      <span className={`relative disp font-extrabold ${val} leading-none mt-1.5 text-white drop-shadow-[0_2px_0_rgba(0,0,0,0.35)]`}>{card.value}</span>
-      <span className={`relative disp font-extrabold ${nm} leading-tight text-white drop-shadow-[0_1px_0_rgba(0,0,0,0.35)] px-1 text-center`}>{CARD_NAMES[card.kind]}</span>
+    <span className={`relative inline-flex flex-none flex-col rounded-xl border-[3px] border-[#2B2016] overflow-hidden ${box}`} style={{ background: CARD_COLORS[card.kind] }}>
+      <img src={LL_ART[card.kind]} alt="" className="relative w-full flex-1 min-h-0 object-cover" draggable={false} />
+      <span className={`absolute top-1 left-1 disp font-extrabold ${val} leading-none rounded-full bg-white/95 text-[#2B2016] flex items-center justify-center flex-none shadow`}>{card.value}</span>
       {size !== 'sm' && (
-        <span className="relative mt-auto mb-1.5 mx-1.5 rounded-lg bg-white/95 px-1.5 py-1 text-[9px] leading-[1.15] font-bold text-[#2B2016] text-center">{eff}</span>
+        <span className="relative px-1 pt-1 pb-1.5">
+          <span className={`block disp font-extrabold ${nm} leading-none text-white drop-shadow-[0_1px_0_rgba(0,0,0,0.35)] uppercase text-center truncate`}>{CARD_NAMES[card.kind]}</span>
+          <span className="block mx-0.5 mt-1 rounded-md bg-white/95 px-1 py-0.5 text-[8px] leading-[1.15] font-bold text-[#2B2016] text-center line-clamp-2">{eff}</span>
+        </span>
       )}
     </span>
   );
@@ -74,8 +84,8 @@ function LLCardBack({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
   );
 }
 /** A tiny value chip for a face-up discard pile. */
-function DiscardChips({ pile }: { pile: Card[] }) {
-  if (!pile.length) return <span className="font-bold text-xs text-[#8A7B63]">—</span>;
+function DiscardChips({ pile, dark = false }: { pile: Card[]; dark?: boolean }) {
+  if (!pile.length) return <span className={`font-bold text-xs ${dark ? 'text-[#F3C6D8]' : 'text-[#8A7B63]'}`}>—</span>;
   return (
     <span className="inline-flex flex-wrap gap-0.5">
       {pile.map((c, i) => (
@@ -93,9 +103,19 @@ function HelpModal({ d, onClose }: { d: any; onClose: () => void }) {
         <ol className="space-y-2 text-left text-[15px] leading-snug">
           {d.tutorial.map((s: string, i: number) => <li key={i}>{s}</li>)}
         </ol>
-        <div className="grid grid-cols-5 gap-1.5 mt-4">
+        <div className="disp font-extrabold text-lg mt-5">{d.cardsRefTitle}</div>
+        <p className="font-bold text-sm text-[#8A7B63]">{d.cardsRefSub}</p>
+        <p className="font-bold text-sm text-[#5C4B33] mt-1">{d.cardsRefHint}</p>
+        <div className="flex flex-col gap-1.5 mt-3">
           {(Object.keys(CARD_NAMES) as CardKind[]).map(k => (
-            <LLCardFace key={k} card={{ id: k, kind: k, value: CARD_VALUE[k] }} d={d} size="sm" />
+            <div key={k} className="flex items-center gap-3 rounded-2xl border-2 border-[#E5DCC0] bg-white px-2.5 py-2">
+              <LLCardFace card={{ id: k, kind: k, value: CARD_VALUE[k] }} d={d} size="sm" />
+              <span className="flex-1 min-w-0 text-left">
+                <span className="block font-extrabold text-sm">{CARD_NAMES[k]} <span className="text-[#8A7B63]">×{CARD_COUNT[k]}</span></span>
+                <span className="block font-bold text-xs text-[#5C4B33] leading-snug">{CARD_EFFECTS(d)[k]}</span>
+              </span>
+              <span className="flex-none w-7 h-7 rounded-full text-white font-extrabold flex items-center justify-center" style={{ background: CARD_COLORS[k] }}>{CARD_VALUE[k]}</span>
+            </div>
           ))}
         </div>
         <button className={`${BTN} btn-amber w-full mt-4`} onClick={onClose}>OK 👍</button>
@@ -358,8 +378,7 @@ export default function LoveLetterApp() {
   const pendingActor = pub?.players.find(p => p.id === pub?.pendingAction?.actorId);
   const mySeen = priv?.mySeen ?? null;
 
-  const lastPlayText = (): string | null => {
-    const lp = pub?.lastPlay;
+  const playText = (lp: LastPlay | null | undefined): string | null => {
     if (!lp) return null;
     const by = playerName(lp.by);
     const cardName = CARD_NAMES[lp.card];
@@ -392,6 +411,18 @@ export default function LoveLetterApp() {
 
   const chatAside = pub && phase === 'playing' && (
     <aside className="hidden lg:flex flex-col min-h-0">
+      <div className="bg-[#4A1942] border-[3px] border-[#2B2016] rounded-[24px] p-4 hard mb-4">
+        <div className="disp font-extrabold text-lg mb-2 text-[#FFF3CF]">📜 {d.feedTitle}</div>
+        <div className="space-y-1.5">
+          {(pub.recentPlays ?? []).map((lp, i) => (
+            <div key={i} className="flex items-start gap-2 font-bold text-sm leading-snug text-[#F3C6D8]">
+              <span className="mt-1.5 w-2 h-2 rounded-full bg-[#FFB020] flex-none" />
+              <span>{playText(lp)}</span>
+            </div>
+          ))}
+          {(pub.recentPlays ?? []).length === 0 && <p className="font-bold text-sm text-[#F3C6D8]">…</p>}
+        </div>
+      </div>
       <div className="card-cream p-3 flex flex-col flex-1 min-h-0">
         <div className="disp font-extrabold text-lg mb-2">💬 {d.chatTitle}</div>
         <ChatPanel chat={pub.chat} myId={joined?.playerId ?? ''} d={d} height="flex" onChat={onChat} reactions={LL_REACTIONS} />
@@ -456,7 +487,7 @@ export default function LoveLetterApp() {
             {error && <><p className="text-center font-bold text-red-600 mt-3">{error}</p><RetryDefaultButton d={d} /></>}
             {!status && !error && <p className="text-center text-[#8A7B63] font-bold text-sm mt-4">{d.landingFoot}</p>}
             <p className="text-center mt-3">
-              <button className="font-bold text-sm text-[#8A7B63] underline" onClick={() => setShowHelp(true)}>{d.how}</button>
+              <button className="font-bold text-sm text-[#8A7B63] underline" onClick={() => setShowHelp(true)}>{d.viewCards}</button>
             </p>
           </div>
           {showHelp && <HelpModal d={d} onClose={() => setShowHelp(false)} />}
@@ -476,94 +507,101 @@ export default function LoveLetterApp() {
 
         {phase === 'lobby' && (
           <div>
-            <div className="flex items-center gap-3 mb-3">
+            <div className="flex items-center gap-3 mb-1">
               <button className="w-11 h-11 flex-none rounded-2xl bg-[#FFFBef] hard-xs push font-extrabold text-xl text-[#2B2016]" onClick={() => { location.href = location.pathname; }}>‹</button>
               <div className="min-w-0">
                 <h2 className="disp font-extrabold text-xl sm:text-2xl leading-none">💌 {d.title} · {d.lobby}</h2>
-                <p className="font-bold text-[#8A7B63] text-sm mt-1">{d.waiting}</p>
+                <p className="font-bold text-[#8A7B63] text-sm mt-1 hidden sm:block">{d.waiting}</p>
               </div>
             </div>
-            <div className="bg-[#14142B] rounded-[20px] px-4 py-3 flex items-center gap-3 hard">
+            <div className="bg-[#14142B] rounded-[20px] px-4 py-2 flex items-center gap-3 hard">
               <div className="min-w-0">
                 <div className="disp text-[#FFB020] font-extrabold text-[11px] tracking-[0.18em]">{d.roomCode}</div>
                 <div className="flex gap-1.5 mt-1" data-testid="room-code">
                   {pub!.roomCode.split('').map((c, i) => (
-                    <span key={i} className="w-8 h-9 sm:w-9 sm:h-10 rounded-lg bg-[#FFFBef] text-[#2B2016] font-extrabold text-xl flex items-center justify-center">{c}</span>
+                    <span key={i} className="w-7 h-7 sm:w-9 sm:h-10 rounded-lg bg-[#FFFBef] text-[#2B2016] font-extrabold text-lg sm:text-xl flex items-center justify-center">{c}</span>
                   ))}
                 </div>
               </div>
               <span className="flex-1" />
               <button className="disp flex-none px-3 py-2 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] text-sm" onClick={async () => { try { await navigator.clipboard.writeText(location.href.split('?')[0] + `?game=love-letter&room=${pub!.roomCode}`); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 1500); } catch { /* ignore */ } }}>{linkCopied ? `✅ ${d.copied}` : `🔗 ${d.copyLink}`}</button>
             </div>
-            <div className="mt-4 card-cream p-4">
-              <div className="flex items-baseline justify-between gap-2">
-                <h3 className="disp font-extrabold text-xl">{d.players}</h3>
-                <span className="font-bold text-[#8A7B63] text-sm">{connected}/{MAX_PLAYERS} · {d.needAtLeast(MIN_PLAYERS)}</span>
-              </div>
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 my-3">
-                {pub!.players.map(p => (
-                  <div key={p.id} className={`rounded-2xl p-2 text-center hard-xs ${p.id === joined.playerId ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'}`}>
-                    <span className="mx-auto block w-fit"><PlayerAvatar avatarId={p.avatar} size={48} fallback={<MouseAvatar seed={p.id} size={48} state="awake" />} /></span>
-                    <span className="block font-bold truncate text-sm mt-0.5 text-[#2B2016]">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
-                    {p.isBot && <span className="text-xs font-extrabold bg-[#23233F] text-[#FFB020] rounded-full px-2 py-0.5 mt-0.5 inline-block">🤖 {d.botTag}</span>}
-                    {p.isHost && <span className="block text-amber-600 text-xs font-extrabold leading-tight">👑 {d.host}</span>}
-                    {!p.connected && <span className="text-red-500 text-xs font-bold"> • {d.offline}</span>}
-                    {joined.isHost && p.id !== joined.playerId && (
-                      <span role="button" title={p.isBot ? d.removeBot : d.kick}
-                        onClick={() => { if (p.isBot) getNet().nightAction('removeBot', p.id); else getNet().kick(p.id); }}
-                        className="inline-block text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-0.5 mt-1 cursor-pointer hover:bg-red-200">✖ {p.isBot ? d.removeBot : d.kick}</span>)}
-                  </div>
-                ))}
-                {Array.from({ length: Math.max(0, 6 - pub!.players.length) }).map((_, i) => (
-                  <div key={'empty-' + i} className="rounded-2xl border-2 border-dashed border-[#C9BFA5] p-2 text-center text-[#8A7B63] font-bold text-xs hidden lg:flex items-center justify-center min-h-[86px]">{lang === 'vi' ? 'Đang chờ…' : 'Waiting…'}</div>
-                ))}
-              </div>
-              {joined.isHost && <p className="font-bold text-[#8A7B63] text-sm hidden lg:block">{d.kickHint}</p>}
-              {joined.isHost && (
-                <div className="mt-2 space-y-3">
-                  <div>
-                    <div className="disp font-extrabold text-sm mb-1">{d.turnTime}</div>
-                    <div className="flex gap-1.5">
-                      {[30, 60, 90].map(v => (
-                        <button key={v} data-testid="pill-turnSeconds" data-val={String(v)}
-                          onClick={() => { const n = Date.now(); if (n - toggleGuard.current < 500) return; toggleGuard.current = n; getNet().nightAction('setConfig', undefined, { config: { turnSeconds: v } }); }}
-                          className={`flex-1 px-1 py-2 min-h-[44px] rounded-full border-2 font-extrabold text-sm push ${pub!.config.turnSeconds === v ? 'bg-[#FFB020] border-[#2B2016] text-[#2B2016]' : 'bg-white border-[#C9BFA5] text-[#5C4B33]'}`}>{d.secondsUnit(v)}</button>
-                      ))}
+            <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-4 mt-2">
+              <div className="card-cream p-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h3 className="disp font-extrabold text-xl">{d.players}</h3>
+                  <span className="font-bold text-[#8A7B63] text-sm">{connected}/{MAX_PLAYERS} · {d.needAtLeast(MIN_PLAYERS)}</span>
+                </div>
+                <div className="flex flex-col gap-1.5 my-1.5">
+                  {pub!.players.map(p => (
+                    <div key={p.id} className={`flex items-center gap-2.5 rounded-2xl px-3 py-1 hard-xs ${p.id === joined.playerId ? 'bg-[#2B2016] ring-2 ring-amber-400' : 'bg-[#23233F]'} text-[#FFF3CF]`}>
+                      <span className="flex-none"><PlayerAvatar avatarId={p.avatar} size={36} fallback={<MouseAvatar seed={p.id} size={36} state="awake" />} /></span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-extrabold truncate">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
+                        {!p.connected && <span className="text-red-400 text-xs font-bold">{d.offline}</span>}
+                      </span>
+                      {p.isHost && <span className="flex-none text-xs font-extrabold bg-[#FFB020] text-[#2B2016] rounded-full px-2 py-1">👑 {d.host}</span>}
+                      {p.isBot && <span className="flex-none text-xs font-extrabold bg-[#23233F] text-[#FFB020] border border-[#3D3D63] rounded-full px-2 py-1">🤖 {d.botTag}</span>}
+                      {joined.isHost && p.id !== joined.playerId && (
+                        <span role="button" title={p.isBot ? d.removeBot : d.kick}
+                          onClick={() => { if (p.isBot) getNet().nightAction('removeBot', p.id); else getNet().kick(p.id); }}
+                          className="flex-none text-xs bg-red-500/20 text-red-300 font-bold rounded-full px-2 py-1 cursor-pointer hover:bg-red-500/30">✖ {p.isBot ? d.removeBot : d.kick}</span>)}
                     </div>
+                  ))}
+                  {Array.from({ length: Math.max(0, 6 - pub!.players.length) }).map((_, i) => (
+                    <div key={'empty-' + i} className="rounded-2xl border-2 border-dashed border-[#C9BFA5] p-2 text-center text-[#8A7B63] font-bold text-xs hidden lg:flex items-center justify-center min-h-[40px]">{lang === 'vi' ? 'Đang chờ…' : 'Waiting…'}</div>
+                  ))}
+                </div>
+                {joined.isHost && <p className="font-bold text-[#8A7B63] text-sm hidden lg:block">{d.kickHint}</p>}
+                {joined.isHost && pub!.players.length < MAX_PLAYERS && (
+                  <div className="mt-2">
+                    <button className={`${BTN} btn-dark w-full`} onClick={() => { const n = Date.now(); if (n - toggleGuard.current < 500) return; toggleGuard.current = n; getNet().nightAction('addBot'); }}>🤖 {d.addBot}</button>
+                    <p className="font-bold text-[#8A7B63] text-sm text-center mt-1.5 hidden sm:block">{d.botHint}</p>
                   </div>
-                  <button data-testid="toggle-quickMode" aria-pressed={pub!.config.quickMode}
-                    onClick={() => { const n = Date.now(); if (n - toggleGuard.current < 500) return; toggleGuard.current = n; getNet().nightAction('setConfig', undefined, { config: { quickMode: !pub!.config.quickMode } }); }}
-                    className="w-full flex items-center gap-2 text-left">
-                    <span className={`w-12 h-7 rounded-full border-2 border-[#2B2016] relative transition-colors block flex-none ${pub!.config.quickMode ? 'bg-[#0E9F6E]' : 'bg-[#C9BFA5]'}`}>
-                      <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white border-2 border-[#2B2016] transition-all ${pub!.config.quickMode ? 'left-6' : 'left-0.5'}`} />
-                    </span>
-                    <span>
-                      <span className="disp font-extrabold text-sm block">⚡ {d.quickMode}</span>
-                      <span className="font-bold text-xs text-[#8A7B63] block">{d.quickModeHint}</span>
-                    </span>
-                  </button>
-                  <p className="font-bold text-sm text-[#5C4B33]">{d.tokensToWin(tokensFor(connected, pub!.config.quickMode))}</p>
-                </div>
-              )}
-              {!joined.isHost && (
-                <p className="font-bold text-sm text-[#5C4B33] mt-2">🕐 {d.secondsUnit(pub!.config.turnSeconds)} · {pub!.config.quickMode ? `⚡ ${d.quickMode} — ` : ''}{d.tokensToWin(tokensFor(connected, pub!.config.quickMode))}</p>
-              )}
-              {joined.isHost && pub!.players.length < MAX_PLAYERS && (
-                <div className="mt-2">
-                  <button className={`${BTN} btn-dark w-full`} onClick={() => { const n = Date.now(); if (n - toggleGuard.current < 500) return; toggleGuard.current = n; getNet().nightAction('addBot'); }}>🤖 {d.addBot}</button>
-                  <p className="font-bold text-[#8A7B63] text-sm text-center mt-1.5">{d.botHint}</p>
-                </div>
-              )}
-              {joined.isHost ? (
-                <>
-                  <button className={`${BTN} btn-amber w-full mt-4`} disabled={connected < MIN_PLAYERS}
-                    onClick={() => { setError(''); getNet().startGame(); }}>▶ {d.start}</button>
-                  {connected < MIN_PLAYERS && <p className="text-center font-bold text-red-600 text-sm mt-2">{d.need2}</p>}
-                </>
-              ) : (
-                <p className="text-center font-bold text-[#8A7B63] mt-4">{d.waiting}</p>
-              )}
-              <button className={`${BTN} bg-[#FFFBef] text-[#D63A2F] w-full mt-3`} onClick={() => { try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } getNet().leave(); setJoined(null); setPub(null); setPriv(null); }}>🚪 {d.leave}</button>
+                )}
+                <button className={`${BTN} bg-[#FFFBef] text-[#D63A2F] w-full mt-2 hidden lg:block`} onClick={() => { try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } getNet().leave(); setJoined(null); setPub(null); setPriv(null); }}>🚪 {d.leave}</button>
+              </div>
+              <div className="card-cream p-3 mt-2 lg:mt-0">
+                <h3 className="disp font-extrabold text-xl">{d.settingsTitle}</h3>
+                {joined.isHost && (
+                  <div className="mt-2 space-y-3">
+                    <div>
+                      <div className="disp font-extrabold text-sm mb-1">{d.turnTime}</div>
+                      <div className="flex gap-1.5">
+                        {[30, 60, 90].map(v => (
+                          <button key={v} data-testid="pill-turnSeconds" data-val={String(v)}
+                            onClick={() => { const n = Date.now(); if (n - toggleGuard.current < 500) return; toggleGuard.current = n; getNet().nightAction('setConfig', undefined, { config: { turnSeconds: v } }); }}
+                            className={`flex-1 px-1 py-2 min-h-[44px] rounded-full border-2 font-extrabold text-sm push ${pub!.config.turnSeconds === v ? 'bg-[#FFB020] border-[#2B2016] text-[#2B2016]' : 'bg-white border-[#C9BFA5] text-[#5C4B33]'}`}>{d.secondsUnit(v)}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <button data-testid="toggle-quickMode" aria-pressed={pub!.config.quickMode}
+                      onClick={() => { const n = Date.now(); if (n - toggleGuard.current < 500) return; toggleGuard.current = n; getNet().nightAction('setConfig', undefined, { config: { quickMode: !pub!.config.quickMode } }); }}
+                      className="w-full flex items-center gap-2 text-left">
+                      <span className={`w-12 h-7 rounded-full border-2 border-[#2B2016] relative transition-colors block flex-none ${pub!.config.quickMode ? 'bg-[#0E9F6E]' : 'bg-[#C9BFA5]'}`}>
+                        <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white border-2 border-[#2B2016] transition-all ${pub!.config.quickMode ? 'left-6' : 'left-0.5'}`} />
+                      </span>
+                      <span>
+                        <span className="disp font-extrabold text-sm block">⚡ {d.quickMode}</span>
+                        <span className="font-bold text-xs text-[#8A7B63] hidden sm:block">{d.quickModeHint}</span>
+                      </span>
+                    </button>
+                    <p className="font-bold text-sm text-[#5C4B33]">{d.tokensToWin(tokensFor(connected, pub!.config.quickMode))}</p>
+                  </div>
+                )}
+                {!joined.isHost && (
+                  <p className="font-bold text-sm text-[#5C4B33] mt-2">🕐 {d.secondsUnit(pub!.config.turnSeconds)} · {pub!.config.quickMode ? `⚡ ${d.quickMode} — ` : ''}{d.tokensToWin(tokensFor(connected, pub!.config.quickMode))}</p>
+                )}
+                {joined.isHost ? (
+                  <>
+                    <button className={`${BTN} btn-amber w-full mt-3`} disabled={connected < MIN_PLAYERS}
+                      onClick={() => { setError(''); getNet().startGame(); }}>▶ {d.start}</button>
+                    {connected < MIN_PLAYERS && <p className="text-center font-bold text-red-600 text-sm mt-2">{d.need2}</p>}
+                  </>
+                ) : (
+                  <p className="text-center font-bold text-[#8A7B63] mt-3">{d.waiting}</p>
+                )}
+              </div>
             </div>
             {chatPreviewBar}
           </div>
@@ -575,18 +613,20 @@ export default function LoveLetterApp() {
               {/* opponents */}
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {others.map(p => (
-                  <div key={p.id} className={`flex-none rounded-2xl px-2.5 py-1.5 hard-xs min-w-[132px] ${pub.turn === p.id ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'}`}>
+                  <div key={p.id} className={`flex-none rounded-2xl px-2.5 py-1.5 hard-xs min-w-[132px] border-2 border-[#2B2016] bg-[#4A1942] ${pub.turn === p.id ? 'ring-4 ring-amber-400' : ''} ${!p.inRound ? 'opacity-60' : ''}`}>
                     <div className="flex items-center gap-2">
                       <span className="relative flex-none">
                         <PlayerAvatar avatarId={p.avatar} size={40} fallback={<MouseAvatar seed={p.id} size={40} state={p.inRound ? 'awake' : 'dead'} />} />
                         {speakingIds.has(p.id) && <span className="absolute -bottom-1 -left-1 bg-green-500 text-white text-[10px] rounded-full px-1 shadow">🎙️</span>}
                       </span>
                       <span className="min-w-0">
-                        <span className="block font-extrabold text-sm truncate text-[#2B2016] max-w-[84px]">{p.name}{p.isBot ? ' 🤖' : ''}{!p.connected ? ` (${d.offline})` : ''}</span>
-                        <span className="block font-bold text-xs text-[#8A7B63]">🃏 {p.handCount} · ❤ {p.tokens}{p.protected ? ' · 🛡️' : ''}{!p.inRound ? ` · ${d.out}` : ''}</span>
+                        <span className="block font-extrabold text-sm truncate text-[#FFF3CF] max-w-[84px]">{p.name}{p.isBot ? ' 🤖' : ''}{!p.connected ? ` (${d.offline})` : ''}</span>
+                        <span className="block font-bold text-xs text-[#F3C6D8]">🃏 {p.handCount} · ❤ {p.tokens}</span>
                       </span>
                     </div>
-                    <div className="mt-1"><DiscardChips pile={p.discardPile} /></div>
+                    {p.protected && <div className="font-extrabold text-[11px] text-[#2DD4BF] mt-1 uppercase">🛡️ {d.protected}</div>}
+                    {!p.inRound && <div className="font-extrabold text-[11px] text-[#F3C6D8] mt-1">{d.out}</div>}
+                    <div className="mt-1"><DiscardChips pile={p.discardPile} dark /></div>
                   </div>
                 ))}
               </div>
@@ -631,8 +671,8 @@ export default function LoveLetterApp() {
               </div>
 
               {/* last play banner */}
-              {lastPlayText() && (
-                <div className="mt-2 bg-[#FFFBef] border-2 border-[#E5DCC0] rounded-2xl px-3 py-2 font-bold text-sm text-[#5C4B33]">📜 {lastPlayText()}</div>
+              {playText(pub?.lastPlay) && (
+                <div className="mt-2 bg-[#FFFBef] border-2 border-[#E5DCC0] rounded-2xl px-3 py-2 font-bold text-sm text-[#5C4B33]">📜 {playText(pub?.lastPlay)}</div>
               )}
               {/* my peek memory (private) */}
               {mySeen && (
@@ -689,6 +729,15 @@ export default function LoveLetterApp() {
             {pub.roundResult?.spyFavorId && (
               <p className="text-[#FFB020] font-bold mt-1">🕵️ {d.spyFavor(playerName(pub.roundResult.spyFavorId))}</p>
             )}
+            {pub.roundResult?.hands && pub.roundWinners[0] && pub.roundResult.hands[pub.roundWinners[0]] && (
+              <div className="mt-4">
+                <div className="disp font-extrabold text-[11px] tracking-[0.18em] text-[#FFB020]">{d.finalHand}</div>
+                <div className="flex justify-center mt-2">
+                  <LLCardFace card={pub.roundResult.hands[pub.roundWinners[0]]} d={d} size="lg" />
+                </div>
+                <div className="font-extrabold mt-2">{playerName(pub.roundWinners[0])}</div>
+              </div>
+            )}
             {pub.roundResult?.hands && (
               <div className="card-cream !rounded-[28px] p-4 mt-4 text-left text-[#2B2016]">
                 <div className="disp font-extrabold text-lg">{d.revealedHands}</div>
@@ -704,6 +753,7 @@ export default function LoveLetterApp() {
             )}
             <div className="card-cream !rounded-[28px] p-4 mt-4 text-left text-[#2B2016]">
               <div className="disp font-extrabold text-lg">{d.standings}</div>
+              <p className="font-bold text-sm text-[#8A7B63]">{d.tokenRace(pub.tokensToWin)}</p>
               <div className="mt-2 space-y-1.5">
                 {[...pub.players].sort((a, b) => b.tokens - a.tokens || b.roundWins - a.roundWins).map(p => (
                   <div key={p.id} className="flex items-center gap-2 font-bold">
@@ -769,27 +819,46 @@ export default function LoveLetterApp() {
                   : myPending.type === 'king' ? `${CARD_NAMES.king} — ${d.effKing}`
                   : `${CARD_NAMES.prince} — ${d.effPrince}`}
               </p>
-              <div className="flex flex-wrap justify-center gap-2 mt-3">
-                {validTargets.map(p => (
-                  <button key={p.id} data-testid="pick-target" data-player-id={p.id}
-                    onClick={() => setPickTarget(p.id)}
-                    className={`disp px-4 py-2.5 rounded-2xl font-extrabold hard push text-sm ${pickTarget === p.id ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-white text-[#2B2016]'}`}>
-                    {p.name}{p.id === joined.playerId ? ` (${d.you})` : ''} · 🃏 {p.handCount}
-                  </button>
-                ))}
+              <div className="flex flex-col gap-2 mt-3 text-left">
+                {pub!.players.filter(p => p.id !== joined.playerId || validTargets.some(v => v.id === p.id)).map(p => {
+                  const isValid = validTargets.some(v => v.id === p.id);
+                  const stateText = !p.inRound ? d.out : p.protected ? d.protected : d.discardedCount(p.discardPile.length);
+                  return (
+                    <button key={p.id} data-testid="pick-target" data-player-id={p.id}
+                      disabled={!isValid}
+                      onClick={() => setPickTarget(p.id)}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-2xl font-extrabold text-sm push text-left ${pickTarget === p.id ? 'bg-[#FFB020] text-[#2B2016] ring-4 ring-[#FFB020]/50' : 'bg-white text-[#2B2016]'} ${!isValid ? 'opacity-50' : ''}`}>
+                      <PlayerAvatar avatarId={p.avatar} size={36} fallback={<MouseAvatar seed={p.id} size={36} state={p.inRound ? 'awake' : 'dead'} />} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
+                        <span className="block text-xs font-bold text-[#8A7B63] uppercase">{stateText} · 🃏 {p.handCount}</span>
+                      </span>
+                      {pickTarget === p.id && <span className="text-lg">✅</span>}
+                    </button>
+                  );
+                })}
               </div>
               {myPending.type === 'guard' && (
                 <>
                   <div className="disp font-extrabold text-lg mt-4">{d.chooseGuess}</div>
-                  <div className="grid grid-cols-4 gap-1.5 mt-2">
-                    {GUESSABLE.map(k => (
-                      <button key={k} data-testid="pick-guess" data-card-kind={k}
-                        onClick={() => setPickGuess(k)}
-                        className={`rounded-xl border-[3px] py-2 font-extrabold text-sm push ${pickGuess === k ? 'border-[#FFB020] bg-[#FFB020] text-[#2B2016]' : 'border-[#2B2016] text-white'}`}
-                        style={{ background: pickGuess === k ? undefined : CARD_COLORS[k] }}>
-                        {k === 'spy' ? '🕵️' : k === 'priest' ? '⛪' : k === 'baron' ? '⚖️' : k === 'handmaid' ? '🌸' : k === 'prince' ? '🤴' : k === 'chancellor' ? '🎩' : k === 'king' ? '👑' : k === 'countess' ? '👸' : '💌'} {CARD_VALUE[k]} · {CARD_NAMES[k]}
-                      </button>
-                    ))}
+                  <div className="flex flex-col gap-1.5 mt-2 text-left">
+                    {GUESSABLE.map(k => {
+                      const remaining = Math.max(0, CARD_COUNT[k]
+                        - (pub?.players ?? []).reduce((n, p) => n + p.discardPile.filter(c => c.kind === k).length, 0)
+                        - (pub?.faceUpRemoved ?? []).filter(c => c.kind === k).length
+                        - (myHand ?? []).filter(c => c.kind === k).length);
+                      return (
+                        <button key={k} data-testid="pick-guess" data-card-kind={k}
+                          onClick={() => setPickGuess(k)}
+                          className={`flex items-center gap-3 rounded-xl border-[3px] px-3 py-2 font-extrabold text-sm push ${pickGuess === k ? 'border-[#FFB020] bg-[#FFB020] text-[#2B2016]' : 'border-[#2B2016] text-white'}`}
+                          style={{ background: pickGuess === k ? undefined : CARD_COLORS[k] }}>
+                          <span className="w-7 h-7 flex-none rounded-full bg-white/95 text-[#2B2016] flex items-center justify-center font-extrabold">{CARD_VALUE[k]}</span>
+                          <span className="flex-1 text-left">{CARD_NAMES[k]}</span>
+                          <span className="text-xs font-bold opacity-90">{d.remaining(remaining)}</span>
+                          {pickGuess === k && <span>✅</span>}
+                        </button>
+                      );
+                    })}
                   </div>
                 </>
               )}

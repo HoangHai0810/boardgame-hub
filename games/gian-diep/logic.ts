@@ -106,13 +106,15 @@ export interface Player {
   score: number; roundWins: number; isBot?: boolean;
 }
 export interface ChatMsg { fromId: string; fromName: string; text: string; ts: number }
-export interface FeedEvent { ts: number; actorId: string; kind: string; targetId?: string; count?: number }
+export interface FeedEvent { ts: number; actorId: string; kind: string; targetId?: string; count?: number; text?: string }
 export interface Accusation { accuserId: string; suspectId: string; votes: Record<string, boolean>; endsAt: number }
 export interface FinalVote { suspectId: string; votes: Record<string, boolean>; endsAt: number }
 export interface RoundResult {
   winner: Winner; reason: RoundReason;
   spyId: string; locationIdx: number; accuserId?: string;
   points: Record<string, number>;
+  /** Role index per local (spy has none) — revealed at round end. */
+  roles: Record<string, number>;
 }
 
 export interface GameState {
@@ -191,8 +193,8 @@ export function removeBot(s: GameState, id: string): boolean {
 const byId = (s: GameState, id?: string | null) => s.players.find(p => p.id === id);
 export const connectedPlayers = (s: GameState): Player[] => s.players.filter(p => p.connected);
 
-function feed(s: GameState, actorId: string, kind: string, targetId?: string, count?: number): void {
-  s.feed.push({ ts: Date.now(), actorId, kind, targetId, count });
+function feed(s: GameState, actorId: string, kind: string, targetId?: string, count?: number, text?: string): void {
+  s.feed.push({ ts: Date.now(), actorId, kind, targetId, count, text });
   if (s.feed.length > 30) s.feed = s.feed.slice(-30);
 }
 
@@ -242,15 +244,17 @@ export function startQuestioning(s: GameState): void {
 }
 
 /** The current asker names the next player to question. The answerer
- *  becomes the next asker. */
-export function askTarget(s: GameState, asker: Player, targetId: string): boolean {
+ *  becomes the next asker. An optional typed question rides along so
+ *  players without a mic can ask in text (shown in the feed). */
+export function askTarget(s: GameState, asker: Player, targetId: string, question?: string): boolean {
   if (s.phase !== 'questioning' || s.finalPhase || s.accusation || s.finalVote) return false;
   if (s.currentAskerId !== asker.id || !asker.connected) return false;
   const target = byId(s, targetId);
   if (!target || target.id === asker.id || !target.connected) return false;
   s.currentAskerId = target.id;
   s.askEndsAt = Date.now() + ASK_MS;
-  feed(s, asker.id, 'ask', target.id);
+  const q = typeof question === 'string' ? question.trim().slice(0, 140) : '';
+  feed(s, asker.id, 'ask', target.id, undefined, q || undefined);
   return true;
 }
 
@@ -481,7 +485,7 @@ export function endRound(s: GameState, winner: Winner, reason: RoundReason, accu
   }
   s.roundResult = {
     winner, reason, spyId: s.spyId ?? '', locationIdx: s.locationIdx ?? 0,
-    accuserId, points,
+    accuserId, points, roles: { ...s.roleIdx },
   };
   s.dealerId = s.spyId;
   s.accusation = null;
@@ -516,12 +520,14 @@ export function publicState(s: GameState) {
     accusation: s.accusation ? {
       accuserId: s.accusation.accuserId, suspectId: s.accusation.suspectId,
       endsAt: s.accusation.endsAt, voted: Object.keys(s.accusation.votes),
+      yes: Object.values(s.accusation.votes).filter(Boolean).length,
     } : null,
     finalPhase: s.finalPhase, finalOrder: s.finalOrder, finalIdx: s.finalIdx,
     finalPickEndsAt: s.finalPickEndsAt,
     finalVote: s.finalVote ? {
       suspectId: s.finalVote.suspectId, endsAt: s.finalVote.endsAt,
       voted: Object.keys(s.finalVote.votes),
+      yes: Object.values(s.finalVote.votes).filter(Boolean).length,
     } : null,
     revealReady: s.revealReady,
     roundResult: s.roundResult,

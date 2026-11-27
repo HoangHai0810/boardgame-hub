@@ -329,7 +329,7 @@ export class HostEngine {
       // Turn actions arrive as top-level actions (the transports forward
       // nightAction(kind) verbatim — see transport/net.ts).
       case 'askTarget':
-        if (typeof msg.targetId === 'string' && askTarget(s, player, msg.targetId)) {
+        if (typeof msg.targetId === 'string' && askTarget(s, player, msg.targetId, typeof msg.question === 'string' ? msg.question : undefined)) {
           const t = s.players.find(p => p.id === msg.targetId);
           if (t?.isBot) this.botWasAsked.add(t.id);
           this.sync();

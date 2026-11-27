@@ -7,6 +7,7 @@ import { joinVoice, VoiceHandle } from '../../transport/voice';
 import { TopBar, ChatPanel, ChatSheet, chatPreview, RetryDefaultButton } from '../../platform/ui';
 import { MouseAvatar } from '../../platform/avatars';
 import { PlayerAvatar } from '../../platform/GameCard';
+import { SPY_ART, CLOCHE_ART } from '../../platform/art';
 import { MIN_PLAYERS, MAX_PLAYERS, LOCATIONS } from '../../../../games/gian-diep/logic';
 import type { FeedEvent } from '../../../../games/gian-diep/logic';
 
@@ -41,20 +42,6 @@ function PausedPill({ msLeft }: { msLeft: number | null | undefined }) {
 const BTN = 'disp px-5 py-3 rounded-2xl font-extrabold hard push disabled:opacity-40';
 const CARD = 'card-cream p-4 sm:p-5';
 
-/** Landing art: a big eye (the spy watches) with a question mark. */
-function SpyEye({ size = 150 }: { size?: number }) {
-  return (
-    <span className="inline-flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg width={size} height={size * 0.7} viewBox="0 0 100 70" aria-hidden className="anim-bob">
-        <path d="M6 35 Q50 2 94 35 Q50 68 6 35 Z" fill="#FFFBef" stroke="#2B2016" strokeWidth="4" strokeLinejoin="round" />
-        <circle cx="50" cy="35" r="16" fill="#2B2016" />
-        <circle cx="50" cy="35" r="6" fill="#FFFBef" />
-        <text x="50" y="40" textAnchor="middle" fontSize="17" fontWeight="800" fill="#FFB020">?</text>
-      </svg>
-    </span>
-  );
-}
-
 function HelpModal({ d, onClose }: { d: any; onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -84,7 +71,7 @@ function FeedList({ feed, d, myId, players }: { feed: FeedEvent[]; d: any; myId?
     const tg = name(e.targetId);
     switch (e.kind) {
       case 'start': return d.feedStart;
-      case 'ask': return d.feedAsk(a, tg);
+      case 'ask': return d.feedAsk(a, tg) + (e.text ? `: “${e.text}”` : '');
       case 'accuse': return d.feedAccuse(a, tg);
       case 'accuse-fail': return d.feedAccuseFail(a, tg);
       case 'accuse-cancel': return d.feedAccuseCancel(a, tg);
@@ -335,12 +322,22 @@ export default function GianDiepApp() {
   const [accuseConfirm, setAccuseConfirm] = useState<string | null>(null);
   const [showGuess, setShowGuess] = useState(false);
   const [guessPick, setGuessPick] = useState<number | null>(null);
-  useEffect(() => { setOptReady(false); setOptVote(null); setOptAsk(null); setAccuseMode(false); setAccuseConfirm(null); setShowGuess(false); }, [phase, pub?.round]);
+  // Typed question for my ask turn (optional — no mic needed to ask).
+  const [askText, setAskText] = useState('');
+  // Location notes: locals tap to cross out eliminated locations; the spy
+  // taps to pick the guess. Local-only, reset every round.
+  const [crossed, setCrossed] = useState<number[]>([]);
+  useEffect(() => { setOptReady(false); setOptVote(null); setOptAsk(null); setAccuseMode(false); setAccuseConfirm(null); setShowGuess(false); setGuessPick(null); setAskText(''); setCrossed([]); }, [phase, pub?.round]);
   useEffect(() => { if (priv?.myVote !== null && priv?.myVote !== undefined) setOptVote(priv.myVote); }, [priv?.myVote]);
   useEffect(() => { if (pub && !pub.accusation && !pub.finalVote) setOptVote(null); }, [pub?.accusation, pub?.finalVote]);
 
   const doReady = () => { setOptReady(true); getNet().nightAction('ready'); };
-  const doAsk = (targetId: string) => { setOptAsk(targetId); getNet().nightAction('askTarget', undefined, { targetId }); };
+  const doAsk = (targetId: string) => {
+    setOptAsk(targetId);
+    const q = askText.trim();
+    getNet().nightAction('askTarget', undefined, { targetId, ...(q ? { question: q } : {}) });
+    setAskText('');
+  };
   const doAccuse = (targetId: string) => {
     setAccuseConfirm(null); setAccuseMode(false);
     getNet().nightAction('accuse', undefined, { targetId });
@@ -361,7 +358,7 @@ export default function GianDiepApp() {
   };
 
   /* ---------- shared bits ---------- */
-  const tone = phase === 'results' || phase === 'roleReveal' ? 'navy' : 'cream';
+  const tone = phase === 'results' || phase === 'roleReveal' || phase === 'roundEnd' ? 'navy' : 'cream';
   const connected = pub?.players.filter(p => p.connected).length ?? 0;
   const playerName = (id?: string | null) => pub?.players.find(p => p.id === id)?.name ?? '';
   const others = pub?.players.filter(p => p.id !== joined?.playerId) ?? [];
@@ -383,6 +380,38 @@ export default function GianDiepApp() {
 
   const feedAside = pub && (phase === 'questioning' || phase === 'roundEnd') && (
     <aside className="hidden lg:flex flex-col min-h-0">
+      {phase === 'questioning' && (
+        <div className="bg-[#23233F] border-[3px] border-[#2B2016] rounded-[24px] p-4 hard mb-4">
+          <div className="disp font-extrabold text-[11px] tracking-[0.18em] text-[#B9BCE0]">{d.myCard}</div>
+          <div className="flex items-center gap-3 mt-2">
+            <img src={isSpy ? SPY_ART : CLOCHE_ART} alt="" className="w-[72px] h-[58px] rounded-xl border-2 border-[#3D3D63] object-cover flex-none" />
+            <div className="min-w-0">
+              {isSpy ? (
+                <><div className="disp font-extrabold text-lg text-[#FFB020] leading-tight">{d.revealYouAreSpy}</div>
+                <div className="font-bold text-[#B9BCE0] text-xs mt-0.5">{d.guessHint}</div></>
+              ) : (
+                <><div className="disp font-extrabold text-lg text-[#FFF3CF] leading-tight">{locName(myLoc)}</div>
+                {pub.config.rolesOn && myRole !== null && <div className="font-bold text-[#B9BCE0] text-xs mt-0.5">{d.revealYourRole}: {roleName(myRole)}</div>}</>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {phase === 'questioning' && (
+        <div className="bg-[#23233F] border-[3px] border-[#2B2016] rounded-[24px] p-4 hard mb-4">
+          <div className="disp font-extrabold text-lg mb-2 text-[#FFF3CF]">💬 {d.recentAsks}</div>
+          <div className="space-y-1.5">
+            {pub.feed.filter(e => e.kind === 'ask').slice(-3).reverse().map((e, i) => (
+              <div key={e.ts + '-' + i} className="font-bold text-sm leading-snug text-[#EDEDF7]">
+                <span className="text-[#FFB020]">{playerName(e.actorId)}</span>
+                {' → '}<span className="text-[#FFB020]">{playerName(e.targetId)}</span>
+                {e.text ? <span className="text-[#B9BCE0]">: “{e.text}”</span> : ''}
+              </div>
+            ))}
+            {pub.feed.filter(e => e.kind === 'ask').length === 0 && <p className="font-bold text-sm text-[#B9BCE0]">…</p>}
+          </div>
+        </div>
+      )}
       <div className="bg-[#23233F] border-[3px] border-[#2B2016] rounded-[24px] p-4 flex flex-col flex-1 min-h-0 hard">
         <div className="disp font-extrabold text-lg mb-2 text-[#FFF3CF]">📜 {d.feedTitle}</div>
         <div className="flex-1 min-h-0 overflow-y-auto">
@@ -423,7 +452,7 @@ export default function GianDiepApp() {
             <p className="text-[#B9BCE0] font-bold mt-2 leading-snug">{d.subtitle}</p>
           </div>
           <div className="flex justify-center mt-5">
-            <SpyEye size={132} />
+            <img src={SPY_ART} alt="" className="w-[200px] rounded-[24px] border-[3px] border-[#2B2016] hard anim-bob" />
           </div>
           <div className="bg-[#FFF3CF] rounded-t-[28px] px-4 pt-4 pb-6 mt-5">
             <label className="disp font-extrabold text-sm">{d.name}</label>
@@ -478,11 +507,11 @@ export default function GianDiepApp() {
 
         {phase === 'lobby' && (
           <div>
-            <div className="flex items-center gap-3 mb-2">
+            <div className="flex items-center gap-3 mb-1">
               <button className="w-11 h-11 flex-none rounded-2xl bg-[#FFFBef] hard-xs push font-extrabold text-xl text-[#2B2016]" onClick={() => { location.href = location.pathname; }}>‹</button>
               <div className="min-w-0">
                 <h2 className="disp font-extrabold text-xl leading-none">🕵️ {d.title} · {d.lobby}</h2>
-                <p className="font-bold text-[#8A7B63] text-sm mt-0.5">{d.waiting}</p>
+                <p className="font-bold text-[#8A7B63] text-sm mt-0.5 hidden sm:block">{d.waiting}</p>
               </div>
               <span className="flex-1" />
               <span className="hidden sm:block font-bold text-[#8A7B63] text-sm">{connected}/{MAX_PLAYERS}</span>
@@ -492,7 +521,7 @@ export default function GianDiepApp() {
                 <div className="disp text-[#FFB020] font-extrabold text-[11px] tracking-[0.18em]">{d.roomCode}</div>
                 <div className="flex gap-1.5 mt-1" data-testid="room-code">
                   {pub!.roomCode.split('').map((c, i) => (
-                    <span key={i} className="w-8 h-8 sm:w-9 sm:h-10 rounded-lg bg-[#FFFBef] text-[#2B2016] font-extrabold text-xl flex items-center justify-center">{c}</span>
+                    <span key={i} className="w-7 h-7 sm:w-9 sm:h-10 rounded-lg bg-[#FFFBef] text-[#2B2016] font-extrabold text-lg sm:text-xl flex items-center justify-center">{c}</span>
                   ))}
                 </div>
               </div>
@@ -500,47 +529,47 @@ export default function GianDiepApp() {
               <button className="disp flex-none px-3 py-2 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] text-sm" onClick={async () => { try { await navigator.clipboard.writeText(location.href.split('?')[0] + `?game=gian-diep&room=${pub!.roomCode}`); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 1500); } catch { /* ignore */ } }}>{linkCopied ? `✅ ${d.copied}` : `🔗 ${d.copyLink}`}</button>
             </div>
 
-            <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-4 mt-3">
+            <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-4 mt-2">
               <div className="card-cream p-3">
                 <div className="flex items-baseline justify-between gap-2">
                   <h3 className="disp font-extrabold text-xl">{d.players}</h3>
                   <span className="font-bold text-[#8A7B63] text-sm">{connected}/{MAX_PLAYERS} · {d.needAtLeast(MIN_PLAYERS)}</span>
                 </div>
-                <div className="grid grid-cols-4 lg:grid-cols-4 gap-2 my-2">
+                <div className="space-y-1.5 my-1.5">
                   {pub!.players.map(p => (
-                    <div key={p.id} className={`rounded-2xl p-1.5 text-center hard-xs ${p.id === joined.playerId ? 'bg-amber-200 ring-4 ring-amber-400' : 'bg-white'}`}>
-                      <span className="mx-auto block w-fit relative">
-                        <PlayerAvatar avatarId={p.avatar} size={40} fallback={<MouseAvatar seed={p.id} size={40} state={p.connected ? 'awake' : 'asleep'} />} />
+                    <div key={p.id} className={`flex items-center gap-2.5 rounded-2xl px-3 py-1 border-2 hard-xs ${p.id === joined.playerId ? 'bg-[#FFB020]/15 border-[#FFB020]' : 'bg-[#23233F] border-[#3D3D63]'}`}>
+                      <span className="relative flex-none">
+                        <PlayerAvatar avatarId={p.avatar} size={36} fallback={<MouseAvatar seed={p.id} size={36} state={p.connected ? 'awake' : 'asleep'} />} />
                         {speakingIds.has(p.id) && <span className="absolute -bottom-1 -left-1 bg-green-500 text-white text-[10px] rounded-full px-1 shadow">🎙️</span>}
                       </span>
-                      <span className="block font-bold truncate text-sm mt-0.5 text-[#2B2016]">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
-                      {p.isBot && <span className="text-xs font-extrabold bg-[#23233F] text-[#FFB020] rounded-full px-2 py-0.5 mt-0.5 inline-block">🤖 {d.botTag}</span>}
-                      {p.isHost && <span className="block text-amber-600 text-xs font-extrabold leading-tight">👑 {d.host}</span>}
-                      {!p.connected && <span className="text-red-500 text-xs font-bold"> • {d.offline}</span>}
+                      <span className="flex-1 min-w-0 font-extrabold truncate text-[#FFF3CF]">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
+                      {p.isBot && <span className="flex-none text-xs font-extrabold bg-[#FFFBef] text-[#2B2016] rounded-full px-2 py-1">🤖 {d.botTag}</span>}
+                      {p.isHost && <span className="flex-none text-xs font-extrabold bg-[#FFB020] text-[#2B2016] rounded-full px-2.5 py-1">👑 {d.host}</span>}
+                      {!p.connected && <span className="flex-none text-red-400 text-xs font-bold">{d.offline}</span>}
                       {joined.isHost && p.id !== joined.playerId && (
                         <span role="button" title={p.isBot ? d.removeBot : d.kick}
                           onClick={() => { if (p.isBot) getNet().nightAction('removeBot', p.id); else getNet().kick(p.id); }}
-                          className="inline-block text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-0.5 mt-1 cursor-pointer hover:bg-red-200">✖ {p.isBot ? d.removeBot : d.kick}</span>)}
+                          className="flex-none text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-1 cursor-pointer hover:bg-red-200">✖ {p.isBot ? d.removeBot : d.kick}</span>)}
                     </div>
                   ))}
                   {Array.from({ length: Math.max(0, MAX_PLAYERS - pub!.players.length) }).map((_, i) => (
-                    <div key={'empty-' + i} className="rounded-2xl border-2 border-dashed border-[#C9BFA5] p-2 text-center text-[#8A7B63] font-bold text-xs hidden lg:flex items-center justify-center min-h-[86px]">{lang === 'vi' ? 'Đang chờ…' : 'Waiting…'}</div>
+                    <div key={'empty-' + i} className="rounded-2xl border-2 border-dashed border-[#C9BFA5] px-3 py-1 text-center text-[#8A7B63] font-bold text-xs hidden lg:block">{lang === 'vi' ? 'Đang chờ…' : 'Waiting…'}</div>
                   ))}
                 </div>
                 {joined.isHost && <p className="font-bold text-[#8A7B63] text-sm hidden lg:block">{d.kickHint}</p>}
                 {joined.isHost && pub!.players.length < MAX_PLAYERS && (
                   <div className="mt-2">
                     <button className={`${BTN} btn-dark w-full`} disabled={botAdding} onClick={() => { setBotAdding(true); getNet().nightAction('addBot'); }}>🤖 {d.addBot}</button>
-                    <p className="font-bold text-[#8A7B63] text-sm text-center mt-1.5">{d.botHint}</p>
+                    <p className="font-bold text-[#8A7B63] text-sm text-center mt-1.5 hidden sm:block">{d.botHint}</p>
                   </div>
                 )}
                 <button className={`${BTN} bg-[#FFFBef] text-[#D63A2F] w-full mt-2 hidden lg:block`} onClick={() => { try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } getNet().leave(); setJoined(null); setPub(null); setPriv(null); }}>🚪 {d.leave}</button>
               </div>
 
               {/* Game settings — host only */}
-              <div className="card-cream p-3 mt-3 lg:mt-0">
+              <div className="card-cream p-3 mt-2 lg:mt-0">
                 <h3 className="disp font-extrabold text-xl">{d.rulesTitle}{!joined.isHost && <span className="text-sm font-bold text-[#8A7B63]"> ({d.hostOnlyShort})</span>}</h3>
-                <div className="mt-3 space-y-2">
+                <div className="mt-2 space-y-2">
                   {/* The two pill groups sit side by side so the lobby
                    * still fits one phone screen (stacked they cost
                    * ~110px more). */}
@@ -566,31 +595,33 @@ export default function GianDiepApp() {
                       </div>
                     </div>
                   </div>
-                  {([
-                    ['rolesOn', d.ruleRoles, d.ruleRolesSub],
-                    ['pointsOn', d.rulePoints, d.rulePointsSub],
-                  ] as const).map(([key, label, sub]) => (
-                    <div key={key} className="flex items-start gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="font-extrabold leading-tight">{label}</div>
-                        <div className="font-bold text-sm text-[#8A7B63] leading-snug">{sub}</div>
+                  <div className="flex gap-3 lg:flex-col">
+                    {([
+                      ['rolesOn', d.ruleRoles, d.ruleRolesSub],
+                      ['pointsOn', d.rulePoints, d.rulePointsSub],
+                    ] as const).map(([key, label, sub]) => (
+                      <div key={key} className="flex items-center gap-2 flex-1 min-w-0">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-extrabold leading-tight text-sm">{label}</div>
+                          <div className="font-bold text-xs text-[#8A7B63] leading-snug hidden sm:block">{sub}</div>
+                        </div>
+                        <button
+                          data-testid={`toggle-${key}`}
+                          disabled={!joined.isHost}
+                          aria-pressed={pub!.config[key]}
+                          onClick={() => { const n = Date.now(); if (n - toggleGuard.current < 500) return; toggleGuard.current = n; getNet().nightAction('setConfig', undefined, { config: { [key]: !pub!.config[key] } }); }}
+                          className="flex-none min-w-[44px] min-h-[44px] px-1 flex items-center justify-center disabled:opacity-70">
+                          <span className={`w-12 h-7 rounded-full border-2 border-[#2B2016] relative transition-colors block ${pub!.config[key] ? 'bg-[#0E9F6E]' : 'bg-[#C9BFA5]'}`}>
+                            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white border-2 border-[#2B2016] transition-all ${pub!.config[key] ? 'left-6' : 'left-0.5'}`} />
+                          </span>
+                        </button>
                       </div>
-                      <button
-                        data-testid={`toggle-${key}`}
-                        disabled={!joined.isHost}
-                        aria-pressed={pub!.config[key]}
-                        onClick={() => { const n = Date.now(); if (n - toggleGuard.current < 500) return; toggleGuard.current = n; getNet().nightAction('setConfig', undefined, { config: { [key]: !pub!.config[key] } }); }}
-                        className="flex-none min-w-[44px] min-h-[44px] px-1 flex items-center justify-center disabled:opacity-70">
-                        <span className={`w-12 h-7 rounded-full border-2 border-[#2B2016] relative transition-colors block ${pub!.config[key] ? 'bg-[#0E9F6E]' : 'bg-[#C9BFA5]'}`}>
-                          <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white border-2 border-[#2B2016] transition-all ${pub!.config[key] ? 'left-6' : 'left-0.5'}`} />
-                        </span>
-                      </button>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
                 {joined.isHost ? (
                   <>
-                    <button className={`${BTN} btn-amber w-full mt-3`} disabled={connected < MIN_PLAYERS}
+                    <button className={`${BTN} btn-amber w-full mt-2`} disabled={connected < MIN_PLAYERS}
                       onClick={() => { setError(''); getNet().startGame(); }}>▶ {d.start}</button>
                     {connected < MIN_PLAYERS && <p className="text-center font-bold text-red-600 text-xs mt-2">{d.need2}</p>}
                     {connected >= MIN_PLAYERS && <p className="text-center font-bold text-[#8A7B63] text-xs mt-2 hidden sm:block">{d.stillNeed(MAX_PLAYERS - connected)}</p>}
@@ -611,28 +642,32 @@ export default function GianDiepApp() {
               <h2 className="disp font-extrabold text-2xl mt-1">{d.dealerStarts(playerName(pub.dealerId))}</h2>
             </div>
             {isSpy ? (
-              <div className="mt-4 bg-[#23233F] border-[3px] border-[#FFB020] rounded-[28px] p-5 text-center hard anim-enter">
-                <div className="text-6xl">🕵️</div>
-                <div className="disp font-extrabold text-3xl text-[#FFB020] mt-2">{d.revealYouAreSpy}</div>
-                <p className="font-bold text-[#B9BCE0] text-sm leading-snug mt-2">{d.revealSpySub}</p>
-                <p className="disp font-extrabold text-[#FFF3CF] mt-4 mb-2">{d.revealLocationList}</p>
-                <div className="grid grid-cols-2 gap-2 text-left">
-                  {LOCATIONS.map((l, i) => (
-                    <div key={i} className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-2xl px-3 py-2 font-bold text-sm text-[#EDEDF7]">{l.icon} {l.name[lang]}</div>
-                  ))}
+              <div data-testid="spy-card" className="mt-4 rounded-[28px] border-4 border-white overflow-hidden hard anim-enter" style={{ background: '#0F766E' }}>
+                <img src={SPY_ART} alt="" className="w-full h-[190px] object-cover" />
+                <div className="p-5 text-center">
+                  <p className="disp font-extrabold tracking-[0.22em] text-[11px] text-[#99F6E4]">BẠN LÀ · {d.roundOf(pub.round, pub.config.roundsTotal)}</p>
+                  <div className="disp font-extrabold text-3xl text-white mt-1">{lang === 'vi' ? 'Gián điệp' : 'The Spy'}</div>
+                  <p className="font-bold text-[#CCFBF1] text-sm leading-snug mt-2">{d.revealSpySub}</p>
+                </div>
+                <div className="px-4 pb-4">
+                  <p className="disp font-extrabold text-[#FFF3CF] mb-2 text-center">{d.revealLocationList}</p>
+                  <div className="grid grid-cols-2 gap-2 text-left">
+                    {LOCATIONS.map((l, i) => (
+                      <div key={i} className="bg-[#134E4A] border-2 border-[#2DD4BF]/40 rounded-2xl px-3 py-2 font-bold text-sm text-[#EDEDF7]">{l.icon} {l.name[lang]}</div>
+                    ))}
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className="mt-4 card-cream rounded-[28px] p-5 text-center hard anim-enter" style={{ animation: 'cardFlip 0.5s ease' }}>
-                <div className="text-6xl">{locIcon(myLoc)}</div>
-                <p className="font-bold text-[#8A7B63] text-sm mt-2">{d.revealAt}</p>
-                <div className="disp font-extrabold text-3xl leading-tight">{locName(myLoc)}</div>
-                {pub.config.rolesOn && (
-                  <>
-                    <p className="font-bold text-[#8A7B63] text-sm mt-3">{d.revealYourRole}</p>
-                    <div className="disp font-extrabold text-2xl text-[#7C4DBD]">{roleName(myRole)}</div>
-                  </>
-                )}
+              <div className="mt-4 rounded-[28px] border-4 border-white overflow-hidden hard anim-enter" style={{ animation: 'cardFlip 0.5s ease', background: '#92400E' }}>
+                <img src={CLOCHE_ART} alt="" className="w-full h-[190px] object-cover" />
+                <div className="p-5 text-center">
+                  <p className="disp font-extrabold tracking-[0.22em] text-[11px] text-[#FDE68A]">{d.revealTitle.toUpperCase()} · {d.roundOf(pub.round, pub.config.roundsTotal)}</p>
+                  <div className="disp font-extrabold text-3xl leading-tight text-white mt-1">{locName(myLoc)}</div>
+                  {pub.config.rolesOn && myRole !== null && (
+                    <div className="mt-3 inline-block bg-white/95 rounded-full px-4 py-1.5 font-extrabold text-sm text-[#2B2016]">{d.revealYourRole}: {roleName(myRole)}</div>
+                  )}
+                </div>
               </div>
             )}
             <button className={`${BTN} btn-amber w-full mt-4`} data-testid="reveal-ready" disabled={optReady || pub.revealReady.includes(joined?.playerId ?? '')} onClick={doReady}>
@@ -670,6 +705,29 @@ export default function GianDiepApp() {
                 {pub.finalPhase ? d.finalSub : d.roundTimerSub}
                 {myAskTurn ? ` · ${d.askAuto}` : ''}
               </p>
+
+              {/* last ask — who asked whom, and the typed question if any */}
+              {(() => {
+                const lastAsk = [...pub.feed].reverse().find(e => e.kind === 'ask');
+                if (!lastAsk) return null;
+                const nm = (id?: string | null) => (id === joined?.playerId ? d.you : playerName(id));
+                const asker = pub.players.find(p => p.id === lastAsk.actorId);
+                const target = pub.players.find(p => p.id === lastAsk.targetId);
+                return (
+                  <div className="mt-2 bg-[#FFFBef] border-2 border-[#FFB020] rounded-2xl px-3 py-2 flex items-center gap-2 hard-xs">
+                    <PlayerAvatar avatarId={asker?.avatar} size={32} fallback={<MouseAvatar seed={lastAsk.actorId} size={32} state="awake" />} />
+                    <span className="font-extrabold text-sm">→</span>
+                    <PlayerAvatar avatarId={target?.avatar} size={32} fallback={<MouseAvatar seed={lastAsk.targetId ?? ''} size={32} state="awake" />} />
+                    <span className="font-bold text-sm text-[#2B2016] leading-snug">{d.feedAsk(nm(lastAsk.actorId), nm(lastAsk.targetId))}{lastAsk.text ? <span className="text-[#5C4B33]">: “{lastAsk.text}”</span> : ''}</span>
+                  </div>
+                );
+              })()}
+
+              {/* typed question (optional): type first, then tap a player */}
+              {myAskTurn && (
+                <input value={askText} maxLength={140} onChange={e => setAskText(e.target.value)}
+                  placeholder={d.askQuestionPh} className="inp w-full px-4 py-2.5 font-bold mt-2" />
+              )}
 
               {/* final-phase rotation */}
               {pub.finalPhase && (
@@ -725,7 +783,7 @@ export default function GianDiepApp() {
                 )}
                 {isSpy && (
                   <button className={`${BTN} btn-dark flex-1`} data-testid="guess-btn" disabled={!priv?.canGuess}
-                    onClick={() => { setGuessPick(null); setShowGuess(true); }}>
+                    onClick={() => { if (guessPick !== null) doGuess(); else { setGuessPick(null); setShowGuess(true); } }}>
                     🕵️ {d.guessBtn}
                   </button>
                 )}
@@ -734,11 +792,31 @@ export default function GianDiepApp() {
                 <p className="font-bold text-[#8A7B63] text-sm mt-2">{d.accuseHint}</p>
               )}
 
-              {/* mobile feed: last 2 events */}
-              <div className="lg:hidden bg-[#23233F] rounded-[20px] p-3 mt-3 hard">
-                <div className="disp font-extrabold text-sm mb-1.5 text-[#FFF3CF]">📜 {d.feedTitle}</div>
-                <FeedList feed={pub.feed.slice(-2)} d={d} myId={joined?.playerId} players={pub.players} />
-              </div>
+              {/* location notes grid (design v48): locals cross out,
+                  the spy taps to pick the guess. */}
+              {!pub.finalPhase && (
+                <div className="mt-3">
+                  <p className="disp font-extrabold text-xs tracking-wide text-[#8A7B63]">{isSpy ? d.locationsSpyHint : d.locationsTitle}</p>
+                  <div className="grid grid-cols-3 gap-1.5 mt-1.5">
+                    {LOCATIONS.map((l, i) => {
+                      const isCrossed = crossed.includes(i);
+                      const isPicked = isSpy && guessPick === i;
+                      return (
+                        <button key={i} data-testid={isSpy ? 'spy-loc-pick' : 'loc-note'}
+                          onClick={() => {
+                            if (isSpy) setGuessPick(isPicked ? null : i);
+                            else setCrossed(c => isCrossed ? c.filter(x => x !== i) : [...c, i]);
+                          }}
+                          className={`rounded-xl border-2 px-2 py-2 font-extrabold text-sm push ${isPicked ? 'bg-[#FFB020] border-[#2B2016] text-[#2B2016]' : isCrossed ? 'bg-[#C9BFA5] border-[#C9BFA5] text-[#5C4B33] line-through opacity-60' : 'bg-[#23233F] border-[#3D3D63] text-[#EDEDF7]'}`}>
+                          {l.name[lang]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {isSpy && guessPick !== null && <p className="font-bold text-[#8A7B63] text-xs mt-1.5">{d.guessPickFirst}</p>}
+                </div>
+              )}
+
               {chatPreviewBar}
             </div>
             {feedAside}
@@ -746,44 +824,54 @@ export default function GianDiepApp() {
         )}
 
         {phase === 'roundEnd' && pub && pub.roundResult && (
-          <div className="max-w-md lg:max-w-lg mx-auto text-center">
-            <p className="disp text-[#FFB020] font-extrabold tracking-[0.22em] text-[11px]">{d.roundEndTitle} · {d.roundOf(pub.round, pub.config.roundsTotal)}</p>
-            <h2 className="disp font-extrabold text-3xl mt-1">{pub.roundResult.winner === 'spy' ? d.spyWon : d.localsWon}</h2>
-            <p className="font-bold text-[#B9BCE0] mt-1">
-              {pub.roundResult.reason === 'spy-caught' ? d.reasonCaught
-                : pub.roundResult.reason === 'innocent-convicted' ? d.reasonInnocent
-                : pub.roundResult.reason === 'spy-guess-right' ? d.reasonGuessRight
-                : pub.roundResult.reason === 'spy-guess-wrong' ? d.reasonGuessWrong
-                : d.reasonTimeout}
-            </p>
-            <div className="card-cream rounded-[28px] p-5 mt-4 hard text-left">
-              <div className="flex items-center gap-3">
-                <PlayerAvatar avatarId={pub.players.find(x => x.id === pub.roundResult?.spyId)?.avatar} size={56} fallback={<MouseAvatar seed={pub.roundResult.spyId} size={56} state="thief" />} />
+          <div className="lg:grid lg:grid-cols-[340px_1fr] lg:gap-6 lg:items-start max-w-3xl mx-auto">
+            <div className="rounded-[28px] border-4 border-white overflow-hidden hard" style={{ background: '#0F766E' }}>
+              <img src={SPY_ART} alt="" className="w-full h-[190px] object-cover" />
+              <div className="p-5 text-center">
+                <p className="disp text-[#FFB020] font-extrabold tracking-[0.22em] text-[11px]">{d.roundEndTitle} · {d.roundOf(pub.round, pub.config.roundsTotal)}</p>
+                <h2 className="disp font-extrabold text-3xl mt-1 text-white">{pub.roundResult.reason === 'spy-caught' ? d.caughtHeadline : pub.roundResult.winner === 'spy' ? d.spyWon : d.localsWon}</h2>
+                <p className="font-bold text-[#CCFBF1] mt-1">{d.spyWas(playerName(pub.roundResult.spyId))}. {d.locationWas(locName(pub.roundResult.locationIdx))}.</p>
+                {pub.roundResult.reason === 'spy-guess-right' && (
+                  <p className="font-extrabold text-[#FFB020] mt-1">🔍 {d.spyGuessedRight}</p>
+                )}
+              </div>
+            </div>
+            <div className="mt-4 lg:mt-0">
+              <div className="bg-[#23233F] border-[3px] border-[#2B2016] rounded-[20px] p-3 flex items-center gap-3 hard">
+                <img src={CLOCHE_ART} alt="" className="w-[64px] h-[52px] rounded-xl border-2 border-[#3D3D63] object-cover flex-none" />
                 <div>
-                  <div className="font-extrabold text-lg leading-tight">{d.spyWas(playerName(pub.roundResult.spyId))}</div>
-                  <div className="font-bold text-[#8A7B63] text-sm">{locIcon(pub.roundResult.locationIdx)} {d.locationWas(locName(pub.roundResult.locationIdx))}</div>
+                  <div className="disp font-extrabold text-[11px] tracking-[0.18em] text-[#B9BCE0]">{lang === 'vi' ? 'ĐỊA ĐIỂM' : 'LOCATION'}</div>
+                  <div className="disp font-extrabold text-xl text-[#FFF3CF]">{locName(pub.roundResult.locationIdx)}</div>
                 </div>
               </div>
-              <div className="mt-3 space-y-1">
+              <div className="mt-3 space-y-2">
                 {pub.players.map(p => {
                   const pts = pub.roundResult!.points[p.id] ?? 0;
+                  const isSpyRow = p.id === pub.roundResult!.spyId;
+                  const roleIdx = pub.roundResult!.roles?.[p.id];
+                  const rrRole = roleIdx !== undefined && roleIdx !== null ? (LOCATIONS[pub.roundResult!.locationIdx]?.roles[roleIdx]?.[lang] ?? '') : '';
                   return (
-                    <div key={p.id} className="flex items-center justify-between font-bold text-sm">
-                      <span>{p.name}{p.id === joined?.playerId ? ` (${d.you})` : ''}</span>
-                      <span>{pub.config.pointsOn ? (pts > 0 ? d.pointsEarned(pts) : '—') : `${p.roundWins} ${d.wins}`}</span>
+                    <div key={p.id} className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 border-2 hard-xs ${isSpyRow ? 'bg-[#FFB020]/15 border-[#FFB020]' : 'bg-[#23233F] border-[#3D3D63]'}`}>
+                      <PlayerAvatar avatarId={p.avatar} size={40} fallback={<MouseAvatar seed={p.id} size={40} state="awake" />} />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-extrabold text-[#FFF3CF] truncate">{p.name}{p.id === joined?.playerId ? ` (${d.you})` : ''}</div>
+                        <div className="font-bold text-xs text-[#B9BCE0]">{isSpyRow ? d.spyBadge : rrRole}</div>
+                      </div>
+                      {isSpyRow && <span className="bg-[#D63A2F] text-white text-xs font-extrabold rounded-full px-2.5 py-1 flex-none">{d.spyBadge}</span>}
+                      <span className="disp font-extrabold text-[#FFB020] flex-none">{pub.config.pointsOn ? (pts > 0 ? d.pointsEarned(pts) : '—') : `${p.roundWins} ${d.wins}`}</span>
                     </div>
                   );
                 })}
               </div>
-              <p className="font-bold text-[#8A7B63] text-sm mt-3">{d.nextDealer(playerName(pub.dealerId))}</p>
+              <p className="font-bold text-[#B9BCE0] text-sm mt-3 text-center lg:text-left">{d.nextDealer(playerName(pub.dealerId))}</p>
+              {joined.isHost ? (
+                <button className={`${BTN} btn-amber w-full mt-4`} data-testid="next-round" onClick={() => getNet().nightAction('nextRound')}>
+                  {pub.round >= pub.config.roundsTotal ? d.viewResults : `▶ ${d.nextRound}`}
+                </button>
+              ) : (
+                <p className="text-center font-bold text-[#B9BCE0] mt-4">{d.waiting}</p>
+              )}
             </div>
-            {joined.isHost ? (
-              <button className={`${BTN} btn-amber w-full mt-4`} data-testid="next-round" onClick={() => getNet().nightAction('nextRound')}>
-                {pub.round >= pub.config.roundsTotal ? d.viewResults : `▶ ${d.nextRound}`}
-              </button>
-            ) : (
-              <p className="text-center font-bold text-[#8A7B63] mt-4">{d.waiting}</p>
-            )}
             {chatPreviewBar}
           </div>
         )}
@@ -825,17 +913,52 @@ export default function GianDiepApp() {
       {/* accusation vote sheet (mid-round or timer-end) */}
       {voteOpen && phase === 'questioning' && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4" onClick={() => { /* vote must be cast, not dismissed */ }}>
-          <div className="card-cream rounded-[28px] p-5 w-full max-w-md hard anim-enter" onClick={e => e.stopPropagation()}>
-            <div className="text-center">
-              <div className="text-4xl">⚠️</div>
-              <h3 className="disp font-extrabold text-2xl mt-1">{d.accuseTitle(playerName(pub!.accusation?.accuserId), playerName(voteOpen.suspectId))}</h3>
-              <p className="font-bold text-[#8A7B63] text-sm mt-1">{d.accuseSub}</p>
-              <div className="flex items-center justify-center gap-2 mt-2">
-                <TimerPill endsAt={voteOpen.endsAt} />
-                <span className="font-bold text-[#8A7B63] text-xs">{d.voteWaiting(voteOpen.voted.length)}</span>
+          <div className="card-cream rounded-[28px] p-5 w-full max-w-md hard anim-enter max-h-[85vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h3 className="disp font-extrabold text-2xl">{lang === 'vi' ? 'Bỏ phiếu' : 'Vote'}</h3>
+                <p className="font-bold text-[#8A7B63] text-sm">{d.accuseTitle(playerName(pub!.accusation?.accuserId), playerName(voteOpen.suspectId))}</p>
               </div>
-              <p className="font-bold text-[#8A7B63] text-xs mt-1">{d.voteTimeout}</p>
+              <TimerPill endsAt={voteOpen.endsAt} />
             </div>
+            {(() => {
+              const voters = pub!.players.filter(p => p.connected && p.id !== voteOpen.suspectId);
+              const needed = Math.max(0, voters.length - (voteOpen.yes ?? 0));
+              return (
+                <>
+                  <div className="mt-3 bg-[#FFFBef] border-2 border-[#FFB020] rounded-2xl px-3 py-2 font-bold text-sm text-[#5C4B33]">
+                    {d.voteUnanimous} {playerName(voteOpen.suspectId)} {d.voteSuspect}, {d.needMoreVotes(needed)}.
+                  </div>
+                  <div className="mt-3 space-y-1.5">
+                    {pub!.players.filter(p => p.id === voteOpen.suspectId).map(p => (
+                      <div key={p.id} className="flex items-center gap-2 rounded-2xl px-3 py-2 bg-[#FFB020] border-2 border-[#2B2016]">
+                        <PlayerAvatar avatarId={p.avatar} size={32} fallback={<MouseAvatar seed={p.id} size={32} state="awake" />} />
+                        <span className="font-extrabold text-sm flex-1">{p.name}</span>
+                        <span className="font-bold text-xs">⚠️ {d.voteSuspect}</span>
+                      </div>
+                    ))}
+                    {voters.map(p => {
+                      const hasVoted = voteOpen.voted.includes(p.id);
+                      const isMe = p.id === joined?.playerId;
+                      return (
+                        <div key={p.id} className="flex items-center gap-2 rounded-2xl px-3 py-2 bg-white border-2 border-[#E5DCC0]">
+                          <PlayerAvatar avatarId={p.avatar} size={32} fallback={<MouseAvatar seed={p.id} size={32} state="awake" />} />
+                          <span className="font-extrabold text-sm flex-1">{p.name}{isMe ? ` (${d.you})` : ''}{pub!.accusation?.accuserId === p.id ? ` · ${d.accuserTag}` : ''}</span>
+                          {isMe && myVote !== null ? (
+                            <span className={`font-extrabold text-xs ${myVote ? 'text-[#0E9F6E]' : 'text-[#D63A2F]'}`}>{myVote ? `✅ ${d.voteYes}` : `❌ ${d.voteNo}`}</span>
+                          ) : hasVoted ? (
+                            <span className="font-extrabold text-xs text-[#0E9F6E]">✓ {d.hasVoted}</span>
+                          ) : (
+                            <span className="font-bold text-xs text-[#8A7B63]">… {d.waitingVote}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              );
+            })()}
+            <p className="font-bold text-[#8A7B63] text-xs mt-2">{d.voteTimeout}</p>
             {voteOpen.suspectId === joined?.playerId ? (
               <p className="text-center font-extrabold text-[#D63A2F] mt-4">{lang === 'vi' ? 'Bạn đang bị tố cáo — chờ cả bàn bỏ phiếu.' : 'You are being accused — wait for the vote.'}</p>
             ) : myVote !== null ? (

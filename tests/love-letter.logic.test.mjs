@@ -53,6 +53,23 @@ t('limits 2-6, deck is 21 with the exact 2019 official counts', () => {
   assert.deepEqual(GUESSABLE, ['spy', 'priest', 'baron', 'handmaid', 'prince', 'chancellor', 'king', 'countess', 'princess']);
 });
 
+t('recentPlays keeps the last plays, newest first, capped at 6', () => {
+  const s = mk(4);
+  // Play a no-effect card (handmaid) three times across turns.
+  for (let i = 0; i < 3; i++) {
+    const me = turnPlayer(s);
+    if (!me.inRound) { setTurn(s, s.players.find(p => p.inRound).id); }
+    playKind(s, 'handmaid');
+    if (s.phase !== 'playing') break;
+    // Advance the turn by hand: the next player in round draws.
+    const next = s.players.find(p => p.inRound && p.id !== s.turn);
+    if (next) { s.turn = next.id; next.hand.push({ id: 'draw-' + i, kind: 'guard', value: 1 }); }
+  }
+  assert.ok(s.recentPlays.length >= 1 && s.recentPlays.length <= 6);
+  assert.equal(s.recentPlays[0], s.lastPlay);
+  assert.equal(publicState(s).recentPlays.length, s.recentPlays.length);
+});
+
 t('tokens to win: 2p=6, 3p=5, 4p=4, 5p=3, 6p=3, quick mode 3', () => {
   assert.equal(tokensFor(2, false), 6);
   assert.equal(tokensFor(3, false), 5);

@@ -42,6 +42,28 @@ export const HUB_ART: Record<string, string> = {
   love: ART('hub-love.svg'),
 };
 
+/** Spyfall art (design v48): the spy portrait + the restaurant cloche. */
+export const SPY_ART = ART('spy.svg');
+export const CLOCHE_ART = ART('cloche.svg');
+
+/** Love Letter card art (design v48). The 8 classic illustrations come
+ *  from the design file; the Spy reuses the Spyfall portrait and the
+ *  Chancellor panda is drawn in the same flat style, since the design
+ *  is the 2012 edition and has neither. Values, names and counts stay
+ *  the 2019 edition — only the artwork is reused. */
+export const LL_ART: Record<string, string> = {
+  spy: ART('spy.svg'),
+  guard: ART('ll-guard.svg'),
+  priest: ART('ll-priest.svg'),
+  baron: ART('ll-baron.svg'),
+  handmaid: ART('ll-handmaid.svg'),
+  prince: ART('ll-prince.svg'),
+  chancellor: ART('ll-chancellor.svg'),
+  king: ART('ll-king.svg'),
+  countess: ART('ll-countess.svg'),
+  princess: ART('ll-princess.svg'),
+};
+
 /** The 12 pickable avatars (design: "Chọn avatar của bạn"). */
 export const AVATARS: { id: string; vi: string; en: string; bg: string }[] = [
   { id: 'cat-orange', vi: 'Mèo cam', en: 'Orange cat', bg: '#FFDCC8' },
