@@ -31,6 +31,17 @@ export const ROLE_ART: Record<string, string> = {
   mouse: ART('avatar-mouse.webp'),
 };
 
+/** Hub lobby art (design v47): one illustration per game, used for the
+ *  mobile icon frame and the laptop banner of each Hub card. */
+export const HUB_ART: Record<string, string> = {
+  cheese: ART('hub-cheese.svg'),
+  wolf: ART('hub-wolf.svg'),
+  uno: ART('hub-uno.svg'),
+  meo: ART('hub-meo.svg'),
+  spy: ART('hub-spy.svg'),
+  love: ART('hub-love.svg'),
+};
+
 /** The 12 pickable avatars (design: "Chọn avatar của bạn"). */
 export const AVATARS: { id: string; vi: string; en: string; bg: string }[] = [
   { id: 'cat-orange', vi: 'Mèo cam', en: 'Orange cat', bg: '#FFDCC8' },

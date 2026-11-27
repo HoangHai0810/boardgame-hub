@@ -10,7 +10,7 @@ import { t, Lang } from './i18n';
 import { CheeseWedge, MouseAvatar, WolfAvatar, CatAvatar } from './avatars';
 import AvatarPicker from './AvatarPicker';
 import { MyAvatar } from './GameCard';
-import { CAT_ART, ROLE_ART } from './art';
+import { CAT_ART, HUB_ART, ROLE_ART } from './art';
 
 function playUrl(id: string) {
   const q = new URLSearchParams(location.search);
@@ -79,6 +79,7 @@ export default function Hub() {
     {
       id: 'cheese-thief', name: d.cheeseName, tag: d.cheeseTag, tagWide: d.cheeseTagWide,
       color: '#FFB020', min: 4, max: 8, minsMobile: 10, minsWide: 10,
+      hubArt: HUB_ART.cheese,
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#F5E9C8] border-2 border-[#2B2016] flex-none"><MouseAvatar seed="hub-thief" size={48} state="thief" /></span>,
       bannerIcon: <CheeseWedge size={72} />,
       bannerArt: ROLE_ART.thief,
@@ -86,6 +87,7 @@ export default function Hub() {
     {
       id: 'ma-soi', name: d.wolfName, tag: d.wolfTag, tagWide: d.wolfTagWide,
       color: '#D63A2F', min: 6, max: 12, minsMobile: 20, minsWide: 20,
+      hubArt: HUB_ART.wolf,
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#E8E8E8] border-2 border-[#2B2016] flex-none"><WolfAvatar seed="hub-wolf" size={48} state="wolf" /></span>,
       bannerIcon: <WolfAvatar seed="hub-wolf" size={72} state="wolf" />,
       bannerArt: ROLE_ART.wolf,
@@ -93,6 +95,7 @@ export default function Hub() {
     {
       id: 'uno', name: d.unoName, tag: d.unoTag, tagWide: d.unoTag,
       color: '#2E7CD6', min: 2, max: 10, minsMobile: 15, minsWide: 15,
+      hubArt: HUB_ART.uno,
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#14142B] border-2 border-[#2B2016] flex-none"><UnoIcon size={44} /></span>,
       bannerIcon: <UnoBanner />,
       bannerArt: undefined,
@@ -100,6 +103,7 @@ export default function Hub() {
     {
       id: 'meo-no', name: d.meoName, tag: d.meoTag, tagWide: d.meoTagWide,
       color: '#F08A1D', min: 2, max: 5, minsMobile: 10, minsWide: 10,
+      hubArt: HUB_ART.meo,
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#F5E9C8] border-2 border-[#2B2016] flex-none"><CatAvatar seed="hub-cat" size={48} /></span>,
       bannerIcon: <CatAvatar seed="hub-cat" size={72} />,
       bannerArt: CAT_ART.exploding,
@@ -107,6 +111,7 @@ export default function Hub() {
     {
       id: 'gian-diep', name: d.spyName, tag: d.spyTag, tagWide: d.spyTagWide,
       color: '#7C4DBD', min: 3, max: 8, minsMobile: 60, minsWide: 60,
+      hubArt: HUB_ART.spy,
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#14142B] border-2 border-[#2B2016] flex-none"><SpyIcon size={44} /></span>,
       bannerIcon: <SpyIcon size={72} />,
       bannerArt: undefined,
@@ -114,6 +119,7 @@ export default function Hub() {
     {
       id: 'love-letter', name: d.loveName, tag: d.loveTag, tagWide: d.loveTagWide,
       color: '#D63A6B', min: 2, max: 6, minsMobile: 20, minsWide: 20,
+      hubArt: HUB_ART.love,
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#F5E9C8] border-2 border-[#2B2016] flex-none"><LetterIcon size={44} /></span>,
       bannerIcon: <LetterIcon size={72} />,
       bannerArt: undefined,
@@ -152,14 +158,12 @@ export default function Hub() {
               {/* mobile: thin color strip; laptop: tall banner with art/icon + pill */}
               <div className="h-2.5 lg:hidden flex-none" style={{ background: g.color }} />
               <div className="hidden lg:flex relative items-center px-5 h-[110px] flex-none overflow-hidden" style={{ background: g.color }}>
-                {g.bannerArt
-                  ? <img src={g.bannerArt} alt="" className="absolute inset-0 w-full h-full object-cover" draggable={false} />
-                  : <span className="inline-block">{g.bannerIcon}</span>}
+                <img src={g.hubArt} alt="" className="absolute inset-0 w-full h-full object-cover" draggable={false} />
                 <span className="absolute top-3 right-3 bg-[#0E9F6E] text-white text-[11px] font-black rounded-full px-2.5 py-1">{d.openNow}</span>
               </div>
               <div className="p-3 sm:p-5 flex flex-col flex-1">
                 <div className="flex items-center gap-3 lg:hidden">
-                  {g.icon}
+                  <img src={g.hubArt} alt="" className="w-24 h-24 rounded-2xl object-cover flex-none border-2 border-[#2B2016]" draggable={false} />
                   <div className="min-w-0">
                     <div className="disp text-xl font-extrabold text-[#2B2016] leading-tight">{g.name}</div>
                     <span className="inline-block whitespace-nowrap bg-[#0E9F6E] text-white text-[10px] font-black rounded-full px-2 py-px mt-1">{d.playable}</span>

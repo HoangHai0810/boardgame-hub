@@ -6,7 +6,7 @@ import { sfx, ensureCtx } from '../../transport/sound';
 import { joinVoice, VoiceHandle } from '../../transport/voice';
 import { TopBar, ChatPanel, ChatSheet, chatPreview, RetryDefaultButton } from '../../platform/ui';
 import { MouseAvatar } from '../../platform/avatars';
-import { NoticeBanner, PlayerAvatar } from '../../platform/GameCard';
+import { NoticeBanner, PlayerAvatar, fanLayout, fanFrameH } from '../../platform/GameCard';
 import { isPlayable, MIN_PLAYERS, MAX_PLAYERS, COLORS } from '../../../../games/uno/logic';
 import type { Card, Color } from '../../../../games/uno/logic';
 
@@ -119,6 +119,14 @@ export default function UnoApp() {
   // "drawing" until the host state arrives (6s fallback).
   const [optPlayed, setOptPlayed] = useState<string | null>(null);
   const [optDrew, setOptDrew] = useState(false);
+  const [hoverCardId, setHoverCardId] = useState<string | null>(null);
+  const fanRef = useRef<HTMLDivElement>(null);
+  const [fanW, setFanW] = useState(358);
+  useEffect(() => {
+    const el = fanRef.current; if (!el) return;
+    const ro = new ResizeObserver(es => { const w = es[0]?.contentRect.width; if (w) setFanW(w); });
+    ro.observe(el); return () => ro.disconnect();
+  }, [pub?.phase]);
   useEffect(() => { if (!optPlayed) return; const t = setTimeout(() => setOptPlayed(null), 6000); return () => clearTimeout(t); }, [optPlayed]);
   useEffect(() => { if (!optDrew) return; const t = setTimeout(() => setOptDrew(false), 6000); return () => clearTimeout(t); }, [optDrew]);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -332,6 +340,18 @@ export default function UnoApp() {
   const colorLabel = (c: Color) => COLOR_LABEL[c];
   const drawnCard = priv?.myHand.find(c => c.id === priv?.drawnCardId);
   const drawnIsPlayable = drawnCard ? canPlay(drawnCard) : false;
+  /** Short label for the fan detail bar, e.g. "7 đỏ", "+2 đỏ", "Cấm xanh". */
+  const unoLabel = (c: Card) => {
+    if (c.color === 'wild') return c.kind === 'wild4' ? '+4' : (lang === 'vi' ? 'Đổi màu' : 'Wild');
+    const col = colorLabel(c.color);
+    if (c.kind === 'number') return `${c.value} ${col}`;
+    if (c.kind === 'draw2') return `+2 ${col}`;
+    if (c.kind === 'skip') return lang === 'vi' ? `Cấm ${col}` : `Skip ${col}`;
+    return lang === 'vi' ? `Đảo ${col}` : `Reverse ${col}`;
+  };
+  const myHand = priv?.myHand ?? [];
+  const hoverCard = myHand.find(c => c.id === hoverCardId) ?? null;
+  const fan = fanLayout(myHand.length, 76, fanW, null, 4, 1.6, 110);
 
   const shareText = () => {
     const lines = [`🃏 ${d.title} — ${playerName(pub?.winner)} ${d.winner}`];
@@ -571,8 +591,12 @@ export default function UnoApp() {
                 )}
               </div>
 
-              {/* Special-card legend (design Uno3) */}
-              <div className="mt-2 bg-[#23233F] border-2 border-[#FFB020] rounded-2xl px-3 py-2 font-bold text-[13px] leading-snug text-[#FFF3CF]">{d.cardLegend}</div>
+              {/* Detail bar (design v47): hovered card's ability on line 1,
+               *  the special-card legend on line 2 — sits above the fan. */}
+              <div className="mt-2 bg-[#221D45] border-2 border-[#F5B02E] rounded-2xl px-3 py-2 font-bold leading-snug text-[#FFF3CF]">
+                <p className="text-[13px]">{hoverCard ? d.cardAb(hoverCard.kind, unoLabel(hoverCard)) : pub.topCard ? d.topHint(unoLabel(pub.topCard)) : ''}</p>
+                <p className="text-xs text-[#B9BCE0] mt-0.5">{d.cardLegend}</p>
+              </div>
 
               {/* UNO row */}
               {pub.unoPending && (
@@ -594,28 +618,36 @@ export default function UnoApp() {
                 </div>
               )}
 
-              {/* my hand */}
-              <div className="mt-3">
-                <div className="flex items-baseline justify-between">
-                  <h3 className="disp font-extrabold text-lg">{lang === 'vi' ? 'Bài của bạn' : 'Your hand'} · {(priv?.myHand.length ?? 0)} {d.cards}</h3>
-                  <span className="font-bold text-[#B9BCE0] text-sm">{myTurn ? d.yourTurn : ''}</span>
+              {/* my hand — curved fan (design v47): cards overlap and rotate
+               *  around a pivot below the hand; hovering lifts a card and
+               *  shows its ability in the detail bar above. Tap still plays
+               *  at once (no extra tap). */}
+              <div className="mt-2">
+                <div ref={fanRef} className="relative" style={{ height: fanFrameH(myHand.length, 110, 1.6) }}>
+                  <div className="absolute inset-x-0 flex justify-center" style={{ top: 36 }}>
+                    {myHand.map((c, hi) => {
+                      const playable = canPlay(c);
+                      const isDrawn = c.id === priv?.drawnCardId;
+                      const hovered = hoverCardId === c.id && playable;
+                      const L = fan[hi];
+                      const ty = hovered ? -24 : L.ty;
+                      const rot = hovered ? 0 : L.rot;
+                      const sc = hovered ? 1.06 : 1;
+                      const z = hovered ? 80 : L.z;
+                      return (
+                        <span key={c.id} className="flex-none" style={{ marginLeft: L.ml, transform: `translateY(${ty}px) rotate(${rot}deg) scale(${sc})`, transformOrigin: '50% 130%', zIndex: z, position: 'relative', transition: 'transform .25s cubic-bezier(.2,.8,.2,1)' }}>
+                        <button data-testid="hand-card" data-card-id={c.id} disabled={!playable || optPlayed === c.id}
+                          onMouseEnter={() => setHoverCardId(c.id)} onMouseLeave={() => setHoverCardId(null)}
+                          onClick={() => doPlay(c)}
+                          className={`flex-none rounded-xl ${playable ? 'cursor-pointer' : 'opacity-40 cursor-default'} ${isDrawn ? 'ring-4 ring-[#FFB020]' : ''} ${optPlayed === c.id ? 'opacity-30 scale-90 pointer-events-none' : ''}`}>
+                          <UnoCardFace card={c} size="lg" />
+                        </button>
+                        </span>
+                      );
+                    })}
+                    {myHand.length === 0 && <p className="font-bold text-[#B9BCE0] py-6">…</p>}
+                  </div>
                 </div>
-                <div className="flex gap-1 overflow-x-auto pb-2 pt-2 -mx-1 px-1">
-                  {(priv?.myHand ?? []).map((c, hi) => {
-                    const playable = canPlay(c);
-                    const isDrawn = c.id === priv?.drawnCardId;
-                    return (
-                      <span key={c.id} className="flex-none anim-card-fall" style={{ animationDelay: `${hi * 45}ms` }}>
-                      <button data-testid="hand-card" data-card-id={c.id} disabled={!playable || optPlayed === c.id} onClick={() => doPlay(c)}
-                        className={`flex-none rounded-xl transition ${playable ? 'hover:-translate-y-2 cursor-pointer' : 'opacity-40 cursor-default'} ${isDrawn ? 'ring-4 ring-[#FFB020] -translate-y-2' : ''} ${optPlayed === c.id ? 'opacity-30 scale-90 pointer-events-none' : ''}`}>
-                        <UnoCardFace card={c} size="md" />
-                      </button>
-                      </span>
-                    );
-                  })}
-                  {(priv?.myHand.length ?? 0) === 0 && <p className="font-bold text-[#8A7B63] py-6">…</p>}
-                </div>
-                <p className="font-bold text-[#B9BCE0] text-sm">{lang === 'vi' ? 'Chạm vào lá trùng màu / số / ký hiệu với lá trên cùng để đánh.' : 'Tap a card matching the top discard by color, number or symbol to play it.'}</p>
               </div>
               {chatPreviewBar}
             </div>

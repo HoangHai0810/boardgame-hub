@@ -6,7 +6,7 @@ import { sfx, ensureCtx } from '../../transport/sound';
 import { joinVoice, VoiceHandle } from '../../transport/voice';
 import { TopBar, ChatPanel, ChatSheet, chatPreview, RetryDefaultButton } from '../../platform/ui';
 import { CatAvatar } from '../../platform/avatars';
-import { MeoCard, NoticeBanner, PlayerAvatar } from '../../platform/GameCard';
+import { MeoCard, NoticeBanner, PlayerAvatar, fanLayout, fanFrameH } from '../../platform/GameCard';
 import { CAT_ART } from '../../platform/art';
 import { MIN_PLAYERS, MAX_PLAYERS, NOPE_MS } from '../../../../games/meo-no/logic';
 import type { Card, Kind, FeedEvent } from '../../../../games/meo-no/logic';
@@ -234,6 +234,14 @@ export default function MeoNoApp() {
   const [shareCopied, setShareCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [hoverCardId, setHoverCardId] = useState<string | null>(null);
+  const fanRef = useRef<HTMLDivElement>(null);
+  const [fanW, setFanW] = useState(358);
+  useEffect(() => {
+    const el = fanRef.current; if (!el) return;
+    const ro = new ResizeObserver(es => { const w = es[0]?.contentRect.width; if (w) setFanW(w); });
+    ro.observe(el); return () => ro.disconnect();
+  }, [pub?.phase]);
   const [favorPick, setFavorPick] = useState<Card | null>(null);
   const [favorGiveId, setFavorGiveId] = useState<string | null>(null);
   const [showPeek, setShowPeek] = useState(false);
@@ -429,6 +437,8 @@ export default function MeoNoApp() {
   const isActionKind = (k: Kind) => k === 'skip' || k === 'shuffle' || k === 'peek' || k === 'attack' || k === 'favor';
   const canPlay = (c: Card) => myTurn && !busy && isActionKind(c.kind);
   const selectedCard = myHand.find(c => c.id === selectedCardId) ?? null;
+  const fanSelIdx = myHand.findIndex(c => c.id === selectedCardId);
+  const fan = fanLayout(myHand.length, 100, fanW, fanSelIdx, 3.4, 1.2, 170);
   const doPlaySelected = () => {
     if (!selectedCard || !canPlay(selectedCard)) return;
     if (selectedCard.kind === 'favor') { setFavorPick(selectedCard); return; }
@@ -773,49 +783,53 @@ export default function MeoNoApp() {
                 </div>
               </div>
 
-              {/* my hand — horizontal scroll, no overlap, so the ability
-               *  text on each card stays readable (design MN3) */}
-              <div className="mt-3">
-                <div className="flex items-baseline justify-between">
-                  <h3 className="disp font-extrabold text-lg">{d.yourHand} · {myHand.length} {d.cards}</h3>
-                  <span className="flex items-center gap-2">
-                    <span className="font-bold text-[#B9BCE0] text-sm">{myTurn ? d.yourTurn : ''}</span>
-                    <button className="w-8 h-8 rounded-full bg-[#23233F] border-2 border-[#3D3D63] text-[#FFB020] font-extrabold push" onClick={() => setShowHelp(true)} title={d.cardGuide}>?</button>
-                  </span>
+              {/* my hand — curved fan (design v47): cards overlap and rotate
+               *  around a pivot below the hand; the selected card lifts,
+               *  straightens and grows. The detail bar sits ABOVE the fan and
+               *  always renders so the layout never shifts on pick. */}
+              <div className="mt-2">
+                <div className="bg-[#221D45] border-2 border-[#F5B02E] rounded-2xl px-2.5 py-1 flex items-center gap-2">
+                  {selectedCard ? (
+                    <>
+                      <img src={CAT_ART[selectedCard.kind] ?? CAT_ART.cat} alt="" className="flex-none w-10 h-11 rounded-lg object-cover border-2 border-white/70" draggable={false} />
+                      <span className="font-bold text-[13px] flex-1 text-[#FFF3CF] leading-snug"><span className="disp font-extrabold">{cardLabel(d, selectedCard)}</span> — {cardAbility(d, selectedCard)}</span>
+                    </>
+                  ) : (
+                    <span className="font-bold text-[13px] flex-1 text-[#B9BCE0] leading-snug">{myTurn ? d.tapCardHint : `${d.yourHand} · ${myHand.length} ${d.cards}`}</span>
+                  )}
+                  <button className="flex-none w-11 h-11 rounded-full bg-[#FFB020] text-[#2B2016] font-extrabold text-lg border-2 border-[#2B2016] push" onClick={() => setShowHelp(true)} title={d.cardGuide}>?</button>
                 </div>
-                <div className="flex py-1 px-1 overflow-x-auto gap-2">
-                  {myHand.map((c, hi) => {
-                    const playable = canPlay(c);
-                    const selected = c.id === selectedCardId;
-                    return (
-                      <span key={c.id} className="flex-none anim-card-fall" style={{ animationDelay: `${hi * 45}ms` }}>
-                      <button data-testid="hand-card" data-card-id={c.id} data-kind={c.kind} disabled={!playable} onClick={() => setSelectedCardId(selected ? null : c.id)}
-                        className={`flex-none rounded-xl transition ${playable ? 'hover:-translate-y-2 cursor-pointer' : 'opacity-45 cursor-default'} ${selected && playable ? 'ring-4 ring-[#FFB020] -translate-y-2 z-10' : ''}`}>
-                        <MeoCard kind={c.kind} name={cardLabel(d, c)} ability={cardAbility(d, c)} size="md" />
-                      </button>
-                      </span>
-                    );
-                  })}
-                  {myHand.length === 0 && <p className="font-bold text-[#B9BCE0] py-6">…</p>}
-                </div>
-                {selectedCard ? (
-                  <div className="mt-1 bg-[#23233F] border-2 border-[#FFB020] rounded-2xl px-3 py-2 flex items-center gap-2">
-                    <span className="font-bold text-sm flex-1 text-[#FFF3CF] leading-snug"><span className="disp font-extrabold">{cardLabel(d, selectedCard)}</span> — {cardAbility(d, selectedCard)}</span>
-                    <button className="flex-none w-11 h-11 rounded-full bg-[#FFB020] text-[#2B2016] font-extrabold text-lg border-2 border-[#2B2016] push" onClick={() => setShowHelp(true)} title={d.cardGuide}>?</button>
+                <div ref={fanRef} className="relative" style={{ height: fanFrameH(myHand.length, 170, 1.2) }}>
+                  <div className="absolute inset-x-0 flex justify-center" style={{ top: 36 }}>
+                    {myHand.map((c, hi) => {
+                      const playable = canPlay(c);
+                      const selected = c.id === selectedCardId;
+                      const hovered = hoverCardId === c.id && !selected && playable;
+                      const L = fan[hi];
+                      const ty = selected ? -20 : hovered ? -24 : L.ty;
+                      const rot = selected || hovered ? 0 : L.rot;
+                      const sc = selected || hovered ? 1.06 : 1;
+                      const z = selected ? 60 : hovered ? 80 : L.z;
+                      return (
+                        <span key={c.id} className="flex-none" style={{ marginLeft: L.ml, transform: `translateY(${ty}px) rotate(${rot}deg) scale(${sc})`, transformOrigin: '50% 130%', zIndex: z, position: 'relative', transition: 'transform .25s cubic-bezier(.2,.8,.2,1)' }}>
+                        <button data-testid="hand-card" data-card-id={c.id} data-kind={c.kind} disabled={!playable}
+                          onMouseEnter={() => setHoverCardId(c.id)} onMouseLeave={() => setHoverCardId(null)}
+                          onClick={() => setSelectedCardId(selected ? null : c.id)}
+                          className={`flex-none rounded-xl ${playable ? 'cursor-pointer' : 'opacity-45 cursor-default'} ${selected && playable ? 'ring-4 ring-[#FFB020]' : ''}`}>
+                          <MeoCard kind={c.kind} name={cardLabel(d, c)} ability={cardAbility(d, c)} size="md" />
+                        </button>
+                        </span>
+                      );
+                    })}
+                    {myHand.length === 0 && <p className="font-bold text-[#B9BCE0] py-6">…</p>}
                   </div>
-                ) : myTurn ? (
-                  <p className="font-bold text-[11px] text-[#B9BCE0] mt-0.5">{d.tapCardHint}</p>
-                ) : null}
+                </div>
                 <div className="flex gap-2 mt-1">
                   <button data-testid="play-selected-btn" className={`${BTN} btn-amber flex-1`} disabled={!selectedCard || !canPlay(selectedCard)} onClick={doPlaySelected}>{d.playSelected}</button>
                   <button data-testid="draw-btn" className={`${BTN} btn-dark flex-1`} disabled={!canDraw} onClick={doDraw}>
                     <span>{d.drawCardBtnWide}</span>
                   </button>
                 </div>
-              </div>
-              <div className="lg:hidden mt-3 bg-[#23233F] border-[3px] border-[#2B2016] rounded-[24px] p-3 hard">
-                <div className="disp font-extrabold text-sm mb-1.5 text-[#FFF3CF]">📜 {d.feedTitle}</div>
-                <FeedList feed={pub.feed.slice(-2)} d={d} myId={joined?.playerId} players={pub.players} />
               </div>
               {chatPreviewBar}
             </div>

@@ -3,6 +3,10 @@ const dict = {
   en: {
     title: 'Cheese Mouse', subtitle: 'Who stole the cheese while everyone slept? 🧀',
     name: 'Your name', create: 'Create Room', nameFirst: 'Enter your name first', join: 'Join Room', codePh: 'Room code (e.g. K7QX2)',
+    invitedEyebrow: "YOU'RE INVITED", invitedSub: "You've been invited to this room. Enter your name to join.",
+    nameHint: 'The name everyone in the room will see', nameRequired: 'Enter your name to continue',
+    joinRoomCode: (code: string) => `→ Join room ${code}`, orCreateNew: 'Or create a new room',
+    inviteNote: 'You opened an invite link, so the room code is already filled in.',
     how: 'How to Play', lobby: 'Lobby', copyLink: 'Copy invite link', copied: 'Copied!',
     players: 'Players', host: 'Host', you: 'You', start: 'Start Game', need4: 'Need at least 4 players to start',
     addBot: 'Add bot', botHint: 'Short on players? Add bots to play along.', botTag: 'BOT', removeBot: 'Remove bot',
@@ -130,6 +134,10 @@ const dict = {
   vi: {
     title: 'Chuột Phô Mai', subtitle: 'Ai đã trộm phô mai trong lúc mọi người ngủ? 🧀',
     name: 'Tên của bạn', create: 'Tạo Phòng', nameFirst: 'Nhập tên của bạn trước đã nhé', join: 'Vào Phòng', codePh: 'Mã phòng (vd: K7QX2)',
+    invitedEyebrow: 'BẠN ĐƯỢC MỜI', invitedSub: 'Bạn được mời vào phòng này. Nhập tên là vào luôn.',
+    nameHint: 'Tên hiển thị cho mọi người trong phòng', nameRequired: 'Nhập tên để tiếp tục',
+    joinRoomCode: (code: string) => `→ Vào phòng ${code}`, orCreateNew: 'Hoặc tạo phòng mới',
+    inviteNote: 'Bạn mở link mời nên mã phòng đã được điền sẵn.',
     how: 'Cách Chơi', lobby: 'Phòng Chờ', copyLink: 'Sao chép link mời', copied: 'Đã chép!',
     players: 'Người chơi', host: 'Chủ phòng', you: 'Bạn', start: 'Bắt Đầu', need4: 'Cần ít nhất 4 người chơi mới bắt đầu được',
     addBot: 'Thêm bot', botHint: 'Chưa đủ người? Thêm bot vào chơi cùng.', botTag: 'BOT', removeBot: 'Bỏ bot',

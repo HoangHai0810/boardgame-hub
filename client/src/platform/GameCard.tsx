@@ -28,6 +28,50 @@ export const MEO_CARD_COLORS: Record<string, string> = {
   peek: '#6D28D9', attack: '#E4572E', favor: '#DB2777', cat: '#8A7B63', exploding: '#2B2016',
 };
 
+/** Curved fan hand (Claude design v47, shared by Mèo Nổ + Uno): cards
+ *  overlap and rotate around a pivot below the hand. `W` = card width,
+ *  `availW` = measured fan width, `per` = degrees per step from center,
+ *  `k` = vertical curve. The selected card lifts, straightens and grows;
+ *  hover lifts a touch more. Returns per-card {ml, rot, ty, sc, z} to apply
+ *  as margin-left + `transform: translateY(ty) rotate(rot) scale(sc)` with
+ *  `transform-origin: 50% 130%`. */
+export function fanLayout(n: number, W: number, availW: number, selIdx: number | null, per: number, k: number, cardH: number) {
+  if (n <= 0) return [] as { ml: number; rot: number; ty: number; sc: number; z: number }[];
+  if (n === 1) return [{ ml: 0, rot: 0, ty: 0, sc: 1, z: 1 }];
+  const mid = (n - 1) / 2;
+  /* A card rotated around a pivot 30% BELOW its bottom swings its top
+   * corner far sideways: the outer cards' boxes extend past their layout
+   * boxes by ~1.3H·sinθ + (W/2)(1−cosθ) per side — for Uno that is
+   * ~30px, not the ~(boxW−W)/2 ≈ 10px a centred-rotation estimate gives.
+   * Without room for it the page scrolls sideways on phones (measured
+   * Uno table scrollWidth 406 on a 390px viewport). So the row is
+   * narrowed by twice that sideways swing. */
+  const maxRot = (mid * per * Math.PI) / 180;
+  const extra = 1.3 * cardH * Math.sin(maxRot) + (W / 2) * (1 - Math.cos(maxRot));
+  const step = Math.min(W * 0.92, (availW - 2 * extra - W) / (n - 1));
+  return Array.from({ length: n }, (_, i) => {
+    const off = i - mid, sel = i === selIdx;
+    return {
+      ml: i === 0 ? 0 : Math.round(step - W),
+      rot: sel ? 0 : +(off * per).toFixed(2),
+      /* The design's -46 lift + 1.12 scale lifts the card over the detail
+       *  bar above the fan (scale about the 130% pivot adds ~26px). The
+       *  design's own render only lifts ~13px — so -20 / 1.06 is the
+       *  honest version that stays inside the frame. Edge drop is capped
+       *  at 11px so a big hand never pushes the table past one screen. */
+      ty: sel ? -20 : Math.min(Math.round(off * off * k), 11),
+      sc: sel ? 1.06 : 1,
+      z: sel ? 60 : i + 1,
+    };
+  });
+}
+/** Frame height for a fan: lift room (36) + card height + deepest edge drop. */
+export function fanFrameH(n: number, cardH: number, k: number) {
+  if (n <= 1) return cardH + 36;
+  const mid = (n - 1) / 2;
+  return 36 + cardH + Math.min(Math.round(mid * mid * k), 11);
+}
+
 /** A Mèo Nổ card in the real-card style. `name`/`ability` come from i18n
  *  (card names stay English per Hải Anh's v40 decision). */
 export function MeoCard({ kind, name, ability, size = 'md' }: {

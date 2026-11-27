@@ -531,6 +531,9 @@ export default function App() {
 
   /* ---------- LANDING ---------- */
   if (!joined) {
+    // Invite-link note (v47): shown only when the URL actually carries
+    // ?room= — typing a code in by hand does not count.
+    const inviteRoomParam = new URLSearchParams(location.search).get('room');
     return (
       <div className="min-h-dvh bg-[#14142B] p-3 sm:p-4">
         <div className="max-w-xl mx-auto pt-2">
@@ -539,12 +542,17 @@ export default function App() {
           <div className="card-cream anim-pop overflow-hidden !rounded-[28px]">
             <div className="relative bg-[#171731] px-5 pt-6 text-center overflow-hidden">
               <div className="stars" style={{ position: 'absolute' }} />
-              <p className="disp relative text-[#FFB020] font-extrabold tracking-[0.22em] text-[11px] sm:text-xs">{d.kicker}</p>
+              <p className="disp relative text-[#FFB020] font-extrabold tracking-[0.22em] text-[11px] sm:text-xs">{joinMode ? d.invitedEyebrow : d.kicker}</p>
               <h1 className="disp relative text-[#FFF3CF] font-extrabold text-5xl leading-[1.05] mt-1.5">
                 <svg width="34" height="34" viewBox="0 0 24 24" className="inline-block -mt-3 mr-1"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4 6.8 6.8 0 0 0 20 14.5Z" fill="#FFD94D" /></svg>
                 {d.title}
               </h1>
-              <p className="relative text-[#B9BCE0] font-bold mt-2">{d.subtitle}</p>
+              <p className="relative text-[#B9BCE0] font-bold mt-2">{joinMode ? d.invitedSub : d.subtitle}</p>
+              {joinMode ? (
+                <div className="relative mt-4 pb-5 flex justify-center">
+                  <span className="disp inline-block px-5 py-2 text-lg font-extrabold" style={{ background: '#221D45', border: '2px solid #3A3366', borderRadius: 20, color: '#FFF3CF', letterSpacing: '0.2em' }}>{code.trim().toUpperCase()}</span>
+                </div>
+              ) : (
               <div className="relative h-[104px] mt-1">
                 <div className="absolute inset-x-0 bottom-3 flex items-end justify-center gap-1 sm:gap-2">
                   {['lan', 'hai', 'mit', 'bo', 'soc'].map((k, i) => (
@@ -554,27 +562,51 @@ export default function App() {
                 <div className="absolute left-1/2 -translate-x-1/2 bottom-4 z-10 anim-wiggle"><CheeseWedge size={96} /></div>
                 <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-b from-[#A06A35] to-[#7C4A21] border-t-[3px] border-[#2B2016]" />
               </div>
+              )}
             </div>
             <div className="bg-[#FFF3CF] px-5 py-5 text-left">
               <label className="text-[11px] font-black tracking-[0.18em] text-[#8A7B63]">{d.nameLabel}</label>
               <input className="inp w-full px-4 py-3 mt-1.5 text-lg font-bold" placeholder={d.name}
-                value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
+                value={name} maxLength={joinMode ? 12 : 20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }}
+                style={joinMode && !name.trim() ? { borderColor: '#C23B32', background: '#FFEDEA' } : undefined} />
               {!joinMode && (<button className={`${BTN} btn-amber w-full mt-3.5 text-xl`}
                 disabled={!name.trim() || !!status} onClick={() => { setError(''); getNet().createRoom(name); }}>🏠 {d.create}</button>)}
-              {!name.trim() && <p className="text-center font-bold text-[#8A7B63] text-sm mt-2">{d.nameFirst}</p>}
+              {joinMode ? (name.trim() ? (
+                <div className="flex items-baseline justify-between gap-2 mt-2">
+                  <p className="font-bold text-[#8A7B63] text-sm">{d.nameHint}</p>
+                  <span className="font-bold text-[#8A7B63] text-sm flex-none">{name.length}/12</span>
+                </div>
+              ) : (
+                <p className="font-bold text-[#C23B32] text-sm mt-2">⚠ {d.nameRequired}</p>
+              )) : (
+                !name.trim() && <p className="text-center font-bold text-[#8A7B63] text-sm mt-2">{d.nameFirst}</p>
+              )}
               {!joinMode && (<div className="flex items-center gap-3 mt-5">
                 <span className="flex-1 h-[2px] bg-[#E3D3AC]" />
                 <span className="text-[11px] font-black tracking-[0.14em] text-[#8A7B63]">{d.orJoin}</span>
                 <span className="flex-1 h-[2px] bg-[#E3D3AC]" />
               </div>)}
-              <div className="flex gap-2 mt-3">
-                <input className="inp flex-1 min-w-0 px-3 py-3 uppercase text-lg font-extrabold tracking-[0.25em] text-center" placeholder={d.codePh}
-                  value={code} maxLength={5} onChange={e => setCode(e.target.value.toUpperCase())}
-                  onKeyDown={e => { if (e.key === 'Enter' && code.trim() && name.trim()) getNet().joinRoom(code, name); }} />
-                <button className={`${BTN} ${joinMode ? 'btn-amber' : 'btn-dark'}`} disabled={!name.trim() || code.trim().length < 4 || !!status}
-                  onClick={() => { setError(''); getNet().joinRoom(code, name); }}>{d.join}</button>
-              </div>
-              {joinMode && (<p className="text-center mt-3"><button className="font-bold text-sm text-[#8A7B63] underline" onClick={() => setForceCreate(true)}>＋ {d.create}</button></p>)}
+              {joinMode ? (
+                <>
+                  <button className={`${BTN} btn-amber w-full mt-3 text-xl`} disabled={!name.trim() || code.trim().length < 4 || !!status}
+                    onClick={() => { setError(''); getNet().joinRoom(code, name); }}>{d.joinRoomCode(code.trim().toUpperCase())}</button>
+                  {/* Code field stays in the DOM (display:none) so the
+                      join-mode harness can still read the prefilled code;
+                      the code itself is shown in the header pill + button. */}
+                  <input aria-hidden="true" tabIndex={-1} className="inp" style={{ display: 'none' }}
+                    value={code} maxLength={5} readOnly />
+                </>
+              ) : (
+                <div className="flex gap-2 mt-3">
+                  <input className="inp flex-1 min-w-0 px-3 py-3 uppercase text-lg font-extrabold tracking-[0.25em] text-center" placeholder={d.codePh}
+                    value={code} maxLength={5} onChange={e => setCode(e.target.value.toUpperCase())}
+                    onKeyDown={e => { if (e.key === 'Enter' && code.trim() && name.trim()) getNet().joinRoom(code, name); }} />
+                  <button className={`${BTN} btn-dark`} disabled={!name.trim() || code.trim().length < 4 || !!status}
+                    onClick={() => { setError(''); getNet().joinRoom(code, name); }}>{d.join}</button>
+                </div>
+              )}
+              {joinMode && (<p className="text-center mt-3"><button className="font-bold text-sm text-[#8A7B63] underline" onClick={() => setForceCreate(true)}>{d.orCreateNew}</button></p>)}
+              {inviteRoomParam && <p className="text-center text-xs font-bold text-[#8A7B63] mt-3">{d.inviteNote}</p>}
               <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mt-5 text-sm font-extrabold text-[#6B5B43]">
                 <span>👥 {d.playersRange}</span><span>🕐 {d.minsRange}</span><span>⚡ {d.noInstall}</span>
               </div>
