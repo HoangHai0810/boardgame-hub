@@ -117,7 +117,7 @@ function PlayerChips({ players, myId, phase, d, roleLabel, onPick, pickable, onK
           {peeks?.some(x => x.targetId === p.id) && <span className="absolute -top-2 -right-2 bg-sky-500 text-white text-xs font-extrabold rounded-full px-2 py-0.5 shadow">🎲{peeks!.find(x => x.targetId === p.id)!.dice}</span>}
           {speakingIds?.has(p.id) && <span className="absolute -bottom-2 -left-2 bg-green-500 text-white text-xs rounded-full px-1.5 py-0.5 shadow anim-pulse-soft">🎙️</span>}
           <div className={`${compact ? 'w-9 h-9' : 'w-12 h-12'} anim-bob mx-auto rounded-full flex items-center justify-center ${avatarBg(p.id)} shadow-inner overflow-hidden`}><PlayerAvatar avatarId={p.avatar} size={compact ? 36 : 48} fallback={<span className={compact ? 'text-2xl' : 'text-3xl'}>{mouseFor(p.id)}</span>} /></div>
-          <div className={`font-bold truncate ${compact ? 'text-sm' : ''}`}>{p.name} {p.id === myId && <span className="text-amber-600">({d.you})</span>}</div>
+          <div className={`font-bold truncate ${compact ? 'text-sm' : ''}`}>{p.name} {p.id === myId && <span className="text-amber-600">({d.you})</span>}{p.isBot && <span className="text-[10px] font-extrabold bg-[#23233F] text-[#FFB020] rounded-full px-1.5 py-0.5 ml-1">🤖 {d.botTag}</span>}</div>
           <div className="text-xs">{p.isHost && <span className="bg-purple-500 text-white rounded-full px-2 py-0.5">👑 {d.host}</span>} {!p.connected && <span className="text-red-500">• {d.offline}</span>}</div>
           {(p.wins ?? 0) > 0 && <div className="text-xs mt-1 font-extrabold text-amber-600">🏆 ×{p.wins}</div>}
           {onKick && p.id !== myId && (
@@ -193,6 +193,11 @@ export default function App() {
   };
   const [name, setName] = useState(() => sessionStorage.getItem('ct_name') || '');
   const [code, setCode] = useState(() => new URLSearchParams(location.search).get('room') || '');
+  const [forceCreate, setForceCreate] = useState(false);
+  // Invite-link mode: a room code in the URL (or typed in) makes JOIN the
+  // primary action — the amber Create button hides, so nobody creates a
+  // new room by habit instead of joining their friend's.
+  const joinMode = !forceCreate && code.trim().length >= 4;
   const [joined, setJoined] = useState<{ code: string; playerId: string; isHost: boolean } | null>(null);
   const [pub, setPub] = useState<Pub | null>(null);
   const [priv, setPriv] = useState<Priv | null>(null);
@@ -201,6 +206,8 @@ export default function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
+  const [botAdding, setBotAdding] = useState(false);
+  useEffect(() => { setBotAdding(false); }, [pub?.players.length]);
   const [muted, setMuted] = useState(() => localStorage.getItem('ct_muted') === '1');
   const toggleMuted = () => setMuted(m => { localStorage.setItem('ct_muted', m ? '0' : '1'); return !m; });
   const netRef = useRef<Net | null>(null);
@@ -552,20 +559,22 @@ export default function App() {
               <label className="text-[11px] font-black tracking-[0.18em] text-[#8A7B63]">{d.nameLabel}</label>
               <input className="inp w-full px-4 py-3 mt-1.5 text-lg font-bold" placeholder={d.name}
                 value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
-              <button className={`${BTN} btn-amber w-full mt-3.5 text-xl`}
-                disabled={!name.trim() || !!status} onClick={() => { setError(''); getNet().createRoom(name); }}>🏠 {d.create}</button>
+              {!joinMode && (<button className={`${BTN} btn-amber w-full mt-3.5 text-xl`}
+                disabled={!name.trim() || !!status} onClick={() => { setError(''); getNet().createRoom(name); }}>🏠 {d.create}</button>)}
               {!name.trim() && <p className="text-center font-bold text-[#8A7B63] text-sm mt-2">{d.nameFirst}</p>}
-              <div className="flex items-center gap-3 mt-5">
+              {!joinMode && (<div className="flex items-center gap-3 mt-5">
                 <span className="flex-1 h-[2px] bg-[#E3D3AC]" />
                 <span className="text-[11px] font-black tracking-[0.14em] text-[#8A7B63]">{d.orJoin}</span>
                 <span className="flex-1 h-[2px] bg-[#E3D3AC]" />
-              </div>
+              </div>)}
               <div className="flex gap-2 mt-3">
                 <input className="inp flex-1 min-w-0 px-3 py-3 uppercase text-lg font-extrabold tracking-[0.25em] text-center" placeholder={d.codePh}
-                  value={code} maxLength={5} onChange={e => setCode(e.target.value.toUpperCase())} />
-                <button className={`${BTN} btn-dark`} disabled={!name.trim() || code.trim().length < 4 || !!status}
+                  value={code} maxLength={5} onChange={e => setCode(e.target.value.toUpperCase())}
+                  onKeyDown={e => { if (e.key === 'Enter' && code.trim() && name.trim()) getNet().joinRoom(code, name); }} />
+                <button className={`${BTN} ${joinMode ? 'btn-amber' : 'btn-dark'}`} disabled={!name.trim() || code.trim().length < 4 || !!status}
                   onClick={() => { setError(''); getNet().joinRoom(code, name); }}>{d.join}</button>
               </div>
+              {joinMode && (<p className="text-center mt-3"><button className="font-bold text-sm text-[#8A7B63] underline" onClick={() => setForceCreate(true)}>＋ {d.create}</button></p>)}
               <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mt-5 text-sm font-extrabold text-[#6B5B43]">
                 <span>👥 {d.playersRange}</span><span>🕐 {d.minsRange}</span><span>⚡ {d.noInstall}</span>
               </div>
@@ -661,15 +670,15 @@ export default function App() {
                 <div key={p.id} className={`relative flex items-center gap-2.5 rounded-2xl px-3 py-2 hard-sm ${p.id === joined.playerId ? 'bg-[#FFE9B8]' : 'bg-[#FFFBef]'}`}>
                   <PlayerAvatar avatarId={p.avatar} size={42} fallback={<MouseAvatar seed={p.id} size={42} halo="#FFF3CF" state={p.connected ? 'awake' : 'asleep'} />} />
                   <div className="min-w-0 flex-1">
-                    <div className="font-extrabold truncate text-[15px] text-[#2B2016] leading-tight">{p.name} {p.isHost && '👑'}</div>
+                    <div className="font-extrabold truncate text-[15px] text-[#2B2016] leading-tight">{p.name} {p.isHost && '👑'}{(p as any).isBot && <span className="text-[10px] font-extrabold bg-[#23233F] text-[#FFB020] rounded-full px-1.5 py-0.5 ml-1">🤖 {d.botTag}</span>}</div>
                     <div className="text-xs font-bold text-[#8A7B63] truncate">
                       {p.id === joined.playerId && p.isHost ? d.youHost : p.id === joined.playerId ? d.you : (p.wins ?? 0) > 0 ? d.winsSub(p.wins) : !p.connected ? d.offline : ''}
                     </div>
                   </div>
                   {speakingIds.has(p.id) && <span className="absolute -bottom-2 left-2 bg-[#0E9F6E] text-white text-[11px] rounded-full px-1.5 py-0.5 shadow anim-pulse-soft">🎙️</span>}
                   {isHost && p.id !== joined.playerId && (
-                    <button title={d.kick} className="absolute -top-2 -right-2 w-11 h-11 flex items-center justify-center"
-                      onClick={() => getNet().kick(p.id)}><span className="bg-[#D63A2F] text-white text-[11px] font-black rounded-full w-6 h-6 border-2 border-[#2B2016] leading-none flex items-center justify-center">✕</span></button>)}
+                    <button title={(p as any).isBot ? d.removeBot : d.kick} className="absolute -top-2 -right-2 w-11 h-11 flex items-center justify-center"
+                      onClick={() => { if ((p as any).isBot) getNet().nightAction('removeBot', p.id); else getNet().kick(p.id); }}><span className="bg-[#D63A2F] text-white text-[11px] font-black rounded-full w-6 h-6 border-2 border-[#2B2016] leading-none flex items-center justify-center">✕</span></button>)}
                 </div>
               ))}
               {Array.from({ length: Math.max(0, 8 - pub.players.length) }).map((_, i) => (
@@ -677,6 +686,12 @@ export default function App() {
               ))}
             </div>
             {isHost && pub.players.length > 1 && <p className="text-xs font-bold text-[#8A7B63] italic mt-2">{d.kickHint}</p>}
+            {isHost && pub.players.length < 8 && (
+              <div className="mt-2">
+                <button className={`${BTN} btn-dark w-full`} disabled={botAdding} onClick={() => { setBotAdding(true); getNet().nightAction('addBot'); }}>🤖 {d.addBot}</button>
+                <p className="font-bold text-[#8A7B63] text-sm text-center mt-1.5">{d.botHint}</p>
+              </div>
+            )}
             <div className="flex items-center gap-3 mt-3.5">
               <span className="disp font-extrabold text-[#2B2016]">{d.discussionTime}</span>
               <div className="flex bg-[#FFFBef] hard-xs rounded-2xl overflow-hidden ml-auto">

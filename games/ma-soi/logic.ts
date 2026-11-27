@@ -131,12 +131,16 @@ export const BOT_NAMES = ['An', 'Bình', 'Chi', 'Dũng', 'Hà', 'Khánh', 'Linh'
 /** Add an engine-side bot to the lobby (host only). Returns the bot, or
  *  null when the room is full. Bots are always "connected" and count
  *  toward the minimum player count, so a table can start short-handed. */
+/** Monotonic suffix so two bots added in the same millisecond (or with
+ *  a seeded rng in tests) can never share an id. */
+let botSeq = 0;
+
 export function addBot(s: GameState, rng: () => number = Math.random): Player | null {
   if (s.players.length >= MAX_PLAYERS) return null;
   const used = new Set(s.players.map(p => p.name));
   const name = BOT_NAMES.find(n => !used.has(`Bot ${n}`)) ?? `Bot ${s.players.length + 1}`;
   const bot: Player = {
-    id: `bot-${Math.floor(rng() * 1e9).toString(36)}${Date.now().toString(36)}`,
+    id: `bot-${(botSeq++).toString(36)}${Math.floor(rng() * 1e9).toString(36)}${Date.now().toString(36)}`,
     name: `Bot ${name}`, isHost: false, connected: true, isBot: true,
     alive: true, hasVoted: false, vote: null, wins: 0,
     seerPeeks: [], witchSaveLeft: true, witchKillLeft: true, witchActedNight: 0,

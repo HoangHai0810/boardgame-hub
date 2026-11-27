@@ -11,8 +11,10 @@
 import {
   GameState, Player, createGame, startRound, publicState, privateState,
   playCard, chooseTarget, resolveChancellor, cancelPending, autoTurn, advanceTurn,
+  addBot, removeBot,
   MIN_PLAYERS, MAX_PLAYERS,
 } from '../../../../games/love-letter/logic';
+import { botAct } from '../../../../games/love-letter/bots';
 import type { CardKind } from '../../../../games/love-letter/logic';
 
 export type Pub = ReturnType<typeof publicState>;
@@ -31,16 +33,80 @@ export class HostEngine {
   state: GameState;
   timers: ReturnType<typeof setTimeout>[] = [];
   lastChat = new Map<string, number>();
+  /** Bot actions already scheduled (one key per decision). driveBots()
+   *  re-runs after every broadcast, so without this a bot would collect
+   *  a new timer on every state change. Keys are scoped to the round /
+   *  turn / pending effect, so a fresh decision always gets a fresh key. */
+  private botPending = new Set<string>();
+  private botPhaseKey = '';
   constructor(code: string, private hooks: EngineHooks) { this.state = createGame(code); }
   private later(ms: number, fn: () => void) { this.timers.push(setTimeout(fn, ms)); }
-  private clear() { this.timers.forEach(clearTimeout); this.timers = []; }
+  private clear() { this.timers.forEach(clearTimeout); this.timers = []; this.botPending.clear(); }
   broadcast() {
     const pub = publicState(this.state);
     this.hooks.sendPub(pub);
-    for (const p of this.state.players) this.hooks.sendPriv(p.id, privateState(this.state, p));
+    // Bots live inside the engine — they read the state directly and have
+    // no connection to send a private snapshot to.
+    for (const p of this.state.players) if (!p.isBot) this.hooks.sendPriv(p.id, privateState(this.state, p));
+    this.driveBots();
+  }
+  /** Schedule one bot decision (guarded by botPending). The delay is
+   *  human-like on purpose: an instant bot betrays that it is a bot. */
+  private scheduleBot(key: string, ms: number, fn: () => void) {
+    if (this.botPending.has(key)) return;
+    this.botPending.add(key);
+    this.later(ms, () => { this.botPending.delete(key); fn(); });
+  }
+  private botDelay(min: number, spread: number) { return min + Math.random() * spread; }
+
+  /** Make sure the bot that owes an action has one scheduled. Called
+   *  after every broadcast (and again at the end of sync, because
+   *  armTurnTimer's clear() wipes the timers broadcast just scheduled),
+   *  so a bot whose timer was wiped by a phase transition is simply
+   *  re-scheduled. */
+  private driveBots() {
+    const s = this.state;
+    // No human host left (a bot inherited host after migration): advance
+    // past the round-end screen instead of stalling there forever.
+    if (s.phase === 'roundEnd') {
+      const host = s.players.find(p => p.isHost);
+      if (host?.isBot) this.scheduleBot(`nextround:${s.round}`, this.botDelay(1500, 1500), () => {
+        if (this.state.phase !== 'roundEnd') return;
+        this.state.round++;
+        this.startRound();
+      });
+      return;
+    }
+    if (s.phase !== 'playing') return;
+    const phaseKey = `${s.phase}:${s.round}:${s.turn}:${s.pendingAction?.type ?? ''}:${s.pendingAction?.actorId ?? ''}`;
+    if (phaseKey !== this.botPhaseKey) { this.botPhaseKey = phaseKey; this.botPending.clear(); }
+    const bots = s.players.filter(p => p.isBot && p.connected && p.inRound);
+    if (!bots.length) return;
+    // A bot with an open effect to resolve (its own play opened it).
+    if (s.pendingAction) {
+      const b = bots.find(p => p.id === s.pendingAction!.actorId);
+      if (b) this.scheduleBot(`resolve:${s.round}:${b.id}:${s.pendingAction.type}`, this.botDelay(1000, 1500), () => this.botStep(b));
+      return;
+    }
+    // Otherwise the bot whose turn it is plays a card.
+    const actor = bots.find(p => p.id === s.turn);
+    if (actor) this.scheduleBot(`play:${s.round}:${actor.id}`, this.botDelay(1000, 1500), () => this.botStep(actor));
+  }
+
+  /** One bot's turn step, run through the same validated logic a
+   *  human's tap goes through (see games/love-letter/bots.ts). */
+  private botStep(b: Player) {
+    if (this.state.phase !== 'playing') return;
+    if (botAct(this.state, b)) this.sync();
   }
   /** Broadcast + re-arm the turn timer (the only timer Love Letter has). */
-  private sync() { this.broadcast(); this.armTurnTimer(); }
+  private sync() {
+    this.broadcast();
+    this.armTurnTimer();
+    // armTurnTimer's clear() wiped the bot timers broadcast() scheduled
+    // above (and their botPending keys) — re-schedule them now.
+    this.driveBots();
+  }
   private armTurnTimer() {
     this.clear();
     const s = this.state;
@@ -112,6 +178,18 @@ export class HostEngine {
       case 'resolveChancellor':
         if (msg.keepCardId && resolveChancellor(s, player, msg.keepCardId)) this.sync();
         break;
+      // Lobby setup (host only): bots fill the table when humans are
+      // short, and count toward the minimum player count.
+      case 'addBot': {
+        if (!player.isHost || s.phase !== 'lobby') break;
+        if (addBot(s)) this.broadcast();
+        break;
+      }
+      case 'removeBot': {
+        if (!player.isHost || s.phase !== 'lobby' || !msg.targetId) break;
+        if (removeBot(s, msg.targetId)) this.broadcast();
+        break;
+      }
       case 'chat': {
         const now = Date.now();
         if (now - (this.lastChat.get(player.id) ?? 0) < 400) return;
@@ -144,9 +222,15 @@ export class HostEngine {
     p.connected = false;
     if (s.phase === 'lobby' || s.phase === 'roundEnd' || s.phase === 'results') {
       s.players = s.players.filter(x => x.id !== playerId);
-      if (s.players.length && !s.players.some(x => x.isHost)) s.players[0].isHost = true;
+      // Host succession prefers a human: a bot host could never press
+      // "start" / "next round" for the table.
+      if (s.players.length && !s.players.some(x => x.isHost)) {
+        const next = s.players.find(x => !x.isBot) ?? s.players[0];
+        next.isHost = true;
+      }
     } else if (p.isHost) {
-      const next = s.players.find(x => x.connected && x.id !== playerId);
+      const next = s.players.find(x => x.connected && !x.isBot && x.id !== playerId)
+        ?? s.players.find(x => x.connected && x.id !== playerId);
       if (next) s.players.forEach(x => { x.isHost = x.id === next.id; });
     }
     // A disconnected player never holds the turn: if they were mid-effect

@@ -13,10 +13,14 @@ import {
   accuse, voteAccuse, resolveAccusation, maybeResolveAccusation, cancelAccusation,
   spyGuess, startFinalPhase, finalPick, finalVote, resolveFinalVote,
   maybeResolveFinalVote, cancelFinalVote, advanceFinal, nextRound,
-  publicState, privateState, connectedPlayers,
+  publicState, privateState, connectedPlayers, addBot, removeBot,
   MIN_PLAYERS, MAX_PLAYERS, REVEAL_MS,
 } from '../../../../games/gian-diep/logic';
 import type { Config } from '../../../../games/gian-diep/logic';
+import {
+  botAskTarget, botShouldAccuse, botVoteYes, botSpyGuessLocation,
+  botFinalPick, botPickQuestion, botPickAnswer,
+} from '../../../../games/gian-diep/bots';
 
 export type Pub = ReturnType<typeof publicState>;
 export type Priv = ReturnType<typeof privateState>;
@@ -34,13 +38,170 @@ export class HostEngine {
   state: GameState;
   timers: ReturnType<typeof setTimeout>[] = [];
   lastChat = new Map<string, number>();
+  /** Bot actions already scheduled (one key per decision). driveBots()
+   *  re-runs after every broadcast, so without this a bot would collect
+   *  a new timer on every state change. Keys are scoped to the phase /
+   *  asker / vote, so a fresh decision always gets a fresh key. */
+  private botPending = new Set<string>();
+  private botPhaseKey = '';
+  /** Bot timers live apart from the phase timers: armTimers() clears
+   *  this.timers on every sync, and a bot decision must survive that. */
+  private botTimers: ReturnType<typeof setTimeout>[] = [];
+  /** Bots that were asked a question and owe an (vague) answer before
+   *  they ask the next player. */
+  private botWasAsked = new Set<string>();
+  /** Bot spies that survived being accused: they reveal and guess blind
+   *  as soon as the vote closes (a guess DURING a vote is refused by
+   *  the rules, so this cannot fire while the vote is open). */
+  private spyGuessPending = new Set<string>();
   constructor(code: string, private hooks: EngineHooks) { this.state = createGame(code); }
   private later(ms: number, fn: () => void) { this.timers.push(setTimeout(fn, ms)); }
+  private laterBot(ms: number, fn: () => void) { this.botTimers.push(setTimeout(fn, ms)); }
   private clear() { this.timers.forEach(clearTimeout); this.timers = []; }
   broadcast() {
     const pub = publicState(this.state);
     this.hooks.sendPub(pub);
-    for (const p of this.state.players) this.hooks.sendPriv(p.id, privateState(this.state, p));
+    // Bots live inside the engine — they read the state directly and have
+    // no connection to send a private snapshot to.
+    for (const p of this.state.players) if (!p.isBot) this.hooks.sendPriv(p.id, privateState(this.state, p));
+    this.driveBots();
+  }
+  /** Schedule one bot decision (guarded by botPending). The delay is
+   *  human-like on purpose: an instant bot betrays that it is a bot. */
+  private scheduleBot(key: string, ms: number, fn: () => void) {
+    if (this.botPending.has(key)) return;
+    this.botPending.add(key);
+    this.laterBot(ms, () => { this.botPending.delete(key); fn(); });
+  }
+  private botDelay(min: number, spread: number) { return min + Math.random() * spread; }
+  private botChat(b: Player, text: string) {
+    this.state.chat.push({ fromId: b.id, fromName: b.name, text, ts: Date.now() });
+    if (this.state.chat.length > 100) this.state.chat = this.state.chat.slice(-100);
+  }
+
+  /** Make sure every bot that owes an action has one scheduled. Called
+   *  after every broadcast, so a bot whose turn just came up is picked
+   *  up at once. */
+  private driveBots() {
+    const s = this.state;
+    // No human host left (a bot inherited host after migration): advance
+    // past the round-end screen instead of stalling there forever.
+    if (s.phase === 'roundEnd') {
+      const host = s.players.find(p => p.isHost);
+      if (host?.isBot) this.scheduleBot(`nextround:${s.round}`, this.botDelay(1500, 1500), () => {
+        if (this.state.phase !== 'roundEnd') return;
+        nextRound(this.state);
+        this.sync();
+      });
+      return;
+    }
+    if (s.phase !== 'questioning') { this.botWasAsked.clear(); this.spyGuessPending.clear(); }
+    const phaseKey = `${s.phase}:${s.round}:${s.currentAskerId ?? ''}:${s.accusation?.suspectId ?? ''}:${s.finalPhase}:${s.finalIdx}:${s.finalVote?.suspectId ?? ''}:${s.revealReady.length}`;
+    if (phaseKey !== this.botPhaseKey) { this.botPhaseKey = phaseKey; this.botPending.clear(); }
+    const bots = s.players.filter(p => p.isBot && p.connected);
+    if (!bots.length) return;
+    if (s.phase === 'roleReveal') {
+      for (const b of bots) {
+        if (s.revealReady.includes(b.id)) continue;
+        this.scheduleBot(`reveal:${s.round}:${b.id}`, this.botDelay(1000, 1500), () => this.botRevealReady(b));
+      }
+      return;
+    }
+    if (s.phase !== 'questioning') return;
+    // A bot spy that survived an accusation reveals and guesses blind
+    // as soon as the vote is closed (never during the vote itself).
+    if (!s.accusation && !s.finalVote) {
+      for (const b of bots) {
+        if (!this.spyGuessPending.has(b.id) || s.spyId !== b.id) continue;
+        this.scheduleBot(`spyguess:${s.round}:${b.id}`, this.botDelay(1000, 1500), () => this.botSpyGuessAct(b));
+      }
+    }
+    if (s.accusation) {
+      const suspect = s.players.find(p => p.id === s.accusation!.suspectId);
+      if (suspect?.isBot && suspect.id === s.spyId) this.spyGuessPending.add(suspect.id);
+      for (const b of bots) {
+        if (b.id === s.accusation.suspectId || s.accusation.votes[b.id] !== undefined) continue;
+        this.scheduleBot(`vote:${s.round}:${s.accusation.accuserId}:${b.id}`, this.botDelay(1000, 1500), () => this.botVoteCast(b));
+      }
+      return;
+    }
+    if (s.finalVote) {
+      for (const b of bots) {
+        if (b.id === s.finalVote.suspectId || s.finalVote.votes[b.id] !== undefined) continue;
+        this.scheduleBot(`fvote:${s.round}:${s.finalOrder[s.finalIdx]}:${b.id}`, this.botDelay(1000, 1500), () => this.botVoteCast(b));
+      }
+      return;
+    }
+    if (s.finalPhase) {
+      const accuser = s.players.find(p => p.id === s.finalOrder[s.finalIdx]);
+      if (accuser?.isBot) {
+        this.scheduleBot(`final:${s.round}:${s.finalIdx}:${accuser.id}`, this.botDelay(1000, 1500), () => this.botFinalPickAct(accuser));
+      }
+      return;
+    }
+    const asker = s.players.find(p => p.id === s.currentAskerId);
+    if (asker?.isBot) {
+      this.scheduleBot(`ask:${s.round}:${asker.id}`, this.botDelay(1000, 1500), () => this.botAskTurn(asker));
+    }
+  }
+
+  /** One bot's decision, run through the same validated logic a
+   *  human's tap goes through. */
+  private botRevealReady(b: Player) {
+    const s = this.state;
+    if (s.phase !== 'roleReveal' || s.revealReady.includes(b.id)) return;
+    s.revealReady.push(b.id);
+    const pool = connectedPlayers(s);
+    if (s.revealReady.filter(id => pool.some(p => p.id === id)).length >= Math.max(1, pool.length - 1)) {
+      startQuestioning(s);
+    }
+    this.sync();
+  }
+  private botAskTurn(b: Player) {
+    const s = this.state;
+    if (s.phase !== 'questioning' || s.finalPhase || s.accusation || s.finalVote) return;
+    if (s.currentAskerId !== b.id || !b.connected) return;
+    // Answer first if this bot was asked a question (vague by design).
+    if (this.botWasAsked.has(b.id)) {
+      this.botWasAsked.delete(b.id);
+      this.botChat(b, botPickAnswer());
+    }
+    const suspect = botShouldAccuse(s, b);
+    if (suspect && accuse(s, b, suspect)) { this.sync(); return; }
+    const target = botAskTarget(s, b);
+    if (target && askTarget(s, b, target)) {
+      const t = s.players.find(p => p.id === target);
+      if (t?.isBot) this.botWasAsked.add(target);
+      this.botChat(b, botPickQuestion());
+      this.sync();
+    }
+  }
+  private botVoteCast(b: Player) {
+    const s = this.state;
+    if (s.phase !== 'questioning') return;
+    const a = s.accusation;
+    const fv = s.finalVote;
+    if (!a && !fv) return;
+    const suspectId = a?.suspectId ?? fv?.suspectId;
+    if (!suspectId || b.id === suspectId || !b.connected) return;
+    if ((a ? a.votes[b.id] : fv!.votes[b.id]) !== undefined) return;
+    const yes = botVoteYes(s, b, Math.random, !!fv);
+    if (a) voteAccuse(s, b, yes);
+    else finalVote(s, b, yes);
+    this.sync();
+  }
+  private botFinalPickAct(b: Player) {
+    const s = this.state;
+    if (s.phase !== 'questioning' || !s.finalPhase || s.finalVote) return;
+    if (s.finalOrder[s.finalIdx] !== b.id || !b.connected) return;
+    if (finalPick(s, b, botFinalPick(s, b))) this.sync();
+  }
+  private botSpyGuessAct(b: Player) {
+    const s = this.state;
+    if (s.phase !== 'questioning' || s.accusation || s.finalVote) return;
+    if (s.spyId !== b.id || !b.connected) return;
+    this.spyGuessPending.delete(b.id);
+    if (spyGuess(s, b, botSpyGuessLocation())) this.sync();
   }
   /** Broadcast + re-arm every timer the current state needs. */
   private sync() { this.broadcast(); this.armTimers(); }
@@ -125,7 +286,7 @@ export class HostEngine {
     if (this.state.phase === 'roleReveal' || this.state.phase === 'questioning') this.armTimers();
   }
   /** Stop a superseded engine (its room migrated to a successor host). */
-  dispose() { this.clear(); }
+  dispose() { this.clear(); this.botTimers.forEach(clearTimeout); this.botTimers = []; this.botPending.clear(); }
   handle(player: Player, msg: any) {
     const s = this.state;
     switch (msg.action) {
@@ -168,7 +329,11 @@ export class HostEngine {
       // Turn actions arrive as top-level actions (the transports forward
       // nightAction(kind) verbatim — see transport/net.ts).
       case 'askTarget':
-        if (typeof msg.targetId === 'string' && askTarget(s, player, msg.targetId)) this.sync();
+        if (typeof msg.targetId === 'string' && askTarget(s, player, msg.targetId)) {
+          const t = s.players.find(p => p.id === msg.targetId);
+          if (t?.isBot) this.botWasAsked.add(t.id);
+          this.sync();
+        }
         break;
       case 'accuse':
         if (typeof msg.targetId === 'string' && accuse(s, player, msg.targetId)) this.sync();
@@ -191,6 +356,18 @@ export class HostEngine {
       case 'nextRound':
         if (player.isHost && s.phase === 'roundEnd') { nextRound(s); this.sync(); }
         break;
+      // Lobby setup (host only): bots fill the table when humans are
+      // short, so 1 human + bots can start a game.
+      case 'addBot': {
+        if (!player.isHost || s.phase !== 'lobby') break;
+        if (addBot(s)) this.broadcast();
+        break;
+      }
+      case 'removeBot': {
+        if (!player.isHost || s.phase !== 'lobby' || !msg.targetId) break;
+        if (removeBot(s, msg.targetId)) this.broadcast();
+        break;
+      }
       case 'chat': {
         const now = Date.now();
         if (now - (this.lastChat.get(player.id) ?? 0) < 400) return;

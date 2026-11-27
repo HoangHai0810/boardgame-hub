@@ -42,6 +42,7 @@ export interface ChatMsg { fromId: string; fromName: string; text: string; ts: n
 
 export interface Player {
   id: string; name: string; avatar?: string; isHost: boolean; connected: boolean;
+  isBot?: boolean;
   hand: Card[]; discardPile: Card[];
   protected: boolean; inRound: boolean; tokens: number; roundWins: number;
 }
@@ -116,6 +117,36 @@ export function tokensFor(playerCount: number, quickMode: boolean): number {
   if (quickMode) return 3;
   // 2019 rulebook table: 2p = 6, 3p = 5, 4p = 4, 5p = 3, 6p = 3.
   return playerCount === 2 ? 6 : playerCount === 3 ? 5 : playerCount === 4 ? 4 : 3;
+}
+
+/** Bot names (Vietnamese first names — the UI prefixes them with 🤖). */
+export const BOT_NAMES = ['An', 'Bình', 'Chi', 'Dũng', 'Hà', 'Khánh', 'Linh', 'Minh'];
+
+/** Monotonic suffix so two bots added in the same millisecond (or with
+ *  a seeded rng in tests) can never share an id. */
+let botSeq = 0;
+
+/** Add an engine-side bot to the lobby (host only). Returns the bot, or
+ *  null when the room is full. Bots are always "connected" and count
+ *  toward the minimum player count, so a table can start short-handed. */
+export function addBot(s: GameState, rng: () => number = Math.random): Player | null {
+  if (s.players.length >= MAX_PLAYERS) return null;
+  const used = new Set(s.players.map(p => p.name));
+  const name = BOT_NAMES.find(n => !used.has(`Bot ${n}`)) ?? `Bot ${s.players.length + 1}`;
+  const bot: Player = {
+    id: `bot-${(botSeq++).toString(36)}${Math.floor(rng() * 1e9).toString(36)}${Date.now().toString(36)}`,
+    name: `Bot ${name}`, isHost: false, connected: true, isBot: true,
+    hand: [], discardPile: [], protected: false, inRound: true, tokens: 0, roundWins: 0,
+  };
+  s.players.push(bot);
+  return bot;
+}
+
+export function removeBot(s: GameState, id: string): boolean {
+  const p = s.players.find(x => x.id === id);
+  if (!p || !p.isBot) return false;
+  s.players = s.players.filter(x => x.id !== id);
+  return true;
 }
 
 const byId = (s: GameState, id?: string | null) => s.players.find(p => p.id === id);
@@ -511,7 +542,7 @@ export function publicState(s: GameState) {
     sessionWinner: s.sessionWinner,
     chat: s.chat,
     players: s.players.map(p => ({
-      id: p.id, name: p.name, avatar: p.avatar ?? null, isHost: p.isHost, connected: p.connected,
+      id: p.id, name: p.name, avatar: p.avatar ?? null, isHost: p.isHost, connected: p.connected, isBot: !!p.isBot,
       handCount: p.hand.length, discardPile: p.discardPile,
       protected: p.protected, inRound: p.inRound,
       tokens: p.tokens, roundWins: p.roundWins,

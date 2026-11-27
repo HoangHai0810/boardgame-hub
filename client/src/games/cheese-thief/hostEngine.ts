@@ -8,8 +8,10 @@ import {
   doSteal, doInspect, castVote, resolveVotes, canSteal, thiefOf,
   autoInspectIdle, applyDefaultVotes,
   chooseFollower, autoResolveFollowerChoice, recruitCount, followers, recordHour,
+  canInspect, followerCandidates, addBot, removeBot,
   MIN_PLAYERS, MAX_PLAYERS, HOUR_MS, RECRUIT_MS, DISCUSSION_MS, VOTE_MS,
 } from '../../../../games/cheese-thief/logic';
+import { botInspectTarget, botFollowerPick, botVote } from '../../../../games/cheese-thief/bots';
 
 export type Pub = ReturnType<typeof publicState>;
 export type Priv = ReturnType<typeof privateState>;
@@ -27,13 +29,129 @@ export class HostEngine {
   state: GameState;
   timers: ReturnType<typeof setTimeout>[] = [];
   lastChat = new Map<string, number>();
+  /** Bot actions already scheduled (one key per decision). driveBots()
+   *  re-runs after every broadcast, so without this a bot would collect
+   *  a new timer on every state change. Keys are scoped to the phase /
+   *  hour / round, so a fresh decision always gets a fresh key. */
+  private botPending = new Set<string>();
+  private botPhaseKey = '';
   constructor(code: string, private hooks: EngineHooks) { this.state = createGame(code); }
   private later(ms: number, fn: () => void) { this.timers.push(setTimeout(fn, ms)); }
   private clear() { this.timers.forEach(clearTimeout); this.timers = []; }
   broadcast() {
     const pub = publicState(this.state);
     this.hooks.sendPub(pub);
-    for (const p of this.state.players) this.hooks.sendPriv(p.id, privateState(this.state, p));
+    // Bots live inside the engine — they read the state directly and have
+    // no connection to send a private snapshot to.
+    for (const p of this.state.players) if (!p.isBot) this.hooks.sendPriv(p.id, privateState(this.state, p));
+    this.driveBots();
+  }
+  /** Schedule one bot decision (guarded by botPending). The delay is
+   *  human-like on purpose: an instant bot betrays that it is a bot. */
+  private scheduleBot(key: string, ms: number, fn: () => void) {
+    if (this.botPending.has(key)) return;
+    this.botPending.add(key);
+    this.later(ms, () => { this.botPending.delete(key); fn(); });
+  }
+  private botDelay(min: number, spread: number) { return min + Math.random() * spread; }
+
+  /** Make sure every bot that owes an action has one scheduled. Called
+   *  after every broadcast, so a bot whose timer was wiped by a phase
+   *  transition is simply re-scheduled. */
+  private driveBots() {
+    const s = this.state;
+    const phaseKey = `${s.phase}:${s.currentHour}:${s.round}`;
+    if (phaseKey !== this.botPhaseKey) { this.botPhaseKey = phaseKey; this.botPending.clear(); }
+    const bots = s.players.filter(p => p.isBot && p.connected);
+    if (!bots.length) return;
+    if (s.phase === 'roleReveal') {
+      for (const b of bots) {
+        if (s.revealReady.includes(b.id)) continue;
+        this.scheduleBot(`reveal:${s.round}:${b.id}`, this.botDelay(1000, 1500), () => {
+          if (this.state.phase !== 'roleReveal' || this.state.revealReady.includes(b.id)) return;
+          this.state.revealReady.push(b.id);
+          const pool = this.state.players.filter(p => p.connected);
+          if (pool.filter(p => this.state.revealReady.includes(p.id)).length >= Math.max(1, pool.length - 1)) { this.clear(); this.startNight(); }
+          else this.broadcast();
+        });
+      }
+      return;
+    }
+    if (s.phase === 'night') {
+      // 5p: a witness saw the theft and the thief bot must pick one as a
+      // follower before the hour ends (otherwise the engine picks at random).
+      const thiefBot = bots.find(p => p.role === 'thief');
+      if (thiefBot && s.pendingFollowerChoice?.length) {
+        this.scheduleBot(`follower:${s.round}:${s.currentHour}:${thiefBot.id}`, this.botDelay(1000, 1500), () => this.botChooseFollower(thiefBot));
+      }
+      for (const b of bots) {
+        if (!canInspect(s, b)) continue;
+        // Capture the hour NOW: s.currentHour at fire time may already be
+        // the next hour, which would defeat botInspect's stale-timer guard.
+        const hour = s.currentHour;
+        this.scheduleBot(`inspect:${s.round}:${hour}:${b.id}`, this.botDelay(1000, 1500), () => this.botInspect(b, hour));
+      }
+      return;
+    }
+    if (s.phase === 'recruit') {
+      const thiefBot = bots.find(p => p.role === 'thief');
+      // The key carries the follower count, so the second recruit (7–8p)
+      // gets a fresh schedule after the first one lands.
+      if (thiefBot && followerCandidates(s, thiefBot)?.length) {
+        this.scheduleBot(`recruit:${s.round}:${thiefBot.id}:${followers(s).length}`, this.botDelay(1000, 1500), () => this.botChooseFollower(thiefBot));
+      }
+      return;
+    }
+    if (s.phase === 'day') {
+      // Bots let the humans talk first: they only ready after 20–40s.
+      for (const b of bots) {
+        if (s.dayReady.includes(b.id)) continue;
+        this.scheduleBot(`day:${s.round}:${b.id}`, this.botDelay(20000, 20000), () => {
+          if (this.state.phase !== 'day' || this.state.dayReady.includes(b.id)) return;
+          this.state.dayReady.push(b.id);
+          const pool = this.state.players.filter(p => p.connected);
+          if (pool.filter(p => this.state.dayReady.includes(p.id)).length >= Math.max(1, pool.length - 1)) this.startVoting();
+          else this.broadcast();
+        });
+      }
+      return;
+    }
+    if (s.phase === 'voting') {
+      for (const b of bots) {
+        if (b.hasVoted) continue;
+        this.scheduleBot(`vote:${s.round}:${b.id}`, this.botDelay(1000, 1500), () => this.botVoteCast(b));
+      }
+    }
+  }
+
+  /** One bot's night peek, run through the same validated logic a
+   *  human's tap goes through. The hour is captured at schedule time so
+   *  a stale timer can never peek in the wrong hour. */
+  private botInspect(b: Player, hour: number) {
+    const s = this.state;
+    if (s.phase !== 'night' || s.currentHour !== hour) return;
+    const target = botInspectTarget(s, b);
+    if (target && doInspect(s, b, target)) this.broadcast();
+  }
+  /** One bot thief's follower pick (5p witness choice or post-night
+   *  recruit), run through the same validated logic as a human's tap. */
+  private botChooseFollower(b: Player) {
+    const s = this.state;
+    const target = botFollowerPick(s, b);
+    if (!target) return;
+    if (chooseFollower(s, b, target)) {
+      if (s.phase === 'recruit' && followers(s).length >= recruitCount(s)) { this.clear(); this.startDay(); }
+      else this.broadcast();
+    }
+  }
+  private botVoteCast(b: Player) {
+    const s = this.state;
+    if (s.phase !== 'voting' || b.hasVoted) return;
+    const target = botVote(s, b);
+    if (target && castVote(s, b, target)) {
+      this.broadcast();
+      if (s.players.every(p => !p.connected || p.hasVoted)) this.finishVoting();
+    }
   }
   addPlayer(id: string, name: string, isHost: boolean, avatar?: string): Player {
     let p = this.state.players.find(x => x.id === id);
@@ -94,6 +212,8 @@ export class HostEngine {
     } else if (s.phase === 'voting') {
       this.later(remain(s.voteEndsAt), () => { if (this.state.phase === 'voting') this.finishVoting(); });
     }
+    // Re-run the bot driver: the old engine's bot timers died with it.
+    this.broadcast();
   }
   /** Stop a superseded engine (its room migrated to a successor host). */
   dispose() { this.clear(); }
@@ -191,6 +311,17 @@ export class HostEngine {
         if (![60000, 120000, 180000].includes(msg.ms)) break;
         s.discussionMs = msg.ms;
         this.broadcast();
+        break;
+      }
+      // Lobby setup (host only): bots fill the table when humans are short.
+      case 'addBot': {
+        if (!player.isHost || s.phase !== 'lobby') break;
+        if (addBot(s)) this.broadcast();
+        break;
+      }
+      case 'removeBot': {
+        if (!player.isHost || s.phase !== 'lobby' || !msg.targetId) break;
+        if (removeBot(s, msg.targetId)) this.broadcast();
         break;
       }
       case 'playAgain':

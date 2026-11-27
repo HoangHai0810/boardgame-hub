@@ -32,6 +32,8 @@ export interface ChatMsg { fromId: string; fromName: string; text: string; ts: n
 
 export interface Player {
   id: string; name: string; avatar?: string; isHost: boolean; connected: boolean;
+  /** Engine-side bot player (no network connection, driven by the host). */
+  isBot?: boolean;
   hand: Card[]; wins: number; points: number;
 }
 
@@ -69,6 +71,32 @@ export function createGame(code: string): GameState {
     unoPending: null, pendingDraw4: null, colorPickPending: null,
     chat: [], winner: null, roundPoints: 0,
   };
+}
+
+/** Bot names (Vietnamese first names — the UI prefixes them with 🤖). */
+export const BOT_NAMES = ['An', 'Bình', 'Chi', 'Dũng', 'Hà', 'Khánh', 'Linh', 'Minh', 'Ngọc', 'Phúc', 'Quân', 'Trang'];
+
+/** Add an engine-side bot to the lobby (host only). Returns the bot, or
+ *  null when the room is full. Bots are always "connected" and count
+ *  toward the minimum player count, so a table can start short-handed. */
+export function addBot(s: GameState, rng: () => number = Math.random): Player | null {
+  if (s.players.length >= MAX_PLAYERS) return null;
+  const used = new Set(s.players.map(p => p.name));
+  const name = BOT_NAMES.find(n => !used.has(`Bot ${n}`)) ?? `Bot ${s.players.length + 1}`;
+  const bot: Player = {
+    id: `bot-${Math.floor(rng() * 1e9).toString(36)}${Date.now().toString(36)}`,
+    name: `Bot ${name}`, isHost: false, connected: true, isBot: true,
+    hand: [], wins: 0, points: 0,
+  };
+  s.players.push(bot);
+  return bot;
+}
+
+export function removeBot(s: GameState, id: string): boolean {
+  const p = s.players.find(x => x.id === id);
+  if (!p || !p.isBot) return false;
+  s.players = s.players.filter(x => x.id !== id);
+  return true;
 }
 
 /** The 108-card Uno deck. ids are unique per physical card. */
@@ -366,7 +394,7 @@ export function publicState(s: GameState) {
     winner: s.winner, roundPoints: s.roundPoints,
     chat: s.chat,
     players: s.players.map(p => ({
-      id: p.id, name: p.name, avatar: p.avatar ?? null, isHost: p.isHost, connected: p.connected,
+      id: p.id, name: p.name, avatar: p.avatar ?? null, isHost: p.isHost, connected: p.connected, isBot: !!p.isBot,
       handCount: p.hand.length, wins: p.wins, points: p.points,
     })),
   };

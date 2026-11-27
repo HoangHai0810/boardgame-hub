@@ -103,7 +103,7 @@ export const DEFAULT_CONFIG: Config = { roundMinutes: 8, roundsTotal: 5, rolesOn
 
 export interface Player {
   id: string; name: string; avatar?: string; isHost: boolean; connected: boolean;
-  score: number; roundWins: number;
+  score: number; roundWins: number; isBot?: boolean;
 }
 export interface ChatMsg { fromId: string; fromName: string; text: string; ts: number }
 export interface FeedEvent { ts: number; actorId: string; kind: string; targetId?: string; count?: number }
@@ -159,6 +159,33 @@ export function createGame(code: string): GameState {
 export function shuffle<T>(arr: T[], rng: () => number = Math.random): T[] {
   for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1));[arr[i], arr[j]] = [arr[j], arr[i]]; }
   return arr;
+}
+
+/** Bot names (Vietnamese first names — the UI prefixes them with 🤖). */
+export const BOT_NAMES = ['An', 'Bình', 'Chi', 'Dũng', 'Hà', 'Khánh', 'Linh', 'Minh'];
+
+/** Add an engine-side bot to the lobby (host only). Returns the bot, or
+ *  null when the room is full. Bots are always "connected" and count
+ *  toward the minimum player count, so a table can start with 1 human
+ *  + bots. */
+export function addBot(s: GameState, rng: () => number = Math.random): Player | null {
+  if (s.players.length >= MAX_PLAYERS) return null;
+  const used = new Set(s.players.map(p => p.name));
+  const name = BOT_NAMES.find(n => !used.has(`Bot ${n}`)) ?? `Bot ${s.players.length + 1}`;
+  const bot: Player = {
+    id: `bot-${Math.floor(rng() * 1e9).toString(36)}${Date.now().toString(36)}`,
+    name: `Bot ${name}`, isHost: false, connected: true, isBot: true,
+    score: 0, roundWins: 0,
+  };
+  s.players.push(bot);
+  return bot;
+}
+
+export function removeBot(s: GameState, id: string): boolean {
+  const p = s.players.find(x => x.id === id);
+  if (!p || !p.isBot) return false;
+  s.players = s.players.filter(x => x.id !== id);
+  return true;
 }
 
 const byId = (s: GameState, id?: string | null) => s.players.find(p => p.id === id);
@@ -501,7 +528,7 @@ export function publicState(s: GameState) {
     chat: s.chat, feed: s.feed.slice(-20),
     players: s.players.map(p => ({
       id: p.id, name: p.name, avatar: p.avatar ?? null, isHost: p.isHost, connected: p.connected,
-      score: p.score, roundWins: p.roundWins,
+      score: p.score, roundWins: p.roundWins, isBot: !!p.isBot,
     })),
   };
 }

@@ -13,7 +13,7 @@ export function TopBar({ d, lang, muted, onToggleMuted, onHelp, onToggleLang, vo
   const chipCls = `rounded-xl min-h-[44px] min-w-[44px] px-3 py-2.5 text-base leading-none flex items-center justify-center ${chip} push`;
   return (
     <div className="flex items-center justify-between gap-2 mb-2 relative z-20">
-      <div className={`disp font-extrabold text-lg flex items-center gap-1.5 whitespace-nowrap shrink-0 ${tone === 'navy' ? 'text-[#FFF3CF]' : 'text-[#2B2016]'}`}>{logo} {d.title}</div>
+      <div className={`disp font-extrabold text-lg flex items-center gap-1.5 whitespace-nowrap shrink-0 ${tone === 'navy' ? 'text-[#FFF3CF]' : 'text-[#2B2016]'}`}>{logo} <span className="hidden min-[420px]:inline">{d.title}</span></div>
       <div className="flex gap-1.5 items-center">
         {voice && (voice.speaker === 'off'
           ? <button title={d.voiceListen} className={chipCls} onClick={voice.onSpeaker}>🎧</button>
@@ -29,10 +29,11 @@ export function TopBar({ d, lang, muted, onToggleMuted, onHelp, onToggleLang, vo
             </>)}
         <button aria-label="sound" title={muted ? '🔕' : '🔊'} className={chipCls} onClick={onToggleMuted}>{muted ? '🔕' : '🔊'}</button>
         <button title={d.help} className={`${chipCls} disp font-extrabold`} onClick={onHelp}>?</button>
-        <div className={`flex rounded-xl overflow-hidden ${tone === 'navy' ? 'border-2 border-[#3D3D63]' : 'hard-xs !shadow-none border-2'}`} role="group" aria-label="language">
+        <div className={`hidden min-[420px]:flex rounded-xl overflow-hidden ${tone === 'navy' ? 'border-2 border-[#3D3D63]' : 'hard-xs !shadow-none border-2'}`} role="group" aria-label="language">
           <button className={`disp px-3 py-2.5 min-h-[44px] font-extrabold text-sm leading-none ${lang === 'vi' ? 'bg-[#FFB020] text-[#2B2016]' : tone === 'navy' ? 'bg-[#23233F] text-[#B9BCE0]' : 'bg-[#FFFBef] text-[#8A7B63]'}`} onClick={() => lang !== 'vi' && onToggleLang()}>VI</button>
           <button className={`disp px-3 py-2.5 min-h-[44px] font-extrabold text-sm leading-none ${lang === 'en' ? 'bg-[#FFB020] text-[#2B2016]' : tone === 'navy' ? 'bg-[#23233F] text-[#B9BCE0]' : 'bg-[#FFFBef] text-[#8A7B63]'}`} onClick={() => lang !== 'en' && onToggleLang()}>EN</button>
         </div>
+        <button title={lang === 'vi' ? 'English' : 'Tiếng Việt'} className={`${chipCls} min-[420px]:hidden disp font-extrabold text-sm`} onClick={onToggleLang}>{lang === 'vi' ? 'EN' : 'VI'}</button>
       </div>
     </div>
   );

@@ -43,6 +43,8 @@ export const DEFAULT_CONFIG: Config = { nopeEnabled: true, showCounts: true, tim
 export interface Player {
   id: string; name: string; avatar?: string; isHost: boolean; connected: boolean;
   hand: Card[]; wins: number; alive: boolean; explodedTurn: number | null;
+  /** Engine-side bot (see addBot): counts as a connected player. */
+  isBot?: boolean;
 }
 
 export interface PendingAction {
@@ -116,6 +118,33 @@ const isAction = (k: Kind): k is ActionKind => k === 'skip' || k === 'shuffle' |
 function feed(s: GameState, actorId: string, kind: string, targetId?: string, count?: number): void {
   s.feed.push({ ts: Date.now(), actorId, kind, targetId, count });
   if (s.feed.length > 30) s.feed = s.feed.slice(-30);
+}
+
+/** Bot names (Vietnamese first names — the UI prefixes them with 🤖). */
+export const BOT_NAMES = ['An', 'Bình', 'Chi', 'Dũng', 'Hà', 'Khánh', 'Linh', 'Minh'];
+
+/** Add an engine-side bot to the lobby (host only). Returns the bot, or
+ *  null when the room is full. Bots are always "connected" and count
+ *  toward the minimum player count, so a table can start with 1 human
+ *  + bots. */
+export function addBot(s: GameState, rng: () => number = Math.random): Player | null {
+  if (s.players.length >= MAX_PLAYERS) return null;
+  const used = new Set(s.players.map(p => p.name));
+  const name = BOT_NAMES.find(n => !used.has(`Bot ${n}`)) ?? `Bot ${s.players.length + 1}`;
+  const bot: Player = {
+    id: `bot-${Math.floor(rng() * 1e9).toString(36)}${Date.now().toString(36)}`,
+    name: `Bot ${name}`, isHost: false, connected: true, isBot: true,
+    hand: [], wins: 0, alive: true, explodedTurn: null,
+  };
+  s.players.push(bot);
+  return bot;
+}
+
+export function removeBot(s: GameState, id: string): boolean {
+  const p = s.players.find(x => x.id === id);
+  if (!p || !p.isBot) return false;
+  s.players = s.players.filter(x => x.id !== id);
+  return true;
 }
 
 /** Deal 7 cards each (1 Defuse + 6), then insert players−1 Exploding
@@ -475,6 +504,7 @@ export function publicState(s: GameState) {
     chat: s.chat,
     players: s.players.map(p => ({
       id: p.id, name: p.name, avatar: p.avatar ?? null, isHost: p.isHost, connected: p.connected,
+      isBot: !!p.isBot,
       handCount: s.config.showCounts ? p.hand.length : null,
       alive: p.alive, explodedTurn: p.explodedTurn, wins: p.wins,
     })),

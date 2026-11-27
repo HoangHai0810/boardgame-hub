@@ -133,7 +133,12 @@ export default function GianDiepApp() {
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('ct_lang') as Lang) || 'vi');
   const d = t(lang);
   const [name, setName] = useState(() => sessionStorage.getItem('ct_name') || '');
-  const [roomCodeInput, setRoomCodeInput] = useState('');
+  const [roomCodeInput, setRoomCodeInput] = useState(() => new URLSearchParams(location.search).get('room') || '');
+  const [forceCreate, setForceCreate] = useState(false);
+  // Invite-link mode: a room code in the URL (or typed in) makes JOIN the
+  // primary action — the amber Create button hides, so nobody creates a
+  // new room by habit instead of joining their friend's.
+  const joinMode = !forceCreate && roomCodeInput.trim().length >= 4;
   const [pub, setPub] = useState<Pub | null>(null);
   const [priv, setPriv] = useState<Priv | null>(null);
   const [joined, setJoined] = useState<{ code: string; playerId: string; isHost: boolean } | null>(null);
@@ -143,6 +148,7 @@ export default function GianDiepApp() {
   const [migrating, setMigrating] = useState(false);
   const [muted, setMuted] = useState(() => localStorage.getItem('ct_muted') === '1');
   const [showHelp, setShowHelp] = useState(false);
+  const [botAdding, setBotAdding] = useState(false);
   const [chatSheet, setChatSheet] = useState(false);
   const [myRecord, setMyRecord] = useState<{ w: number; l: number }>({ w: 0, l: 0 });
   const [shareCopied, setShareCopied] = useState(false);
@@ -252,6 +258,9 @@ export default function GianDiepApp() {
   }, [pub?.currentAskerId, pub?.phase]);
 
   useEffect(() => { setChatSheet(false); }, [phase]);
+  // Re-arm the Add-bot button once the new bot actually arrives (the
+  // Ma Sói sample leaves it disabled after the first add).
+  useEffect(() => { setBotAdding(false); }, [pub?.players.length]);
 
   // Host F5 guard: the room lives in the host's tab.
   useEffect(() => {
@@ -420,21 +429,22 @@ export default function GianDiepApp() {
             <label className="disp font-extrabold text-sm">{d.name}</label>
             <input className="inp w-full px-4 py-3 font-bold mt-1" placeholder="VD: An"
               value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
-            <button className={`${BTN} btn-amber w-full mt-3`} disabled={!name.trim() || !!status}
-              onClick={() => { setError(''); getNet().createRoom(name.trim()); }}>🕵️ {d.create}</button>
+            {!joinMode && (<button className={`${BTN} btn-amber w-full mt-3`} disabled={!name.trim() || !!status}
+              onClick={() => { setError(''); getNet().createRoom(name.trim()); }}>🕵️ {d.create}</button>)}
             {!name.trim() && <p className="text-center font-bold text-[#8A7B63] text-sm mt-2">{d.nameFirst}</p>}
-            <div className="flex items-center gap-3 mt-4 mb-3">
+            {!joinMode && (<div className="flex items-center gap-3 mt-4 mb-3">
               <span className="flex-1 border-t-2 border-[#E5DCC0]" />
               <span className="disp font-extrabold text-xs text-[#8A7B63] tracking-wide">{d.orJoinFriend}</span>
               <span className="flex-1 border-t-2 border-[#E5DCC0]" />
-            </div>
+            </div>)}
             <div className="flex gap-2">
               <input className="inp flex-1 min-w-0 px-4 py-3 font-bold uppercase" placeholder={d.codePh}
                 value={roomCodeInput} maxLength={5} onChange={e => setRoomCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
                 onKeyDown={e => { if (e.key === 'Enter' && roomCodeInput.trim() && name.trim()) getNet().joinRoom(roomCodeInput.trim(), name.trim()); }} />
-              <button className={`${BTN} btn-dark`} disabled={!name.trim() || !roomCodeInput.trim() || !!status}
+              <button className={`${BTN} ${joinMode ? 'btn-amber' : 'btn-dark'}`} disabled={!name.trim() || !roomCodeInput.trim() || !!status}
                 onClick={() => { setError(''); getNet().joinRoom(roomCodeInput.trim(), name.trim()); }}>🚪 {d.join}</button>
             </div>
+            {joinMode && (<p className="text-center mt-3"><button className="font-bold text-sm text-[#8A7B63] underline" onClick={() => setForceCreate(true)}>＋ {d.create}</button></p>)}
             {status && <p className="text-center font-bold mt-3">{status} <button className="text-red-500 font-extrabold ml-1" onClick={() => { try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } try { getNet().leave(); } catch { /* ignore */ } location.href = location.pathname; }}>{d.cancelConnect}</button></p>}
             {error && <><p className="text-center font-bold text-red-600 mt-3">{error}</p><RetryDefaultButton d={d} /></>}
             {!status && !error && <p className="text-center text-[#8A7B63] font-bold text-sm mt-4">{d.landingFoot}</p>}
@@ -504,12 +514,13 @@ export default function GianDiepApp() {
                         {speakingIds.has(p.id) && <span className="absolute -bottom-1 -left-1 bg-green-500 text-white text-[10px] rounded-full px-1 shadow">🎙️</span>}
                       </span>
                       <span className="block font-bold truncate text-sm mt-0.5 text-[#2B2016]">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
+                      {p.isBot && <span className="text-xs font-extrabold bg-[#23233F] text-[#FFB020] rounded-full px-2 py-0.5 mt-0.5 inline-block">🤖 {d.botTag}</span>}
                       {p.isHost && <span className="text-amber-600 text-xs font-extrabold whitespace-nowrap">👑 {d.host}</span>}
                       {!p.connected && <span className="text-red-500 text-xs font-bold"> • {d.offline}</span>}
                       {joined.isHost && p.id !== joined.playerId && (
-                        <span role="button" title={d.kick}
-                          onClick={() => getNet().kick(p.id)}
-                          className="inline-block text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-0.5 mt-1 cursor-pointer hover:bg-red-200">✖ {d.kick}</span>)}
+                        <span role="button" title={p.isBot ? d.removeBot : d.kick}
+                          onClick={() => { if (p.isBot) getNet().nightAction('removeBot', p.id); else getNet().kick(p.id); }}
+                          className="inline-block text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-0.5 mt-1 cursor-pointer hover:bg-red-200">✖ {p.isBot ? d.removeBot : d.kick}</span>)}
                     </div>
                   ))}
                   {Array.from({ length: Math.max(0, MAX_PLAYERS - pub!.players.length) }).map((_, i) => (
@@ -517,6 +528,12 @@ export default function GianDiepApp() {
                   ))}
                 </div>
                 {joined.isHost && <p className="font-bold text-[#8A7B63] text-sm hidden lg:block">{d.kickHint}</p>}
+                {joined.isHost && pub!.players.length < MAX_PLAYERS && (
+                  <div className="mt-2">
+                    <button className={`${BTN} btn-dark w-full`} disabled={botAdding} onClick={() => { setBotAdding(true); getNet().nightAction('addBot'); }}>🤖 {d.addBot}</button>
+                    <p className="font-bold text-[#8A7B63] text-sm text-center mt-1.5">{d.botHint}</p>
+                  </div>
+                )}
                 <button className={`${BTN} bg-[#FFFBef] text-[#D63A2F] w-full mt-2 hidden lg:block`} onClick={() => { try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } getNet().leave(); setJoined(null); setPub(null); setPriv(null); }}>🚪 {d.leave}</button>
               </div>
 

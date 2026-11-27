@@ -12,9 +12,11 @@ import {
   GameState, Player, createGame, deal, publicState, privateState,
   playCard, drawCard, passTurn, callUno, catchUno,
   takeDraw4, challengeWild4, pickColor, autoTurn, advanceTurn,
+  addBot, removeBot,
   MIN_PLAYERS, MAX_PLAYERS,
 } from '../../../../games/uno/logic';
 import type { Color } from '../../../../games/uno/logic';
+import { botPickCard, botChooseColor, botShouldChallenge, botCatchTarget } from '../../../../games/uno/bots';
 
 export type Pub = ReturnType<typeof publicState>;
 export type Priv = ReturnType<typeof privateState>;
@@ -32,26 +34,135 @@ export class HostEngine {
   state: GameState;
   timers: ReturnType<typeof setTimeout>[] = [];
   lastChat = new Map<string, number>();
+  /** The turn timer lives apart from `timers`: re-arming it must never
+   *  wipe a bot decision already scheduled (sync() re-arms it after
+   *  every broadcast, and driveBots() schedules into `timers`). */
+  private turnTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Bot actions already scheduled (one key per decision). driveBots()
+   *  re-runs after every broadcast, so without this a bot would collect
+   *  a new timer on every state change. Keys are scoped to the turn /
+   *  decision, so a fresh decision always gets a fresh key. */
+  private botPending = new Set<string>();
+  private botPhaseKey = '';
   constructor(code: string, private hooks: EngineHooks) { this.state = createGame(code); }
   private later(ms: number, fn: () => void) { this.timers.push(setTimeout(fn, ms)); }
-  private clear() { this.timers.forEach(clearTimeout); this.timers = []; }
+  private clear() {
+    this.timers.forEach(clearTimeout); this.timers = [];
+    if (this.turnTimer) { clearTimeout(this.turnTimer); this.turnTimer = null; }
+    this.botPending.clear();
+  }
   broadcast() {
     const pub = publicState(this.state);
     this.hooks.sendPub(pub);
-    for (const p of this.state.players) this.hooks.sendPriv(p.id, privateState(this.state, p));
+    // Bots live inside the engine — they read the state directly and have
+    // no connection to send a private snapshot to.
+    for (const p of this.state.players) if (!p.isBot) this.hooks.sendPriv(p.id, privateState(this.state, p));
+    this.driveBots();
   }
+  /** Schedule one bot decision (guarded by botPending). The delay is
+   *  human-like on purpose: an instant bot betrays that it is a bot. */
+  private scheduleBot(key: string, ms: number, fn: () => void) {
+    if (this.botPending.has(key)) return;
+    this.botPending.add(key);
+    this.later(ms, () => { this.botPending.delete(key); fn(); });
+  }
+  private botDelay(min: number, spread: number) { return min + Math.random() * spread; }
+
+  /** Make sure every bot that owes an action has one scheduled. Called
+   *  after every broadcast, so a bot whose timer was wiped by a phase
+   *  transition is simply re-scheduled. */
+  private driveBots() {
+    const s = this.state;
+    if (s.phase !== 'playing') return;
+    const phaseKey = `${s.phase}:${s.turn ?? ''}:${s.round}:${s.pendingDraw4 ? 'd4' : ''}:${s.colorPickPending ?? ''}:${s.unoPending ?? ''}:${s.turnDrawn}:${s.drawnCardId ?? ''}`;
+    if (phaseKey !== this.botPhaseKey) { this.botPhaseKey = phaseKey; this.botPending.clear(); }
+    const bots = s.players.filter(p => p.isBot && p.connected);
+    if (!bots.length) return;
+    // A bot sitting on 1 card calls UNO at once (faster than a turn
+    // decision — the next player acts within ~1s, so a slow call would
+    // almost always be a foul).
+    for (const b of bots) {
+      if (s.unoPending === b.id) {
+        this.scheduleBot(`uno:${s.round}:${b.id}`, this.botDelay(600, 600), () => this.botCallUno(b));
+      }
+    }
+    // Any other bot may catch a forgotten UNO before the turn moves on.
+    for (const b of bots) {
+      const target = botCatchTarget(s, b);
+      if (target) {
+        this.scheduleBot(`catch:${s.round}:${target}:${b.id}`, this.botDelay(1200, 1800), () => this.botCatch(b));
+      }
+    }
+    // First-card Wild: the first player picks the starting color.
+    if (s.colorPickPending) {
+      const b = bots.find(p => p.id === s.colorPickPending);
+      if (b) this.scheduleBot(`color:${s.round}:${b.id}`, this.botDelay(1000, 1500), () => this.botPickColor(b));
+      return;
+    }
+    const turnBot = bots.find(p => p.id === s.turn);
+    if (!turnBot) return;
+    // A Wild Draw 4 awaits this bot's decision: take 4, or challenge.
+    if (s.pendingDraw4) {
+      this.scheduleBot(`d4:${s.round}:${turnBot.id}`, this.botDelay(1000, 1500), () => this.botDraw4(turnBot));
+      return;
+    }
+    this.scheduleBot(`turn:${s.round}:${turnBot.id}:${s.turnDrawn ? 'drawn' : 'fresh'}`, this.botDelay(1000, 1500), () => this.botTurn(turnBot));
+  }
+
+  /** One bot's turn, run through the same validated logic a human's tap
+   *  goes through. Play a card when one is legal, draw when none is —
+   *  and a drawn card that is playable gets played at once. */
+  private botTurn(b: Player) {
+    const s = this.state;
+    if (s.phase !== 'playing' || s.turn !== b.id || s.pendingDraw4 || s.colorPickPending) return;
+    const pick = botPickCard(s, b);
+    if (pick) {
+      if (playCard(s, b, pick.cardId, pick.color)) this.sync();
+      return;
+    }
+    if (!s.turnDrawn) {
+      // drawCard() advances the turn itself when the drawn card is not
+      // playable; when it IS playable the turn stays and driveBots()
+      // (via the broadcast below) schedules the play-or-pass decision.
+      if (drawCard(s, b) !== null) this.sync();
+      return;
+    }
+    if (passTurn(s, b)) this.sync();
+  }
+  private botPickColor(b: Player) {
+    const s = this.state;
+    if (s.phase !== 'playing' || s.colorPickPending !== b.id) return;
+    if (pickColor(s, b, botChooseColor(b.hand))) this.sync();
+  }
+  private botDraw4(b: Player) {
+    const s = this.state;
+    if (s.phase !== 'playing' || s.turn !== b.id || !s.pendingDraw4) return;
+    if (botShouldChallenge() ? challengeWild4(s, b) : takeDraw4(s, b)) this.sync();
+  }
+  private botCallUno(b: Player) {
+    if (this.state.unoPending !== b.id) return;
+    if (callUno(this.state, b)) this.broadcast();
+  }
+  private botCatch(b: Player) {
+    const s = this.state;
+    const target = botCatchTarget(s, b);
+    if (!target) return;
+    if (catchUno(s, b, target)) this.broadcast();
+  }
+
   /** Broadcast + re-arm the turn timer (the only timer Uno has). */
   private sync() { this.broadcast(); this.armTurnTimer(); }
   private armTurnTimer() {
-    this.clear();
+    if (this.turnTimer) { clearTimeout(this.turnTimer); this.turnTimer = null; }
     const s = this.state;
     if (s.phase !== 'playing' || !s.turnEndsAt) return;
     const ms = Math.max(0, s.turnEndsAt - Date.now());
-    this.later(ms, () => {
+    this.turnTimer = setTimeout(() => {
+      this.turnTimer = null;
       if (this.state.phase !== 'playing') return;
       autoTurn(this.state);
       this.sync();
-    });
+    }, ms);
   }
   addPlayer(id: string, name: string, isHost: boolean, avatar?: string): Player {
     let p = this.state.players.find(x => x.id === id);
@@ -70,7 +181,7 @@ export class HostEngine {
    *  turn deadline lives in the state itself, so the successor engine
    *  simply re-schedules whatever the dead host had pending. */
   resumeTimers() {
-    if (this.state.phase === 'playing') this.armTurnTimer();
+    if (this.state.phase === 'playing') { this.armTurnTimer(); this.driveBots(); }
   }
   /** Stop a superseded engine (its room migrated to a successor host). */
   dispose() { this.clear(); }
@@ -110,6 +221,18 @@ export class HostEngine {
         this.lastChat.set(player.id, now);
         const text = String(msg.text ?? '').replace(/[<>]/g, '').trim().slice(0, 300);
         if (text) { s.chat.push({ fromId: player.id, fromName: player.name, text, ts: now }); this.broadcast(); }
+        break;
+      }
+      // Lobby setup (host only): bots fill the table when humans are
+      // short — they count toward the minimum player count.
+      case 'addBot': {
+        if (!player.isHost || s.phase !== 'lobby') break;
+        if (addBot(s)) this.broadcast();
+        break;
+      }
+      case 'removeBot': {
+        if (!player.isHost || s.phase !== 'lobby' || !msg.targetId) break;
+        if (removeBot(s, msg.targetId)) this.broadcast();
         break;
       }
       case 'kick': {
