@@ -38,6 +38,17 @@ function SpyIcon({ size = 44 }: { size?: number }) {
     </svg>
   );
 }
+/** Love Letter = a sealed envelope. Flat line icon, readable at 44px. */
+function LetterIcon({ size = 44 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden>
+      <rect x="12" y="26" width="76" height="52" rx="8" fill="#FFF3CF" stroke="#2B2016" strokeWidth="3" />
+      <path d="M14 30 L50 58 L86 30" fill="none" stroke="#2B2016" strokeWidth="3" strokeLinejoin="round" />
+      <circle cx="50" cy="56" r="11" fill="#D63A6B" stroke="#2B2016" strokeWidth="3" />
+      <path d="M50 61 C46 58 44 55 44 52 C44 49 47 48 50 50 C53 48 56 49 56 52 C56 55 54 58 50 61 Z" fill="#FFF3CF" />
+    </svg>
+  );
+}
 
 export default function Hub() {
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('ct_lang') as Lang) || 'vi');
@@ -74,6 +85,12 @@ export default function Hub() {
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#14142B] border-2 border-[#2B2016] flex-none"><SpyIcon size={44} /></span>,
       bannerIcon: <SpyIcon size={72} />,
     },
+    {
+      id: 'love-letter', name: d.loveName, tag: d.loveTag, tagWide: d.loveTagWide,
+      color: '#D63A6B', min: 2, max: 4, minsMobile: 20, minsWide: 20,
+      icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#F5E9C8] border-2 border-[#2B2016] flex-none"><LetterIcon size={44} /></span>,
+      bannerIcon: <LetterIcon size={72} />,
+    },
   ];
   const soon: { name: string; tag: string; min: number; max: number; mins: number; icon: React.ReactNode }[] = [];
   return (
@@ -98,7 +115,7 @@ export default function Hub() {
           </p>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mt-4 sm:mt-5">
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-2.5 mt-4 sm:mt-5">
           {live.map((g, gi) => (
             <a key={g.id} href={playUrl(g.id)} className="col-span-2 lg:col-span-1 card-cream !rounded-[28px] overflow-hidden flex flex-col no-underline anim-enter lift" style={{ animationDelay: `${gi * 70}ms` }}>
               {/* mobile: thin color strip; laptop: tall banner with icon + pill */}

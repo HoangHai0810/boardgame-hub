@@ -9,7 +9,8 @@ A multi-boardgame platform that runs in the browser — no install, works on mob
 - 🐺 **Ma Sói (Werewolf)** — LIVE. Classic Werewolf for **6–12 players**: wolves hunt at night, the village votes by day (see below).
 - 🃏 **Uno** — LIVE. Classic Uno for **2–10 players** (see below).
 - 🐱 **Mèo Nổ (Exploding Kittens)** — LIVE. Exploding Kittens for **2–5 players** (see below).
-- 🕵️ **Ai là Gián Điệp? (Who's the Spy?)** — coming soon.
+- 🕵️ **Ai là Gián Điệp? (Who's the Spy?)** — LIVE. Spyfall for **3–8 players** (see below).
+- 💌 **Love Letter** — LIVE. Classic Love Letter for **2–4 players** (see below).
 
 ## Layout
 - `client/src/platform/` — the shell: hub (`Hub.tsx`), game registry (`games.ts`), routing (`PlatformApp.tsx`, `?game=<id>`).
@@ -17,11 +18,15 @@ A multi-boardgame platform that runs in the browser — no install, works on mob
 - `client/src/games/ma-soi/` — the Ma Sói game (UI, engine host, i18n, wolf avatars, bots).
 - `client/src/games/uno/` — the Uno game (UI, engine host, i18n).
 - `client/src/games/meo-no/` — the Mèo Nổ game (UI, engine host, i18n, cat avatars).
+- `client/src/games/gian-diep/` — the Ai là Gián Điệp? game (UI, engine host, i18n).
+- `client/src/games/love-letter/` — the Love Letter game (UI, engine host, i18n).
 - `client/src/transport/` — the shared multiplayer transport (MQTT default, PeerJS, Socket.IO), voice and sound.
 - `games/cheese-thief/logic.ts` — the Cheese Thief rules engine, shared by the browser host and the dedicated server.
 - `games/ma-soi/logic.ts` — the Ma Sói rules engine (browser-hosted; the dedicated server still runs Cheese Thief only for now — Ma Sói rooms opened with `?server=` get `GAME_NOT_SUPPORTED`).
 - `games/uno/logic.ts` — the Uno rules engine (browser-hosted; same `?server=` limitation as Ma Sói).
 - `games/meo-no/logic.ts` — the Mèo Nổ rules engine (browser-hosted; same `?server=` limitation as Ma Sói/Uno).
+- `games/gian-diep/logic.ts` — the Ai là Gián Điệp? rules engine (browser-hosted; same `?server=` limitation as Ma Sói/Uno).
+- `games/love-letter/logic.ts` — the Love Letter rules engine (browser-hosted; same `?server=` limitation as Ma Sói/Uno).
 - `server/` — Socket.IO server, one process for all games; rooms are namespaced `(game, code)`.
 
 Adding a game = one entry in `client/src/platform/games.ts` + its component (and, for server mode, an engine in `games/<id>/` + an id in the server's `GAME_IDS` set). Rooms never collide across games: MQTT/voice topics live under `ct1/<game>/<code>/`, PeerJS ids under `ct-<game>-v1-`.
@@ -72,6 +77,14 @@ Adding a game = one entry in `client/src/platform/games.ts` + its component (and
 - **Lobby toggles** (host): allow Nope (default on), show everyone's card counts (default on), 30 s turn limit (default **off** — a forgotten turn still auto-draws, and a forgotten defuse/reinsert/favor decision resolves to a safe default after 60 s). No bots in v1 — the design has no bot button.
 - **Win:** the last player standing wins the round; the results screen ranks survivors first, then the exploded by turn of explosion. The laptop table has an event feed ("Diễn biến") beside the chat. Chat is open in all phases.
 
+## Love Letter — rules & flow
+- **Classic Love Letter** (AEG 2012, 16 cards, 2–4 players). Guard×5 (1), Priest×2 (2), Baron×2 (3), Handmaid×2 (4), Prince×2 (5), King×1 (6), Countess×1 (7), Princess×1 (8). Card names stay in English (the original game's names); UI and effect text are bilingual.
+- **Setup each round:** shuffle, remove 1 card face-down (the burn card — only used if a Prince must draw when the deck is empty); with 2 players also remove 3 cards face-up for everyone to see. Deal 1 card each.
+- **Turn:** draw 1 (automatic at turn start — you hold 2), play 1 and resolve its effect. Guard guesses a hand (never the Guard) — right and the target is out. Priest secretly peeks at a hand (the peek stays valid until the target plays that very card). Baron secretly compares hands — lower is out, tie does nothing. Handmaid protects until the start of your next turn. Prince makes a player (even yourself) discard and redraw — discarding the Princess knocks them out, and with an empty deck they draw the burn card. King trades hands. Countess held with the King or Prince must be played. Playing or discarding the Princess knocks you out at once.
+- **Targeting:** a card that needs another player cannot target an out or Handmaid-protected player (Prince may target yourself); with all others protected, Guard/Priest/Baron/King are played with no effect and Prince must target yourself.
+- **Round end:** one player left wins; or the deck runs out — highest hand wins, ties broken by discard-pile total, a full tie is shared (each tied player gains a token). Round winner gains 1 ❤ and goes first next round.
+- **Win the game:** first to the token target — 2 players 7 ❤, 3 players 5 ❤, 4 players 4 ❤ (quick mode: 3 ❤ for everyone). Turn timer 30/60/90 s (host picks, default 60 s) — a timed-out turn plays a random legal card and resolves its effect with a random valid target, never a silent stall. No bots in v1.
+
 ## Session & social features
 - 🏆 **Session scoreboard** — rounds won per player in this room, leader crowned; plus your **personal record** (W/L split by dealt role).
 - 🌙 **Night recap** — after each round, the results screen replays the night hour by hour (who woke, the steal, witnesses, inspections, recruitments). It is only revealed at results; mid-game state never contains it.
@@ -104,6 +117,8 @@ Other adaptations vs. the physical game: fixed timers instead of a narrator (nig
 - `tests/ma-soi.logic.test.mjs` — 26 rules tests for Ma Sói (role tables 6–12p, role-config overrides/clamps, wolf majority/tie, seer peek rules, guardian repeat rule, witch potions, night resolution incl. both saves and a hunter shot surviving `resolveNight` into the dawn announcement, hunter shot, vote tie, win checks, default votes, public/private secrecy — roles stay hidden until results). `tests/ma-soi.bots.test.mjs` — 11 tests for the bot decisions (wolf pack picks, seer/guardian/witch/hunter/vote — incl. a wolf bot never copying a pack vote that targets itself). `tests/ma-soi.vote-probe.mjs` — fake-clock probe driving the real HostEngine + bots through full games: every living player (human/bot, wolf/villager) gets a genuine vote in every round, before the timer. `tests/ma-soi.win-probe.mjs` — fake-clock probe, 200 full 12-player games: the winner at results always matches who is actually alive (wolves win ⇒ ≥1 wolf alive, villagers win ⇒ 0 wolves alive); `finishGame` re-derives the winner from the live board. Browser checks: `check/verify-ma-soi.mjs` (12 checks — full 6-player round incl. wolf chat + pick lock, in real Chromium over a local aedes broker), `check/verify-ma-soi-bots.mjs` (7 checks — 1 human + 5 bots finish a full game), `check/join-hop.mjs` (5 checks — the guest races all brokers in parallel and joins on the host's in ~1–2s; a nonexistent room shows the host-unreachable message in ~12s) and `check/visual36.mjs` (30 checks — hub with three live games, Ma Sói landing/lobby, Uno landing/lobby/table/results, all screens fitted to one viewport).
 - `tests/uno.logic.test.mjs` — 23 rules tests for Uno (deck composition, matching, skip/reverse/draw2, wild draw 4 + challenge both ways, UNO call/catch/settle, draw-then-play-or-pass, reshuffle, win + points). Browser check: `check/verify-uno.mjs` (6 checks — 4 players play a full game to results over a local aedes broker).
 - `tests/meo-no.logic.test.mjs` — 25 rules tests for Mèo Nổ (deck composition, deal incl. 1 Defuse each, skip/attack debt + stacking, shuffle, peek, favor give, Nope chain both parities + who may nope, defuse + 5 reinsert positions, explosion + elimination, last-player-standing win, auto defaults, hand-count hiding). Browser check: `check/verify-meo-no.mjs` (hub 4 live + 1 coming-soon, full 4-player game to results with defuse + Nope seen, all screens fitted to one viewport).
+- `tests/gian-diep.logic.test.mjs` — 19 rules tests for Ai là Gián Điệp? (deal with exactly one spy, question chain, accusation once per player per round, unanimous vs split votes, clock pause/resume, spy guess right/wrong, timer-end rotation, scoring table, next dealer = previous spy). Browser check: `check/verify-gian-diep.mjs` (19 checks — hub 5 live cards, full 3-round session to results with a unanimous spy catch, a correct spy guess and an innocent convicted, all screens fitted to one viewport).
+- `tests/love-letter.logic.test.mjs` — 25 rules tests for Love Letter (deck composition, setup incl. 2-player face-up discards, Countess forced play, Guard hit/miss + cannot name Guard, Priest peek privacy + staleness, Baron win/lose/tie, Handmaid protection window, Prince self/other + Princess out + empty-deck burn-card draw, King trade, Princess played = out, no-target fizzle, last-standing / showdown / discard-tiebreak / full-tie round ends, token targets 7/5/4 + quick 3, auto-turn defaults, public/private secrecy). Browser check: `check/verify-love-letter.mjs` (27 checks in the final run — hub 6 live cards, full 5-round quick-mode session to results with a Guard hit, a Priest peek and a Prince-on-Princess elimination observed, all screens fitted to one viewport).
 - QA probe — 33 checks (two simultaneous rooms: an 8-player round with leakage/unauthorized-action assertions, host-kick validation, the discussion-length option, disconnect-during-voting). Real-browser self-plays (Playwright) drive complete rounds over both the MQTT and Socket.IO transports, including the scoreboard, night recap, personal record and share-summary flows. The 10-cycle improvement loop that shipped v14–v23 is documented under `loop/` (one CYCLE file + one implementation prompt per cycle).
 
 ## Tech
