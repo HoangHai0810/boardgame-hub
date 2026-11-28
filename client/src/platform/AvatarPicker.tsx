@@ -30,7 +30,7 @@ export default function AvatarPicker({ lang, onClose }: { lang: Lang; onClose: (
             <span className="inline-block rounded-full border-4 border-[#FFB020] overflow-hidden anim-pop" style={{ background: bg }}>
               <img src={avatarSrc(animal)} alt={picked.vi} width={150} height={150} className="block" style={{ width: 150, height: 150 }} draggable={false} />
             </span>
-            <input className="inp w-full max-w-[280px] mx-auto block px-4 py-3 font-bold mt-4 text-center text-[#2B2016]" placeholder={d.yourName}
+            <input className="w-full max-w-[280px] mx-auto block px-4 py-3 font-bold mt-4 text-center bg-[#23233F] border-2 border-[#3D3D63] rounded-2xl text-[#FFF3CF] placeholder:text-[#7C83B8]" placeholder={d.yourName}
               value={name} maxLength={20} onChange={e => setName(e.target.value)} />
             <p className="text-[#B9BCE0] font-bold text-sm mt-2 leading-snug">{d.avatarHint}</p>
             <div className="disp font-extrabold tracking-[0.18em] text-[11px] text-[#FFB020] mt-4">{d.avatarBg}</div>
@@ -41,7 +41,7 @@ export default function AvatarPicker({ lang, onClose }: { lang: Lang; onClose: (
                   style={{ background: c }} />
               ))}
             </div>
-            <button className="disp px-5 py-3 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] text-lg w-full max-w-[280px] mt-5" onClick={save}>💾 {d.saveAvatar}</button>
+            <button className="disp px-5 py-3 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] text-lg w-full max-w-[280px] mt-5" onClick={save}>{d.saveAvatar}</button>
           </div>
           <div className="mt-6 lg:mt-0">
             <h3 className="disp font-extrabold text-xl text-center lg:text-left">{d.chooseAnimal}</h3>

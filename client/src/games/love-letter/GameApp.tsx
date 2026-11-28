@@ -56,7 +56,7 @@ const CARD_EFFECTS = (d: any): Record<CardKind, string> => ({
  *  values, names and counts are the 2019 edition, not the design's
  *  2012 numbering. Layout: art fills the card, value badge top-left,
  *  name + effect in a band at the bottom (the design's card layout). */
-function LLCardFace({ card, d, size = 'md' }: { card: Card; d: any; size?: 'sm' | 'md' | 'lg' }) {
+function LLCardFace({ card, d, size = 'md', hideEffect = false }: { card: Card; d: any; size?: 'sm' | 'md' | 'lg'; hideEffect?: boolean }) {
   const box = size === 'lg' ? 'w-[92px] h-[134px]' : size === 'sm' ? 'w-[46px] h-[66px]' : 'w-[76px] h-[112px]';
   const val = size === 'sm' ? 'text-sm w-5 h-5' : size === 'lg' ? 'text-lg w-7 h-7' : 'text-base w-6 h-6';
   const nm = size === 'sm' ? 'hidden' : size === 'lg' ? 'text-[11px]' : 'text-[9px]';
@@ -68,7 +68,7 @@ function LLCardFace({ card, d, size = 'md' }: { card: Card; d: any; size?: 'sm' 
       {size !== 'sm' && (
         <span className="relative px-1 pt-1 pb-1.5">
           <span className={`block disp font-extrabold ${nm} leading-none text-white drop-shadow-[0_1px_0_rgba(0,0,0,0.35)] uppercase text-center truncate`}>{CARD_NAMES[card.kind]}</span>
-          <span className="block mx-0.5 mt-1 rounded-md bg-white/95 px-1 py-0.5 text-[8px] leading-[1.15] font-bold text-[#2B2016] text-center line-clamp-2">{eff}</span>
+          {!hideEffect && <span className="block mx-0.5 mt-1 rounded-md bg-white/95 px-1 py-0.5 text-[8px] leading-[1.15] font-bold text-[#2B2016] text-center line-clamp-2">{eff}</span>}
         </span>
       )}
     </span>
@@ -146,6 +146,16 @@ export default function LoveLetterApp() {
   const [chatSheet, setChatSheet] = useState(false);
   const [myRecord, setMyRecord] = useState<{ w: number; l: number; tokens: number }>({ w: 0, l: 0, tokens: 0 });
   const [shareCopied, setShareCopied] = useState(false);
+  // Round-end hold (like Uno's results hold): when a round ends, keep
+  // the table visible ~2.5s so the final play/elimination is seen
+  // before the round-end screen jumps in.
+  const [roundEndHold, setRoundEndHold] = useState(false);
+  useEffect(() => {
+    if (pub?.phase !== 'roundEnd') return;
+    setRoundEndHold(true);
+    const t = setTimeout(() => setRoundEndHold(false), 2500);
+    return () => clearTimeout(t);
+  }, [pub?.phase, pub?.round]);
   // Target/guess picker for the open card effect (mine only).
   const [pickOpen, setPickOpen] = useState(false);
   // Chancellor keep-one picker (mine only).
@@ -486,7 +496,7 @@ export default function LoveLetterApp() {
   if (!joined) {
     return (
       <div className="min-h-dvh bg-[#14142B] text-[#2B2016]">
-        <div className="max-w-md lg:max-w-lg mx-auto">
+        <div className="max-w-md lg:max-w-5xl mx-auto">
           <div className="flex items-center gap-2 px-3 pt-3">
             <button className="disp font-extrabold text-[#FFF3CF] text-sm bg-[#23233F] border-2 border-[#3D3D63] rounded-full px-3 py-2.5 push" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
             <span className="flex-1" />
@@ -496,19 +506,22 @@ export default function LoveLetterApp() {
               <button className={`px-2.5 py-1 ${lang === 'en' ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#23233F] text-[#B9BCE0]'}`} onClick={() => { localStorage.setItem('ct_lang', 'en'); setLang('en'); }}>EN</button>
             </span>
           </div>
+          <div className="lg:grid lg:grid-cols-2 lg:gap-8 lg:items-center lg:px-6">
+            <div>
           <div className="text-center px-4 pt-6">
             <p className="disp text-[#FFB020] font-extrabold tracking-[0.22em] text-[11px]">{d.kicker}</p>
             <h1 className="disp text-[#FFF3CF] font-extrabold text-5xl leading-none mt-2">{d.title}</h1>
             <p className="text-[#B9BCE0] font-bold mt-2 leading-snug">{d.subtitle}</p>
           </div>
           <div className="flex justify-center items-end mt-5 -space-x-3">
-            <span className="rotate-[-18deg] translate-y-2"><LLCardFace card={{ id: 'fan-spy', kind: 'spy', value: 0 }} d={d} size="md" /></span>
-            <span className="rotate-[-9deg] translate-y-1"><LLCardFace card={{ id: 'fan-guard', kind: 'guard', value: 1 }} d={d} size="md" /></span>
-            <span className="z-10 -translate-y-1"><LLCardFace card={{ id: 'fan-princess', kind: 'princess', value: 9 }} d={d} size="md" /></span>
-            <span className="rotate-[9deg] translate-y-1"><LLCardFace card={{ id: 'fan-chancellor', kind: 'chancellor', value: 6 }} d={d} size="md" /></span>
-            <span className="rotate-[18deg] translate-y-2"><LLCardFace card={{ id: 'fan-king', kind: 'king', value: 7 }} d={d} size="md" /></span>
+            <span className="rotate-[-18deg] translate-y-2"><LLCardFace card={{ id: 'fan-spy', kind: 'spy', value: 0 }} d={d} size="md" hideEffect /></span>
+            <span className="rotate-[-9deg] translate-y-1"><LLCardFace card={{ id: 'fan-guard', kind: 'guard', value: 1 }} d={d} size="md" hideEffect /></span>
+            <span className="z-10 -translate-y-1"><LLCardFace card={{ id: 'fan-princess', kind: 'princess', value: 9 }} d={d} size="md" hideEffect /></span>
+            <span className="rotate-[9deg] translate-y-1"><LLCardFace card={{ id: 'fan-chancellor', kind: 'chancellor', value: 6 }} d={d} size="md" hideEffect /></span>
+            <span className="rotate-[18deg] translate-y-2"><LLCardFace card={{ id: 'fan-king', kind: 'king', value: 7 }} d={d} size="md" hideEffect /></span>
           </div>
-          <div className="bg-[#FFF3CF] rounded-t-[28px] px-4 pt-4 pb-6 mt-5">
+            </div>
+          <div className="bg-[#FFF3CF] rounded-t-[28px] lg:rounded-[28px] px-4 pt-4 pb-6 mt-5 lg:mt-0">
             <label className="disp font-extrabold text-sm">{d.name}</label>
             <input className="inp w-full px-4 py-3 font-bold mt-1" placeholder="VD: An"
               value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
@@ -534,6 +547,7 @@ export default function LoveLetterApp() {
             <p className="text-center mt-3">
               <button className="font-bold text-sm text-[#8A7B63] underline" onClick={() => setShowHelp(true)}>{d.viewCards}</button>
             </p>
+          </div>
           </div>
         {showHelp && <HelpModal d={d} onClose={() => setShowHelp(false)} />}
         </div>
@@ -593,9 +607,9 @@ export default function LoveLetterApp() {
                           className="flex-none text-xs bg-red-500/20 text-red-300 font-bold rounded-full px-2 py-1 cursor-pointer hover:bg-red-500/30">✖ {p.isBot ? d.removeBot : d.kick}</span>)}
                     </div>
                   ))}
-                  {Array.from({ length: Math.max(0, 6 - pub!.players.length) }).map((_, i) => (
-                    <div key={'empty-' + i} className="rounded-2xl border-2 border-dashed border-[#C9BFA5] p-2 text-center text-[#8A7B63] font-bold text-xs hidden lg:flex items-center justify-center min-h-[40px]">{lang === 'vi' ? 'Đang chờ…' : 'Waiting…'}</div>
-                  ))}
+                  {6 - pub!.players.length > 0 && (
+                    <div className="rounded-2xl border-2 border-dashed border-[#C9BFA5] px-3 py-1.5 text-center text-[#8A7B63] font-bold text-xs hidden lg:block">{lang === 'vi' ? `Còn ${6 - pub!.players.length} chỗ trống` : `${6 - pub!.players.length} seats left`}</div>
+                  )}
                 </div>
                 {joined.isHost && <p className="font-bold text-[#8A7B63] text-sm hidden lg:block">{d.kickHint}</p>}
                 {joined.isHost && pub!.players.length < MAX_PLAYERS && (
@@ -652,7 +666,7 @@ export default function LoveLetterApp() {
           </div>
         )}
 
-        {phase === 'playing' && pub && (
+        {(phase === 'playing' || (phase === 'roundEnd' && roundEndHold)) && pub && (
           <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-4">
             <div className="min-w-0">
               {/* spectating banner — labelled, with a way out (v50) */}
@@ -687,7 +701,7 @@ export default function LoveLetterApp() {
               <div className={`mt-2 rounded-[28px] border-[3px] border-[#2B2016] hard p-3 ${myTurn ? 'anim-turn-glow' : ''}`} style={{ background: '#7C2D4E' }}>
                 <div className="flex items-center justify-center gap-2 flex-wrap">
                   <span className="disp font-extrabold text-[#FFF3CF] text-lg">
-                    {myTurn ? d.yourTurn : d.turnOf(turnPlayer?.name ?? '')}
+                    {roundEndHold ? d.roundWinner(playerName(pub.roundWinners[0])) : myTurn ? d.yourTurn : d.turnOf(turnPlayer?.name ?? '')}
                   </span>
                   <TimerPill endsAt={pub.turnEndsAt} dark />
                   <span className="hidden sm:inline font-bold text-[#F3C6D8] text-xs">{d.turnTimeout}</span>
@@ -697,11 +711,6 @@ export default function LoveLetterApp() {
                     <LLCardBack size="md" />
                     <span className="block font-extrabold text-[#FFF3CF] text-sm mt-1.5">{d.drawPile} · {pub.deckCount}</span>
                   </button>
-                  <div className="text-center">
-                    {pub.setAsidePresent ? <LLCardBack size="md" /> : <span className="inline-flex w-[76px] h-[112px] items-center justify-center rounded-xl border-[3px] border-dashed border-[#F3C6D8]/60 text-[#F3C6D8] font-bold text-xs text-center px-2">—</span>}
-                    <span className="block font-extrabold text-[#FFF3CF] text-sm mt-1.5">{d.setAside}</span>
-                    <span className="block font-bold text-[#F3C6D8] text-xs mt-0.5">{pub.setAsidePresent ? '' : '✓'}</span>
-                  </div>
                 </div>
                 {pub.faceUpRemoved.length > 0 && (
                   <div className="mt-2 text-center">
@@ -766,7 +775,7 @@ export default function LoveLetterApp() {
           </div>
         )}
 
-        {phase === 'roundEnd' && pub && (
+        {phase === 'roundEnd' && !roundEndHold && pub && (
           <div className="max-w-md lg:max-w-lg mx-auto text-center">
             <p className="disp text-[#FFB020] font-extrabold tracking-[0.22em] text-xs">{d.roundEndTitle.toUpperCase()} · {lang === 'vi' ? `Vòng ${pub.round}` : `Round ${pub.round}`}</p>
             <h2 className="disp font-extrabold text-3xl mt-2">
@@ -781,7 +790,7 @@ export default function LoveLetterApp() {
             {pub.roundResult?.spyFavorId && (
               <p className="text-[#FFB020] font-bold mt-1">🕵️ {d.spyFavor(playerName(pub.roundResult.spyFavorId))}</p>
             )}
-            {pub.roundResult?.hands && pub.roundWinners[0] && pub.roundResult.hands[pub.roundWinners[0]] && (
+            {pub.roundResult?.hands && pub.roundWinners[0] && pub.roundResult.hands[pub.roundWinners[0]] && Object.keys(pub.roundResult.hands).length === 1 && (
               <div className="mt-4">
                 <div className="disp font-extrabold text-[11px] tracking-[0.18em] text-[#FFB020]">{d.finalHand}</div>
                 <div className="flex justify-center mt-2">
@@ -790,7 +799,7 @@ export default function LoveLetterApp() {
                 <div className="font-extrabold mt-2">{playerName(pub.roundWinners[0])}</div>
               </div>
             )}
-            {pub.roundResult?.hands && (
+            {pub.roundResult?.hands && Object.keys(pub.roundResult.hands).length > 1 && (
               <div className="card-cream !rounded-[28px] p-4 mt-4 text-left text-[#2B2016]">
                 <div className="disp font-extrabold text-lg">{d.revealedHands}</div>
                 <div className="flex gap-3 mt-2 flex-wrap justify-center">
@@ -862,8 +871,8 @@ export default function LoveLetterApp() {
         {/* target + guess picker modal (my open effect) */}
         {myPending && myPending.type !== 'chancellor' && pickOpen && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setPickOpen(false)}>
-            <div className={`${CARD} max-w-sm w-full text-center max-h-[85vh] overflow-auto`} onClick={e => e.stopPropagation()}>
-              <div className="disp font-extrabold text-lg">🎯 {d.chooseTarget}</div>
+            <div className={`${CARD} max-w-sm w-full text-center max-h-[calc(100dvh-2rem)] overflow-auto`} onClick={e => e.stopPropagation()}>
+              <div className="disp font-extrabold text-lg">{d.playTitle(CARD_NAMES[myPending.type])}</div>
               <p className="font-bold text-[13px] leading-snug text-[#5C4B33] mt-1">
                 {myPending.type === 'guard' ? `${CARD_NAMES.guard} — ${d.effGuard}`
                   : myPending.type === 'priest' ? `${CARD_NAMES.priest} — ${d.effPriest}`
@@ -871,7 +880,8 @@ export default function LoveLetterApp() {
                   : myPending.type === 'king' ? `${CARD_NAMES.king} — ${d.effKing}`
                   : `${CARD_NAMES.prince} — ${d.effPrince}`}
               </p>
-              <div className="flex flex-col gap-1.5 mt-2 text-left">
+              <div className="disp font-extrabold text-sm mt-2 text-left">1 · {d.chooseTarget}</div>
+              <div className="grid grid-cols-3 gap-1.5 mt-2">
                 {pub!.players.filter(p => p.id !== joined.playerId || validTargets.some(v => v.id === p.id)).map(p => {
                   const isValid = validTargets.some(v => v.id === p.id);
                   const stateText = !p.inRound ? d.out : p.protected ? d.protected : d.discardedCount(p.discardPile.length);
@@ -879,21 +889,19 @@ export default function LoveLetterApp() {
                     <button key={p.id} data-testid="pick-target" data-player-id={p.id}
                       disabled={!isValid}
                       onClick={() => setPickTarget(p.id)}
-                      className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-2xl font-extrabold text-sm push text-left ${pickTarget === p.id ? 'bg-[#FFB020] text-[#2B2016] ring-4 ring-[#FFB020]/50' : 'bg-white text-[#2B2016]'} ${!isValid ? 'opacity-50' : ''}`}>
+                      className={`relative flex flex-col items-center gap-0.5 rounded-2xl px-1.5 py-2 font-extrabold push text-center ${pickTarget === p.id ? 'bg-[#FFB020] text-[#2B2016] ring-4 ring-[#FFB020]/50' : 'bg-white text-[#2B2016]'} ${!isValid ? 'opacity-50' : ''}`}>
                       <PlayerAvatar avatarId={p.avatar} size={32} fallback={<MouseAvatar seed={p.id} size={32} state={p.inRound ? 'awake' : 'dead'} />} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
-                        <span className="block text-xs font-bold text-[#8A7B63] uppercase">{stateText} · 🃏 {p.handCount}</span>
-                      </span>
-                      {pickTarget === p.id && <span className="text-lg">✅</span>}
+                      <span className="w-full truncate text-[12px] leading-tight">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</span>
+                      <span className="text-[10px] font-bold text-[#8A7B63] uppercase leading-tight">{stateText}</span>
+                      {pickTarget === p.id && <span className="absolute -top-1.5 -right-1.5 text-base leading-none">✅</span>}
                     </button>
                   );
                 })}
               </div>
               {myPending.type === 'guard' && (
                 <>
-                  <div className="disp font-extrabold text-base mt-3">{d.chooseGuess}</div>
-                  <div className="grid grid-cols-2 gap-1.5 mt-2 text-left">
+                  <div className="disp font-extrabold text-base mt-2">2 · {d.chooseGuess}</div>
+                  <div className="grid grid-cols-2 gap-1.5 mt-1.5 text-left">
                     {GUESSABLE.map(k => {
                       const remaining = Math.max(0, CARD_COUNT[k]
                         - (pub?.players ?? []).reduce((n, p) => n + p.discardPile.filter(c => c.kind === k).length, 0)
@@ -902,11 +910,11 @@ export default function LoveLetterApp() {
                       return (
                         <button key={k} data-testid="pick-guess" data-card-kind={k}
                           onClick={() => setPickGuess(k)}
-                          className={`flex items-center gap-2 rounded-xl border-[3px] px-2 py-1.5 font-extrabold text-[13px] push ${pickGuess === k ? 'border-[#FFB020] bg-[#FFB020] text-[#2B2016]' : 'border-[#2B2016] text-white'}`}
+                          className={`flex items-center gap-1.5 rounded-xl border-[3px] px-2 py-1 font-extrabold text-xs push ${pickGuess === k ? 'border-[#FFB020] bg-[#FFB020] text-[#2B2016]' : 'border-[#2B2016] text-white'}`}
                           style={{ background: pickGuess === k ? undefined : CARD_COLORS[k] }}>
-                          <span className="w-6 h-6 flex-none rounded-full bg-white/95 text-[#2B2016] flex items-center justify-center font-extrabold text-sm">{CARD_VALUE[k]}</span>
+                          <span className="w-5 h-5 flex-none rounded-full bg-white/95 text-[#2B2016] flex items-center justify-center font-extrabold text-xs">{CARD_VALUE[k]}</span>
                           <span className="flex-1 text-left truncate min-w-0">{CARD_NAMES[k]}</span>
-                          <span className="text-[11px] font-bold opacity-90 flex-none">{d.remaining(remaining)}</span>
+                          <span className="text-[10px] font-bold opacity-90 flex-none">{d.remaining(remaining)}</span>
                           {pickGuess === k && <span className="flex-none">✅</span>}
                         </button>
                       );
@@ -914,8 +922,8 @@ export default function LoveLetterApp() {
                   </div>
                 </>
               )}
-              <div className="flex gap-2 mt-3">
-                <button data-testid="pick-confirm" className={`${BTN} btn-amber flex-1`} disabled={!pickTarget || (myPending.type === 'guard' && !pickGuess)} onClick={doChooseTarget}>{d.confirmTarget}</button>
+              <div className="flex gap-2 mt-2">
+                <button data-testid="pick-confirm" className={`${BTN} btn-amber flex-1`} disabled={!pickTarget || (myPending.type === 'guard' && !pickGuess)} onClick={doChooseTarget}>{myPending.type === 'guard' && pickGuess && pickTarget ? d.confirmGuess(CARD_NAMES[pickGuess], playerName(pickTarget)) : pickTarget ? d.confirmPick(playerName(pickTarget)) : d.confirmTarget}</button>
                 <button className="px-3 py-2 rounded-2xl font-bold text-sm bg-white border-2 border-[#E5DCC0] text-[#8A7B63] push" onClick={() => setPickOpen(false)}>{d.cancelPick}</button>
               </div>
             </div>

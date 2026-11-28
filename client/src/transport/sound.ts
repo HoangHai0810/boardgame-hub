@@ -3,7 +3,7 @@
 // game: all entry points are guarded, and browsers require a user gesture
 // before an AudioContext may start (see ensureCtx / App's pointerdown hook).
 
-export type SfxKind = 'hour' | 'wake' | 'steal' | 'morning' | 'vote' | 'win' | 'lose' | 'pop' | 'night' | 'death';
+export type SfxKind = 'hour' | 'wake' | 'steal' | 'morning' | 'vote' | 'win' | 'lose' | 'pop' | 'night' | 'death' | 'fx';
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -51,6 +51,7 @@ const CUES: Record<SfxKind, () => void> = {
   pop: () => tone(1200, 0.03, 'sine', 0.25),
   night: () => { tone(196, 0.4, 'sine', 0.5, 0, 147); tone(147, 0.5, 'sine', 0.4, 0.25); },
   death: () => { tone(330, 0.2, 'sawtooth', 0.3, 0, 165); tone(165, 0.35, 'sawtooth', 0.25, 0.18); },
+  fx: () => { tone(880, 0.08, 'triangle', 0.6); tone(1318, 0.12, 'triangle', 0.6, 0.07); },
 };
 
 export function sfx(kind: SfxKind, muted: boolean): void {

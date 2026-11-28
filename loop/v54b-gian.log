@@ -1,0 +1,21 @@
+FAIL hub shows 6 live cards live=7
+PASS hub has 0 coming-soon cards soon=0
+PASS gian-diep landing fits one screen 844 vs 844
+PASS room created RZSJW 
+PASS all 4 joined 
+PASS lobby defaults minutes 8 / rounds 5 / roles ON / points ON {"minutes":"8","rounds":"5","roles":"true","points":"true"}
+PASS gian-diep lobby fits one screen 844 vs 844
+PASS guest lobby fits one screen 844 vs 844
+PASS round 1: exactly one spy sees the spy card spy=VC
+PASS questioning starts, dealer asks first 
+PASS gian-diep table fits one screen 844 vs 844
+PASS ask chain dealer -> VB -> VC 
+PASS round 1: unanimous vote catches the spy 
+PASS round 2: one spy again spy=VD
+PASS local secret bar shows a location Bệnh viện
+PASS round 2: spy guesses the location right 
+PASS round 3: innocent convicted, spy wins 
+PASS session results reached 
+PASS gian-diep results fits one screen 844 vs 844
+
+== 18/19 gian-diep checks, exit FAIL

@@ -30,7 +30,20 @@ function botFreeToAct(s: GameState, bot: Player): boolean {
   );
 }
 
-export type BotAction = { cardId: string; targetId?: string };
+export type BotAction = { cardId: string; cardId2?: string; targetId?: string };
+
+/** A matching cat pair in the bot's hand, if any (first variant with 2+). */
+export function botPair(s: GameState, bot: Player): { cardId: string; cardId2: string } | null {
+  const byVariant = new Map<string, string[]>();
+  for (const c of bot.hand) {
+    if (c.kind !== 'cat' || !c.variant) continue;
+    const list = byVariant.get(c.variant) ?? [];
+    list.push(c.id);
+    byVariant.set(c.variant, list);
+  }
+  for (const ids of byVariant.values()) if (ids.length >= 2) return { cardId: ids[0], cardId2: ids[1] };
+  return null;
+}
 
 /** A bot's Favor target: a random living opponent (never itself). */
 export function botFavorTarget(s: GameState, bot: Player, rng: () => number = Math.random): string | null {
@@ -64,6 +77,14 @@ export function botChooseAction(s: GameState, bot: Player, rng: () => number = M
     const skip = playable.find(c => c.kind === 'skip');
     if (skip && rng() < 0.5) return { cardId: skip.id };
     return null;
+  }
+
+  // A matching cat pair steals a random card — the cats' only use, so
+  // bots reach for it about half the time they hold one.
+  const pair = botPair(s, bot);
+  if (pair) {
+    const victim = pick(s.players.filter(p => p.id !== bot.id && p.alive && p.hand.length > 0), rng);
+    if (victim && rng() < 0.5) return { ...pair, targetId: victim.id };
   }
 
   if (rng() >= 0.35) return null;

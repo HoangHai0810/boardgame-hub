@@ -1,0 +1,30 @@
+FAIL hub shows 6 live cards live=7
+PASS hub has 0 coming-soon cards soon=0
+PASS hub lists Love Letter 
+PASS love-letter landing fits one screen 844 vs 844
+PASS room created 5XKVH 
+PASS all 3 joined 
+PASS lobby defaults 60s / quick OFF {"seconds":"60","quick":"false"}
+PASS love-letter lobby fits one screen 844 vs 844
+PASS lobby toggles apply (30s / quick ON) {"seconds":"30","quick":"true"}
+PASS game starts, turn banner shows 
+PASS turn player holds 2 cards turn=VB
+PASS love-letter table fits one screen 844 vs 844
+PASS round 1 ends 
+PASS round 1 end screen fits one screen 844 vs 844
+PASS round 2 ends 
+PASS round 2 end screen fits one screen 844 vs 844
+PASS round 3 ends 
+PASS round 3 end screen fits one screen 844 vs 844
+PASS round 4 ends 
+PASS round 4 end screen fits one screen 844 vs 844
+PASS session reaches results (quick mode, 3 hearts) rounds=4
+PASS target picker worked {"guardHit":true,"peek":true,"princePrincess":false,"showdown":false,"picker":true,"chancellor":true}
+PASS Chancellor keep-one modal observed {"guardHit":true,"peek":true,"princePrincess":false,"showdown":false,"picker":true,"chancellor":true}
+PASS Guard hit observed (known-card guess) {"guardHit":true,"peek":true,"princePrincess":false,"showdown":false,"picker":true,"chancellor":true}
+PASS Priest peek modal observed {"guardHit":true,"peek":true,"princePrincess":false,"showdown":false,"picker":true,"chancellor":true}
+NOTE prince-on-Princess not observed this session (opportunistic)
+NOTE deck-empty showdown not observed this session (opportunistic)
+PASS love-letter results fits one screen 844 vs 844
+
+== 25/26 love-letter checks, exit FAIL

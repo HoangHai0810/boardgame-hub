@@ -1,0 +1,16 @@
+PASS host created a room RWKEJ
+PASS 6 players in lobby 
+PASS role table 6p: 2 sói, 1 tiên tri, 1 bảo vệ, 2 dân 
+PASS all 6 roles dealt (2 wolves) {"An":"guardian","Binh":"seer","Chi":"villager","Dung":"wolf","Ha":"wolf","Khanh":"villager"}
+PASS wolf chat reaches the fellow wolf 
+PASS wolf chat hidden from villagers 
+PASS confirmed pick cannot change 
+PASS night 1: dawn breaks with a death announced 
+POST-VOTE ref: 🐺 | Ma Sói | ? | VI | EN | ← Sảnh game | BÍ MẬT | Vai: BẢO VỆ | Bỏ phiếu loại sói |  | 4/5 người còn sống đã bỏ phiếu |  | 🕐 44s |  | Hết giờ: tự tính phiếu |  | Bỏ phiếu kín, không tự bầu mình. |  | ✓ | An (Bạn) | Đã bỏ phiếu | ✓ | Binh | Đã bỏ phiếu | Chi | Dung | Đang suy nghĩ… | ✓ | Ha | Đã bỏ phiếu | ✓ | Khanh | Đã bỏ phiếu |  | Bạn đã bầu c
+PASS night 2: dawn breaks with a death announced 
+POST-VOTE ref: 🐺 | Ma Sói | ? | VI | EN | ← Sảnh game | BÍ MẬT | Vai: BẢO VỆ | Bỏ phiếu loại sói |  | 2/3 người còn sống đã bỏ phiếu |  | 🕐 45s |  | Hết giờ: tự tính phiếu |  | Bỏ phiếu kín, không tự bầu mình. |  | ✓ | An (Bạn) | Đã bỏ phiếu | ✓ | Binh | Đã bỏ phiếu | Chi | Dung | Ha | Đang suy nghĩ… | Khanh |  | Bạn đã bầu cho Ha. Đang chờ mọi người… |  | Hòa 
+PASS results reached 
+PASS villagers win (both wolves voted out) 
+PASS roles revealed on results 
+
+== 12/12 ma-soi round checks passed

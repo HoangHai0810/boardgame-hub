@@ -1,0 +1,9 @@
+PASS room created 3HZ2Y
+PASS all 4 joined 
+PASS game started 
+PASS cards were played clicks=70 discard 1->66
+NOTE: unoSeen=true challengeSeen=true catchSeen=false
+FAIL results reached 
+FAIL standings shown 
+
+== 4/6 verify-uno checks, exit FAIL

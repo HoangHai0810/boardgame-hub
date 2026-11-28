@@ -54,6 +54,10 @@ export interface GameState {
   drawnCardId: string | null;
   /** Player sitting on 1 card who has not called UNO yet (public — anyone may catch them). */
   unoPending: string | null;
+  /** Player who rang the bell early — on their turn with exactly 2 cards,
+   *  before playing the second-to-last card. Playing down to 1 then
+   *  creates no pending foul; drawing any card voids it. */
+  unoArmed: string | null;
   /** A Wild Draw 4 awaiting the next player's decision (take 4, or challenge). */
   pendingDraw4: { from: string; hadColor: boolean } | null;
   /** First-card Wild: this player must pick the starting color. */
@@ -68,7 +72,7 @@ export function createGame(code: string): GameState {
     roomCode: code, phase: 'lobby', round: 1, players: [],
     deck: [], discard: [], currentColor: 'red', direction: 1,
     turn: null, turnEndsAt: null, turnDrawn: false, drawnCardId: null,
-    unoPending: null, pendingDraw4: null, colorPickPending: null,
+    unoPending: null, unoArmed: null, pendingDraw4: null, colorPickPending: null,
     chat: [], winner: null, roundPoints: 0,
   };
 }
@@ -147,6 +151,9 @@ export function reshuffle(s: GameState, rng: () => number = Math.random): void {
 /** Draw n cards for a player (reshuffling when the deck runs out). */
 export function drawCards(s: GameState, p: Player, n: number, rng: () => number = Math.random): Card[] {
   const got: Card[] = [];
+  // Drawing voids an early UNO call — the pre-call only covers playing
+  // down to 1 card on the same turn.
+  if (s.unoArmed === p.id) s.unoArmed = null;
   for (let i = 0; i < n; i++) {
     if (!s.deck.length) reshuffle(s, rng);
     const c = s.deck.pop();
@@ -163,7 +170,7 @@ export function drawCards(s: GameState, p: Player, n: number, rng: () => number 
 export function deal(s: GameState, rng: () => number = Math.random): void {
   s.deck = shuffle(buildDeck(), rng);
   s.discard = [];
-  s.direction = 1; s.unoPending = null; s.pendingDraw4 = null; s.colorPickPending = null;
+  s.direction = 1; s.unoPending = null; s.unoArmed = null; s.pendingDraw4 = null; s.colorPickPending = null;
   s.turnDrawn = false; s.drawnCardId = null;
   for (const p of s.players) p.hand = [];
   for (let i = 0; i < DEAL_N; i++) for (const p of s.players) { const c = s.deck.pop(); if (c) p.hand.push(c); }
@@ -219,7 +226,7 @@ function finishRound(s: GameState, winner: Player): void {
   for (const p of s.players) if (p.id !== winner.id) for (const c of p.hand) points += cardPoints(c);
   winner.points += points; winner.wins++;
   s.winner = winner.id; s.roundPoints = points; s.phase = 'results';
-  s.turn = null; s.turnEndsAt = null; s.pendingDraw4 = null; s.unoPending = null;
+  s.turn = null; s.turnEndsAt = null; s.pendingDraw4 = null; s.unoPending = null; s.unoArmed = null;
 }
 
 /* ---------- turn actions (all validated; each returns whether it landed) ---------- */
@@ -242,7 +249,7 @@ export function playCard(s: GameState, player: Player, cardId: string, color?: C
   s.currentColor = card.kind === 'wild' || card.kind === 'wild4' ? color! : (card.color as Color);
   s.turnDrawn = false; s.drawnCardId = null;
   if (player.hand.length === 0) { finishRound(s, player); return true; }
-  if (player.hand.length === 1) s.unoPending = player.id;
+  if (player.hand.length === 1) { s.unoPending = s.unoArmed === player.id ? null : player.id; s.unoArmed = null; }
   if (card.kind === 'skip') {
     advanceTurn(s, 2);
   } else if (card.kind === 'reverse') {
@@ -300,9 +307,15 @@ export function passTurn(s: GameState, player: Player): boolean {
 }
 
 export function callUno(s: GameState, player: Player): boolean {
-  if (s.unoPending !== player.id) return false;
-  s.unoPending = null;
-  return true;
+  if (s.unoPending === player.id) { s.unoPending = null; return true; }
+  // Pre-call: on your turn with exactly 2 cards, ring the bell BEFORE
+  // playing your second-to-last card — playing down to 1 then creates
+  // no pending foul.
+  if (s.phase === 'playing' && s.turn === player.id && player.hand.length === 2) {
+    s.unoArmed = player.id;
+    return true;
+  }
+  return false;
 }
 
 /** Catch a player sitting on 1 card without calling UNO: they draw 2. */
@@ -388,6 +401,7 @@ export function publicState(s: GameState) {
     topCard: topCard(s), deckCount: s.deck.length, discardCount: s.discard.length,
     turnEndsAt: s.turnEndsAt, turnDrawn: s.turnDrawn,
     unoPending: s.unoPending,
+    unoArmed: s.unoArmed,
     // hadColor stays private — only the fact of the challenge is public.
     pendingDraw4: s.pendingDraw4 ? { from: s.pendingDraw4.from, count: 4 } : null,
     colorPickPending: s.colorPickPending,

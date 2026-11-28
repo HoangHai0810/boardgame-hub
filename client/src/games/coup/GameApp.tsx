@@ -617,7 +617,7 @@ export default function CoupApp() {
   if (!joined) {
     return (
       <div className={`min-h-dvh ${PAGE_BG} text-[#2B2016]`} style={{ background: 'radial-gradient(120% 55% at 50% 0%, #3B1D7A 0%, #1E0A3C 62%)' }}>
-        <div className="max-w-md lg:max-w-lg mx-auto">
+        <div className="max-w-md lg:max-w-5xl mx-auto">
           <div className="flex items-center gap-2 px-3 pt-3">
             <button className="disp font-extrabold text-[#FFF3CF] text-sm bg-[#2A1B4E] border-2 border-[#4C3A8A] rounded-full px-3 py-2.5 push" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
             <span className="flex-1" />
@@ -627,6 +627,8 @@ export default function CoupApp() {
               <button className={`px-2.5 py-1 ${lang === 'en' ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#2A1B4E] text-[#C4B5FD]'}`} onClick={() => { localStorage.setItem('ct_lang', 'en'); setLang('en'); }}>EN</button>
             </span>
           </div>
+          <div className="lg:grid lg:grid-cols-2 lg:gap-8 lg:items-center lg:px-6">
+            <div>
           <div className="text-center px-4 pt-6">
             <p className="disp text-[#FFB020] font-extrabold tracking-[0.22em] text-[11px]">{d.kicker}</p>
             <h1 className="disp text-[#FFF3CF] font-extrabold text-5xl leading-none mt-2">{d.title}</h1>
@@ -639,7 +641,8 @@ export default function CoupApp() {
             <span className="rotate-[9deg] translate-y-1"><CoupCardFace card={{ id: 'fan-ambassador', kind: 'ambassador' }} d={d} size="md" /></span>
             <span className="rotate-[18deg] translate-y-2"><CoupCardFace card={{ id: 'fan-contessa', kind: 'contessa' }} d={d} size="md" /></span>
           </div>
-          <div className="bg-[#2A1B4E] border-[3px] border-b-0 border-[#4C3A8A] rounded-t-[28px] px-4 pt-4 pb-6 mt-5">
+            </div>
+          <div className="bg-[#2A1B4E] border-[3px] border-b-0 lg:border-b-[3px] border-[#4C3A8A] rounded-t-[28px] lg:rounded-[28px] px-4 pt-4 pb-6 mt-5 lg:mt-0">
             <label className={`disp font-extrabold text-sm ${TXT}`}>{d.name}</label>
             <input className={`${INP_DARK} w-full px-4 py-3 font-bold mt-1`} placeholder="VD: An"
               value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
@@ -665,6 +668,7 @@ export default function CoupApp() {
             <p className="text-center mt-3">
               <button className={`font-bold text-sm ${TXT_MUTED} underline`} onClick={() => setShowHelp(true)}>{d.viewCards}</button>
             </p>
+          </div>
           </div>
         {showHelp && <HelpModal d={d} onClose={() => setShowHelp(false)} />}
         </div>
@@ -723,9 +727,9 @@ export default function CoupApp() {
                           className="flex-none text-xs bg-red-500/20 text-red-300 font-bold rounded-full px-2 py-1 cursor-pointer hover:bg-red-500/30">✖ {d.kick}</span>)}
                     </div>
                   ))}
-                  {Array.from({ length: Math.max(0, 6 - pub!.players.length) }).map((_, i) => (
-                    <div key={'empty-' + i} className={`rounded-2xl border-2 border-dashed border-[#4C3A8A] p-2 text-center ${TXT_FAINT} font-bold text-xs hidden lg:flex items-center justify-center min-h-[40px]`}>{lang === 'vi' ? 'Đang chờ…' : 'Waiting…'}</div>
-                  ))}
+                  {6 - pub!.players.length > 0 && (
+                    <div className={`rounded-2xl border-2 border-dashed border-[#4C3A8A] px-3 py-1.5 text-center ${TXT_FAINT} font-bold text-xs hidden lg:block`}>{lang === 'vi' ? `Còn ${6 - pub!.players.length} chỗ trống` : `${6 - pub!.players.length} seats left`}</div>
+                  )}
                 </div>
                 {joined.isHost && <p className={`font-bold ${TXT_MUTED} text-sm hidden lg:block`}>{d.kickHint}</p>}
                 <button className={`${BTN} bg-[#1E0A3C] text-[#F87171] border-2 border-[#4C3A8A] w-full mt-2 hidden lg:block`} onClick={() => { try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } getNet().leave(); setJoined(null); setPub(null); setPriv(null); }}>🚪 {d.leave}</button>
@@ -1055,9 +1059,12 @@ export default function CoupApp() {
                 ))}
               </div>
               <div className="flex gap-2 mt-3">
-                <button data-testid="pick-confirm" className={`${BTN} btn-amber flex-1`} disabled={!pickTarget} onClick={() => { if (pickTarget) doDeclare(actionPick, pickTarget); }}>{d.confirmTarget}</button>
+                <button data-testid="pick-confirm" className={`${BTN} btn-amber flex-1`} disabled={!pickTarget} onClick={() => { if (pickTarget) doDeclare(actionPick, pickTarget); }}>{pickTarget ? d.confirmTargetNamed(ACTION_NAMES(d)[actionPick], playerName(pickTarget)) : d.confirmTarget}</button>
                 <button className={`px-3 py-2 rounded-2xl font-bold text-sm bg-[#1E0A3C] border-2 border-[#4C3A8A] ${TXT_MUTED} push`} onClick={() => setActionPick(null)}>{d.cancelPick}</button>
               </div>
+              {actionPick === 'coup' && pickTarget && (
+                <p className={`font-bold text-[13px] ${TXT_MUTED} mt-2`}>{d.coupAftermath(Math.max(0, (pub!.players.find(p => p.id === joined.playerId)?.coins ?? 0) - 7), playerName(pickTarget))}</p>
+              )}
             </div>
           </div>
         )}
@@ -1097,13 +1104,15 @@ export default function CoupApp() {
               <p className={`font-bold text-sm ${TXT_MUTED} mt-1`}>{d.exchangeHint}</p>
               <p className="font-extrabold text-sm mt-1">{d.keepCount(keepCount)}</p>
               <div className="flex justify-center gap-2 mt-3 flex-wrap">
-                {myHand.map(c => {
+                {myHand.map((c, i) => {
                   const sel = keepPick.includes(c.id);
+                  const isNew = i >= keepCount;
                   return (
                     <button key={c.id} data-testid="exchange-pick" data-card-id={c.id}
                       onClick={() => setKeepPick(prev => sel ? prev.filter(x => x !== c.id) : [...prev, c.id])}
                       className={`rounded-xl push transition ${sel ? 'ring-4 ring-[#0E9F6E] -translate-y-1' : ''}`}>
                       <CoupCardFace card={c} d={d} size="md" />
+                      <div className={`font-extrabold text-[11px] mt-1 ${isNew ? 'text-[#FFB020]' : TXT_MUTED}`}>{isNew ? d.exchangeNew : d.exchangeOld} · {sel ? d.exchangeKeepOne : d.exchangeReturnOne}</div>
                     </button>
                   );
                 })}

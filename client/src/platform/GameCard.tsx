@@ -74,14 +74,14 @@ export function fanFrameH(n: number, cardH: number, k: number) {
 
 /** A Mèo Nổ card in the real-card style. `name`/`ability` come from i18n
  *  (card names stay English per Hải Anh's v40 decision). */
-export function MeoCard({ kind, name, ability, size = 'md' }: {
-  kind: string; name: string; ability: string; size?: 'sm' | 'md' | 'lg';
+export function MeoCard({ kind, name, ability, size = 'md', tint }: {
+  kind: string; name: string; ability: string; size?: 'sm' | 'md' | 'lg'; tint?: string;
 }) {
   const w = size === 'lg' ? 'w-[118px]' : size === 'sm' ? 'w-[72px]' : 'w-[100px]';
   const artH = size === 'lg' ? 'h-[92px]' : size === 'sm' ? 'h-[58px]' : 'h-[72px]';
   const nameCls = size === 'sm' ? 'text-[10px]' : 'text-[11px]';
   const abCls = size === 'sm' ? 'text-[9px] leading-[1.15]' : 'text-[10px] leading-[1.25]';
-  const color = MEO_CARD_COLORS[kind] ?? '#8A7B63';
+  const color = tint ?? MEO_CARD_COLORS[kind] ?? '#8A7B63';
   return (
     <span className={`relative inline-flex flex-none flex-col overflow-hidden rounded-xl border-[3px] border-[#2B2016] ${w}`} style={{ background: color, boxShadow: CARD_SHADOW }}>
       <span className="flex items-center gap-1 px-1.5 pt-1 pb-0.5">

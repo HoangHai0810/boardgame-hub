@@ -9,7 +9,7 @@ import { CatAvatar } from '../../platform/avatars';
 import { MeoCard, NoticeBanner, PlayerAvatar, fanLayout, fanFrameH } from '../../platform/GameCard';
 import { CAT_ART } from '../../platform/art';
 import { MIN_PLAYERS, MAX_PLAYERS, NOPE_MS } from '../../../../games/meo-no/logic';
-import type { Card, Kind, FeedEvent } from '../../../../games/meo-no/logic';
+import type { Card, Kind } from '../../../../games/meo-no/logic';
 
 const SESSION_KEY = 'ct_guest_session:meo-no';
 const MEO_REACTIONS = ['💣', '😱', '🙏', '🤔', '👍', '🐱', '🔥', '😹'];
@@ -86,8 +86,14 @@ function cardLabel(d: any, card: Card): string {
   return card.kind === 'defuse' ? d.cardDefuse : card.kind === 'nope' ? d.cardNope
     : card.kind === 'skip' ? d.cardSkip : card.kind === 'shuffle' ? d.cardShuffle
     : card.kind === 'peek' ? d.cardPeek : card.kind === 'attack' ? d.cardAttack
-    : card.kind === 'favor' ? d.cardFavor : card.kind === 'cat' ? d.cardCat : d.cardEK;
+    : card.kind === 'favor' ? d.cardFavor
+    : card.kind === 'cat' ? (card.variant && d.catVariant ? `${d.cardCat} · ${d.catVariant[card.variant]}` : d.cardCat) : d.cardEK;
 }
+/** One background colour per cat variant, so a matching pair reads at a
+ *  glance in the fan (the art is the same for all five variants). */
+const CAT_VARIANT_COLORS: Record<string, string> = {
+  tabby: '#B45309', siamese: '#7C4DBD', calico: '#D63A2F', black: '#3D3D63', white: '#8A7B63',
+};
 function cardAbility(d: any, card: Card): string {
   return card.kind === 'defuse' ? d.abDefuse : card.kind === 'nope' ? d.abNope
     : card.kind === 'skip' ? d.abSkip : card.kind === 'shuffle' ? d.abShuffle
@@ -108,14 +114,6 @@ function DeckBack({ count, shake }: { count: number; shake: boolean }) {
   );
 }
 /** Landing art (design MN1): the exploding-kitten 3D art. */
-function CatBomb({ size = 150 }: { size?: number }) {
-  return (
-    <span className="inline-block rounded-3xl overflow-hidden border-4 border-[#3D3D63] anim-bob" style={{ width: size, height: size, boxShadow: '0 6px 0 rgba(0,0,0,0.4), 0 16px 32px rgba(0,0,0,0.4)' }}>
-      <img src={CAT_ART.exploding} alt="Exploding Kitten" className="w-full h-full object-cover" draggable={false} />
-    </span>
-  );
-}
-
 function HelpModal({ d, onClose }: { d: any; onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -138,57 +136,6 @@ function HelpModal({ d, onClose }: { d: any; onClose: () => void }) {
         </div>
         <button className={`${BTN} btn-amber w-full mt-4`} onClick={onClose}>OK 👍</button>
       </div>
-    </div>
-  );
-}
-
-/** The event feed (laptop "Diễn biến", design MN10): structured events
- *  rendered in the viewer's language, "bạn" when it involves me. */
-function FeedList({ feed, d, myId, players }: { feed: FeedEvent[]; d: any; myId?: string; players: { id: string; name: string }[] }) {
-  const name = (id?: string) => (id === myId ? d.you : players.find(p => p.id === id)?.name ?? '');
-  const dot: Record<string, string> = {
-    'play-attack': '#D63A2F', attack: '#D63A2F', draw: '#B9BCE0', exploded: '#2B2016',
-    defuse: '#0E9F6E', win: '#0E9F6E', nope: '#7C4DBD', 'nope-block': '#7C4DBD',
-    'drew-ek': '#D63A2F', start: '#FFB020', reinsert: '#0891B2',
-  };
-  const text = (e: FeedEvent): string => {
-    const a = name(e.actorId);
-    const tg = name(e.targetId);
-    switch (e.kind) {
-      case 'start': return d.feedStart;
-      case 'draw': return d.feedDraw(a);
-      case 'drew-ek': return `${a} 💣`;
-      case 'defuse': return d.feedDefuse(a);
-      case 'reinsert': return `${a} · ${d.feedReinsert}`;
-      case 'exploded': return d.feedExploded(a);
-      case 'win': return d.feedWin(a);
-      case 'nope': return d.feedNope(a);
-      case 'nope-block': return d.nopeBlocked(a);
-      case 'shuffle': return d.feedShuffle(a);
-      case 'peek': return d.feedPeek(a);
-      case 'skip': case 'skip-debt': return d.feedSkip(a);
-      case 'attack': return d.feedAttack(a) + (tg ? ` → ${tg}` : '');
-      case 'favor': return d.feedFavor(a, tg);
-      case 'favor-give': return `${a} → ${tg} 🎁`;
-      case 'favor-empty': return `${a} · ${tg} (${d.cardsLeft(0)})`;
-      default:
-        if (e.kind.startsWith('play-')) {
-          const k = e.kind.slice(5);
-          const label = k === 'skip' ? d.cardSkip : k === 'shuffle' ? d.cardShuffle : k === 'peek' ? d.cardPeek : k === 'attack' ? d.cardAttack : d.cardFavor;
-          return tg ? d.feedPlayOn(a, label, tg) : d.feedPlay(a, label);
-        }
-        return e.kind;
-    }
-  };
-  return (
-    <div className="space-y-1.5">
-      {feed.length === 0 && <p className="font-bold text-sm text-[#B9BCE0]">…</p>}
-      {[...feed].reverse().map((e, i) => (
-        <div key={e.ts + '-' + i} className="flex items-start gap-2 font-bold text-sm leading-snug text-[#EDEDF7]">
-          <span className="mt-1.5 w-2.5 h-2.5 rounded-full flex-none" style={{ background: dot[e.kind] ?? '#B9BCE0' }} />
-          <span>{text(e)}</span>
-        </div>
-      ))}
     </div>
   );
 }
@@ -244,6 +191,13 @@ export default function MeoNoApp() {
     ro.observe(el); return () => ro.disconnect();
   }, [pub?.phase]);
   const [favorPick, setFavorPick] = useState<Card | null>(null);
+  // Pair-steal selection: 0-2 tapped cat ids of one variant.
+  const [pairSel, setPairSel] = useState<string[]>([]);
+  const [pairPick, setPairPick] = useState<{ c1: Card; c2: Card } | null>(null);
+  // Drag-to-play: pointer drag state for one fan card at a time.
+  const [drag, setDrag] = useState<{ id: string; dy: number } | null>(null);
+  const dragStart = useRef<{ y: number; id: string } | null>(null);
+  const dragged = useRef(false);
   const [favorGiveId, setFavorGiveId] = useState<string | null>(null);
   const [showPeek, setShowPeek] = useState(false);
   const [showEliminated, setShowEliminated] = useState(false);
@@ -357,6 +311,37 @@ export default function MeoNoApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pub?.players]);
 
+  // Explosion burst: when anyone explodes, flash a big 💥 + name for
+  // ~2.2s. The Diễn biến log is gone (removed per Hải Anh), so without
+  // this the explosion is invisible to everyone except the victim.
+  const [boom, setBoom] = useState<{ name: string; key: string } | null>(null);
+  const lastExploded = pub?.feed ? [...pub.feed].reverse().find(e => e.kind === 'exploded') : null;
+  const boomKey = lastExploded ? `${lastExploded.actorId}:${lastExploded.ts}` : '';
+  useEffect(() => {
+    if (!lastExploded) return;
+    setBoom({ name: playerName(lastExploded.actorId), key: boomKey });
+    const t = setTimeout(() => setBoom(null), 2200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boomKey]);
+
+  // Played-card spotlight: when the discard top changes to an action
+  // card (or a pair-steal cat), pop it big in the center for ~1.4s so
+  // the play is seen, not just logged. Skips the opening top card.
+  const [spot, setSpot] = useState<{ card: Card; key: string } | null>(null);
+  const topKey = pub?.topCard ? `${pub.topCard.id}:${pub.topCard.kind}` : '';
+  const topSeenRef = useRef(false);
+  useEffect(() => {
+    const tc = pub?.topCard;
+    if (!tc) return;
+    if (!topSeenRef.current) { topSeenRef.current = true; return; }
+    if (!['skip', 'shuffle', 'peek', 'attack', 'favor', 'nope', 'cat'].includes(tc.kind)) return;
+    setSpot({ card: tc, key: tc.id });
+    const t = setTimeout(() => setSpot(null), 1400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topKey]);
+
   // Open the peek overlay when fresh peek cards arrive.
   const prevPeek = useRef<string | null>(null);
   useEffect(() => {
@@ -451,6 +436,60 @@ export default function MeoNoApp() {
     getNet().nightAction('playCard', undefined, { cardId: favorPick.id, targetId });
     setFavorPick(null); setSelectedCardId(null);
   };
+  const doPlayPair = (targetId: string) => {
+    if (!pairPick) return;
+    getNet().nightAction('playPair', undefined, { cardId: pairPick.c1.id, cardId2: pairPick.c2.id, targetId });
+    setPairPick(null); setPairSel([]); setSelectedCardId(null);
+  };
+  /** Tap a fan card: action cards select/deselect as before; cats build a
+   *  pair — a second tap on the same variant opens the steal picker. */
+  const onCardTap = (c: Card) => {
+    if (!myTurn || busy) return;
+    if (c.kind === 'cat') {
+      if (pairSel.includes(c.id)) { setPairSel(pairSel.filter(id => id !== c.id)); setSelectedCardId(null); return; }
+      if (pairSel.length === 1) {
+        const first = myHand.find(x => x.id === pairSel[0]);
+        if (first && first.variant === c.variant) {
+          setPairPick({ c1: first, c2: c });
+          setPairSel([]); setSelectedCardId(null);
+          return;
+        }
+      }
+      setPairSel([c.id]);
+      setSelectedCardId(c.id);
+      return;
+    }
+    setPairSel([]);
+    setSelectedCardId(selectedCardId === c.id ? null : c.id);
+  };
+  /** Drag an action card up out of the fan to play it at once (favor
+   *  opens its target picker instead). A short drag snaps back and the
+   *  tap still selects the card. */
+  const onCardPointerDown = (e: React.PointerEvent, c: Card) => {
+    if (!canPlay(c)) return;
+    dragStart.current = { y: e.clientY, id: c.id };
+    dragged.current = false;
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+  };
+  const onCardPointerMove = (e: React.PointerEvent, c: Card) => {
+    const st = dragStart.current;
+    if (!st || st.id !== c.id) return;
+    const dy = Math.min(0, e.clientY - st.y);
+    if (dy < -8) dragged.current = true;
+    setDrag(dy < 0 ? { id: c.id, dy } : null);
+  };
+  const onCardPointerUp = (e: React.PointerEvent, c: Card) => {
+    const st = dragStart.current;
+    dragStart.current = null;
+    setDrag(null);
+    if (!st || st.id !== c.id) return;
+    if (e.clientY - st.y < -60 && canPlay(c)) {
+      dragged.current = true; // swallow the click that follows the drop
+      setPairSel([]);
+      if (c.kind === 'favor') { setFavorPick(c); setSelectedCardId(c.id); }
+      else { setSelectedCardId(null); getNet().nightAction('playCard', undefined, { cardId: c.id }); }
+    }
+  };
   const doDraw = () => getNet().nightAction('drawCard');
   const doNope = () => getNet().nightAction('playNope');
   const doDefuse = () => getNet().nightAction('defuse');
@@ -503,21 +542,9 @@ export default function MeoNoApp() {
     try { await navigator.clipboard.writeText(shareText()); setShareCopied(true); setTimeout(() => setShareCopied(false), 2000); } catch { /* ignore */ }
   };
 
-  const feedAside = pub && phase === 'playing' && (
+  const chatAside = pub && phase === 'playing' && (
     <aside className="hidden lg:flex flex-col min-h-0">
-      <div className="bg-[#23233F] border-[3px] border-[#2B2016] rounded-[24px] p-4 flex flex-col flex-1 min-h-0 hard">
-        <div className="disp font-extrabold text-lg mb-2 text-[#FFF3CF]">📜 {d.feedTitle}</div>
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          {myTurn && (pub.debt ?? 0) > 0 && (
-            <div className="flex items-start gap-2 font-bold text-sm leading-snug text-[#FFB020] mb-1.5">
-              <span className="mt-1.5 w-2.5 h-2.5 rounded-full flex-none bg-[#FFB020]" />
-              <span>{d.feedYourTurnDebt(pub.debt)}</span>
-            </div>
-          )}
-          <FeedList feed={pub.feed} d={d} myId={joined?.playerId} players={pub.players} />
-        </div>
-      </div>
-      <div className="card-cream p-3 flex flex-col flex-1 min-h-0 mt-4">
+      <div className="card-cream p-3 flex flex-col flex-1 min-h-0">
         <div className="disp font-extrabold text-lg mb-2">💬 {d.chatTitle}</div>
         <ChatPanel chat={pub.chat} myId={joined?.playerId ?? ''} d={d} height="flex" onChat={onChat} reactions={MEO_REACTIONS} />
       </div>
@@ -535,7 +562,7 @@ export default function MeoNoApp() {
   if (!joined) {
     return (
       <div className="min-h-dvh bg-[#14142B] text-[#2B2016]">
-        <div className="max-w-md lg:max-w-lg mx-auto">
+        <div className="max-w-md lg:max-w-5xl mx-auto">
           <div className="flex items-center gap-2 px-3 pt-3">
             <button className="disp font-extrabold text-[#FFF3CF] text-sm bg-[#23233F] border-2 border-[#3D3D63] rounded-full px-3 py-2.5 push" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
             <span className="flex-1" />
@@ -545,15 +572,20 @@ export default function MeoNoApp() {
               <button className={`px-2.5 py-1 ${lang === 'en' ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#23233F] text-[#B9BCE0]'}`} onClick={() => { localStorage.setItem('ct_lang', 'en'); setLang('en'); }}>EN</button>
             </span>
           </div>
+          <div className="lg:grid lg:grid-cols-2 lg:gap-8 lg:items-center lg:px-6">
+            <div>
           <div className="text-center px-4 pt-6">
             <p className="disp text-[#FFB020] font-extrabold tracking-[0.22em] text-[11px]">{d.kicker}</p>
             <h1 className="disp text-[#FFF3CF] font-extrabold text-5xl leading-none mt-2">{d.title}</h1>
             <p className="text-[#B9BCE0] font-bold mt-2 leading-snug">{d.subtitle}</p>
           </div>
-          <div className="flex justify-center mt-5">
-            <CatBomb size={132} />
+          <div className="flex justify-center items-end mt-5 -space-x-3">
+            <span className="rotate-[-12deg] translate-y-1"><MeoCard kind="nope" name={d.cardNope} ability={d.abNope} size="lg" /></span>
+            <span className="z-10"><MeoCard kind="exploding" name={d.cardEK} ability={d.abEK} size="lg" /></span>
+            <span className="rotate-[12deg] translate-y-1"><MeoCard kind="defuse" name={d.cardDefuse} ability={d.abDefuse} size="lg" /></span>
           </div>
-          <div className="bg-[#FFF3CF] rounded-t-[28px] px-4 pt-4 pb-6 mt-5">
+            </div>
+          <div className="bg-[#FFF3CF] rounded-t-[28px] lg:rounded-[28px] px-4 pt-4 pb-6 mt-5 lg:mt-0">
             <label className="disp font-extrabold text-sm">{d.name}</label>
             <input className="inp w-full px-4 py-3 font-bold mt-1" placeholder="VD: An"
               value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
@@ -579,6 +611,7 @@ export default function MeoNoApp() {
             <p className="text-center mt-3">
               <button className="font-bold text-sm text-[#8A7B63] underline" onClick={() => setShowHelp(true)}>{d.how}</button>
             </p>
+          </div>
           </div>
           {showHelp && <HelpModal d={d} onClose={() => setShowHelp(false)} />}
         </div>
@@ -645,9 +678,9 @@ export default function MeoNoApp() {
                           className="inline-block text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-0.5 mt-1 cursor-pointer hover:bg-red-200">✖ {p.isBot ? d.removeBot : d.kick}</span>)}
                     </div>
                   ))}
-                  {Array.from({ length: Math.max(0, MAX_PLAYERS - pub!.players.length) }).map((_, i) => (
-                    <div key={'empty-' + i} className="rounded-2xl border-2 border-dashed border-[#C9BFA5] p-2 text-center text-[#8A7B63] font-bold text-xs hidden lg:flex items-center justify-center min-h-[86px]">{lang === 'vi' ? 'Đang chờ…' : 'Waiting…'}</div>
-                  ))}
+                  {MAX_PLAYERS - pub!.players.length > 0 && (
+                    <div className="rounded-2xl border-2 border-dashed border-[#C9BFA5] px-3 py-1.5 text-center text-[#8A7B63] font-bold text-xs hidden lg:block">{lang === 'vi' ? `Còn ${MAX_PLAYERS - pub!.players.length} chỗ trống` : `${MAX_PLAYERS - pub!.players.length} seats left`}</div>
+                  )}
                 </div>
                 {joined.isHost && <p className="font-bold text-[#8A7B63] text-sm hidden lg:block">{d.kickHint}</p>}
                 {joined.isHost && pub!.players.length < MAX_PLAYERS && (
@@ -795,7 +828,7 @@ export default function MeoNoApp() {
                       <span className="font-bold text-[13px] flex-1 text-[#FFF3CF] leading-snug"><span className="disp font-extrabold">{cardLabel(d, selectedCard)}</span> — {cardAbility(d, selectedCard)}</span>
                     </>
                   ) : (
-                    <span className="font-bold text-[13px] flex-1 text-[#EDEDF7] leading-snug">{myTurn ? d.tapCardHint : `${d.yourHand} · ${myHand.length} ${d.cards}`}</span>
+                    <span className="font-bold text-[13px] flex-1 text-[#EDEDF7] leading-snug">{d.tapCardHint}</span>
                   )}
                   <button className="flex-none w-11 h-11 rounded-full bg-[#FFB020] text-[#2B2016] font-extrabold text-lg border-2 border-[#2B2016] push" onClick={() => setShowHelp(true)} title={d.cardGuide}>?</button>
                 </div>
@@ -809,19 +842,24 @@ export default function MeoNoApp() {
                       {myHand.map((c, hi) => {
                       const playable = canPlay(c);
                       const selected = c.id === selectedCardId;
-                      const hovered = hoverCardId === c.id && !selected && playable;
+                      // A cat with a matching partner in hand is playable as half of a pair.
+                      const pairMatch = c.kind === 'cat' && myHand.some(x => x.id !== c.id && x.kind === 'cat' && x.variant === c.variant);
+                      const enabled = playable || (myTurn && !busy && pairMatch);
+                      const hovered = hoverCardId === c.id && !selected && enabled;
                       const L = fan[hi];
-                      const ty = selected ? -20 : hovered ? -24 : L.ty;
-                      const rot = selected || hovered ? 0 : L.rot;
+                      const dragDy = drag?.id === c.id ? drag.dy : 0;
+                      const ty = (selected ? -20 : hovered ? -24 : L.ty) + dragDy;
+                      const rot = selected || hovered || dragDy !== 0 ? 0 : L.rot;
                       const sc = selected || hovered ? 1.06 : 1;
-                      const z = selected ? 60 : hovered ? 80 : L.z;
+                      const z = dragDy !== 0 ? 90 : selected ? 60 : hovered ? 80 : L.z;
                       return (
-                        <span key={c.id} className="flex-none" style={{ marginLeft: L.ml, transform: `translateY(${ty}px) rotate(${rot}deg) scale(${sc})`, transformOrigin: '50% 130%', zIndex: z, position: 'relative', transition: 'transform .25s cubic-bezier(.2,.8,.2,1)' }}>
-                        <button data-testid="hand-card" data-card-id={c.id} data-kind={c.kind} disabled={!playable}
+                        <span key={c.id} className="flex-none" style={{ marginLeft: L.ml, transform: `translateY(${ty}px) rotate(${rot}deg) scale(${sc})`, transformOrigin: '50% 130%', zIndex: z, position: 'relative', transition: dragDy !== 0 ? 'none' : 'transform .25s cubic-bezier(.2,.8,.2,1)' }}>
+                        <button data-testid="hand-card" data-card-id={c.id} data-kind={c.kind} data-variant={c.variant ?? ''} disabled={!enabled}
                           onMouseEnter={() => setHoverCardId(c.id)} onMouseLeave={() => setHoverCardId(null)}
-                          onClick={() => setSelectedCardId(selected ? null : c.id)}
-                          className={`flex-none rounded-xl ${playable ? 'cursor-pointer' : 'opacity-45 cursor-default'} ${selected && playable ? 'ring-4 ring-[#FFB020]' : ''}`}>
-                          <MeoCard kind={c.kind} name={cardLabel(d, c)} ability={cardAbility(d, c)} size="md" />
+                          onPointerDown={e => onCardPointerDown(e, c)} onPointerMove={e => onCardPointerMove(e, c)} onPointerUp={e => onCardPointerUp(e, c)}
+                          onClick={() => { if (dragged.current) { dragged.current = false; return; } onCardTap(c); }}
+                          className={`flex-none rounded-xl touch-none ${enabled ? 'cursor-pointer' : 'opacity-45 cursor-default'} ${selected && enabled ? 'ring-4 ring-[#FFB020]' : ''}`}>
+                          <MeoCard kind={c.kind} name={cardLabel(d, c)} ability={cardAbility(d, c)} size="md" tint={c.kind === 'cat' && c.variant ? CAT_VARIANT_COLORS[c.variant] : undefined} />
                         </button>
                         </span>
                       );
@@ -839,7 +877,22 @@ export default function MeoNoApp() {
               </div>
               {chatPreviewBar}
             </div>
-            {feedAside}
+            {chatAside}
+          </div>
+        )}
+
+        {/* Explosion burst + played-card spotlight (non-blocking) */}
+        {phase === 'playing' && boom && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center pointer-events-none" data-testid="boom-overlay">
+            <div className="text-center anim-pop px-8 py-6 rounded-full" style={{ background: 'radial-gradient(circle, rgba(214,58,47,0.55), transparent 70%)' }}>
+              <div className="text-7xl leading-none">💥</div>
+              <div className="disp font-extrabold text-3xl text-white drop-shadow-[0_2px_0_rgba(0,0,0,0.5)] mt-2">{boom.name} {d.exploded}</div>
+            </div>
+          </div>
+        )}
+        {phase === 'playing' && spot && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center pointer-events-none" data-testid="spot-overlay">
+            <span className="anim-pop inline-block"><MeoCard kind={spot.card.kind} name={cardLabel(d, spot.card)} ability={cardAbility(d, spot.card)} size="lg" tint={spot.card.kind === 'cat' && spot.card.variant ? CAT_VARIANT_COLORS[spot.card.variant] : undefined} /></span>
           </div>
         )}
 
@@ -912,6 +965,7 @@ export default function MeoNoApp() {
                 <span className="block h-full bg-[#FFB020] transition-all" style={{ width: `${Math.max(0, Math.min(100, ((nopeSecs ?? 0) / (NOPE_MS / 1000)) * 100))}%` }} />
               </div>
               <p className="font-bold text-sm text-[#B9BCE0] mt-2">{d.nopeYouHave(myHand.filter(c => c.kind === 'nope').length)}</p>
+              <p className="font-bold text-xs text-[#8A8AB0] mt-1">{d.nopeChain}</p>
               <button data-testid="nope-btn" className={`${BTN} w-full mt-3 !bg-[#7C4DBD] !text-white`} onClick={doNope}>⊘ {d.nopeBtn}</button>
               <button data-testid="nope-pass-btn" className={`${BTN} w-full mt-2 bg-[#FFFBef] !text-[#2B2016]`} onClick={() => { getNet().nightAction('passNope'); setDismissedNope(nopeKey); }}>{d.nopePass}</button>
             </div>
@@ -936,6 +990,27 @@ export default function MeoNoApp() {
           </div>
         )}
 
+        {/* Pair-steal target picker: two matching cats steal a random card */}
+        {pairPick && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setPairPick(null)}>
+            <div className={`${CARD} max-w-xs w-full text-center`} onClick={e => e.stopPropagation()}>
+              <div className="disp font-extrabold text-xl">{d.pairTitle}</div>
+              <div className="flex justify-center gap-2 mt-3">
+                <MeoCard kind="cat" name={cardLabel(d, pairPick.c1)} ability={cardAbility(d, pairPick.c1)} size="lg" tint={pairPick.c1.variant ? CAT_VARIANT_COLORS[pairPick.c1.variant] : undefined} />
+                <MeoCard kind="cat" name={cardLabel(d, pairPick.c2)} ability={cardAbility(d, pairPick.c2)} size="lg" tint={pairPick.c2.variant ? CAT_VARIANT_COLORS[pairPick.c2.variant] : undefined} />
+              </div>
+              <div className="space-y-2 mt-4">
+                {others.filter(p => p.alive && (p.handCount ?? 1) > 0).map(p => (
+                  <button key={p.id} data-testid="pair-target" data-player-id={p.id} className={`${BTN} btn-amber w-full !py-2.5`} onClick={() => doPlayPair(p.id)}>
+                    <span className="inline-flex items-center gap-2"><PlayerAvatar avatarId={p.avatar} size={28} fallback={<CatAvatar seed={p.id} size={28} />} /> {p.name} · {p.handCount ?? '?'} {d.cards}</span>
+                  </button>
+                ))}
+              </div>
+              <button className="font-bold text-sm text-[#8A7B63] underline mt-3" onClick={() => setPairPick(null)}>{lang === 'vi' ? 'Hủy' : 'Cancel'}</button>
+            </div>
+          </div>
+        )}
+
         {/* Favor give: I must hand over a card (design MN4 target side) */}
         {pub?.pendingFavor && favorTarget?.id === joined.playerId && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
@@ -946,7 +1021,7 @@ export default function MeoNoApp() {
                 {myHand.map(c => (
                   <button key={c.id} data-testid="favor-give-card" data-card-id={c.id} onClick={() => setFavorGiveId(c.id)}
                     className={`rounded-xl transition ${favorGiveId === c.id ? 'ring-4 ring-[#FFB020] -translate-y-1' : 'hover:-translate-y-1'}`}>
-                    <MeoCard kind={c.kind} name={cardLabel(d, c)} ability={cardAbility(d, c)} size="md" />
+                    <MeoCard kind={c.kind} name={cardLabel(d, c)} ability={cardAbility(d, c)} size="md" tint={c.kind === 'cat' && c.variant ? CAT_VARIANT_COLORS[c.variant] : undefined} />
                   </button>
                 ))}
               </div>

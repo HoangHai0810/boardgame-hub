@@ -625,3 +625,26 @@ t('six players: setup deals 6 hands and the token target is 3', () => {
   assert.equal(s.deck.length, 21 - 1 - 6 - 1);
   assert.equal(turnPlayer(s).hand.length, 2);
 });
+
+t('spy plays with no target picker: no pending action, turn advances', () => {
+  const s = mk();
+  assert.equal(playKind(s, 'spy'), true);
+  assert.equal(s.pendingAction, null);
+  assert.notEqual(s.turn, 'p0');
+  const p0 = s.players[0];
+  assert.equal(p0.discardPile.some(c => c.kind === 'spy'), true);
+});
+
+t('last-standing round result reveals the winner final hand', () => {
+  const s = mk(2);
+  const me = turnPlayer(s);
+  give(s, me.id, ['guard', 'priest']);
+  const other = s.players.find(p => p.id !== me.id);
+  give(s, other.id, ['king']);
+  assert.equal(playCard(s, me, me.hand.find(c => c.kind === 'guard').id, rng), true);
+  assert.equal(s.pendingAction?.type, 'guard');
+  assert.equal(chooseTarget(s, me, other.id, 'king', rng), true);
+  assert.equal(s.phase, 'roundEnd');
+  assert.equal(s.roundResult?.reason, 'last-standing');
+  assert.equal(s.roundResult?.hands?.[me.id]?.kind, 'priest');
+});

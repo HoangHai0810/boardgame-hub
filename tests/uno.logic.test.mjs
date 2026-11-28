@@ -143,6 +143,41 @@ t('UNO: the next player acting first draws 2 automatically', () => {
   assert.equal(s.players[0].hand.length, 3); // 1 + 2 penalty
   assert.equal(s.unoPending, 'p1'); // p1 also played down to 1 card
 });
+t('UNO bell: pre-call with 2 cards on your turn arms, playing down to 1 creates no foul', () => {
+  const s = mk([[C('r7', 'red', 'number', 7), C('r1', 'red', 'number', 1)], [C('b1', 'blue', 'number', 1)]]);
+  assert.equal(callUno(s, s.players[0]), true);
+  assert.equal(s.unoArmed, 'p0');
+  assert.equal(s.unoPending, null);
+  assert.equal(playCard(s, s.players[0], 'r7'), true);
+  assert.equal(s.players[0].hand.length, 1);
+  assert.equal(s.unoPending, null); // pre-called: no foul
+  assert.equal(s.unoArmed, null); // consumed
+  assert.equal(publicState(s).unoArmed, null);
+});
+t('UNO bell: pre-call needs exactly 2 cards and your turn', () => {
+  const s = mk([[C('r7', 'red', 'number', 7), C('r1', 'red', 'number', 1), C('r2', 'red', 'number', 2)], [C('b1', 'blue', 'number', 1)]]);
+  assert.equal(callUno(s, s.players[0]), false); // 3 cards
+  assert.equal(callUno(s, s.players[1]), false); // not p1's turn
+  assert.equal(s.unoArmed, null);
+});
+t('UNO bell: drawing a card voids the pre-call', () => {
+  const s = mk([[C('r7', 'red', 'number', 7), C('r1', 'red', 'number', 1)], [C('b1', 'blue', 'number', 1)]]);
+  callUno(s, s.players[0]);
+  assert.equal(s.unoArmed, 'p0');
+  s.deck = [C('g9', 'green', 'number', 9)];
+  drawCard(s, s.players[0]);
+  assert.equal(s.unoArmed, null);
+  assert.equal(s.players[0].hand.length, 3);
+});
+t('UNO bell: a +2 on the armed player voids the pre-call', () => {
+  const s = mk([[C('r7', 'red', 'number', 7), C('r1', 'red', 'number', 1)], [C('r2', 'red', 'draw2'), C('b1', 'blue', 'number', 1)]]);
+  callUno(s, s.players[0]);
+  assert.equal(s.unoArmed, 'p0');
+  s.turn = 'p1';
+  assert.equal(playCard(s, s.players[1], 'r2'), true); // +2 hits p0
+  assert.equal(s.unoArmed, null);
+  assert.equal(s.players[0].hand.length, 4);
+});
 t('draw: unplayable card passes the turn at once', () => {
   const s = mk([[C('b7', 'blue', 'number', 7)], [C('r1', 'red', 'number', 1)]]);
   s.deck = [C('g9', 'green', 'number', 9)]; // drawn card cannot play on red 5

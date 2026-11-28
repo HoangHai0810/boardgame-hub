@@ -24,21 +24,15 @@ const dict = {
     draw: 'Rút 1 lá', pass: 'Giữ lại — qua lượt', playDrawn: 'Đánh lá vừa rút',
     drawnPlayable: 'Lá vừa rút đánh được!',
     drawnNotPlayable: 'Lá vừa rút không đánh được — bấm Giữ lại để qua lượt.',
-    uno: 'UNO!', unoBtn: 'Hô UNO!',
+    uno: 'UNO!',
     catchUno: 'Bắt UNO!', caughtUno: (n: string) => `${n} quên hô UNO — rút 2 lá!`,
     unoPendingNote: (n: string) => `${n} còn 1 lá mà chưa hô UNO — bắt ngay!`,
     unoSafe: 'Đã hô UNO ✓',
     gotIt: 'Đã hiểu',
     oneCardBanner: (n: string) => `${n} chỉ còn 1 lá! Nếu ${n} quên hô UNO, bạn có thể bắt trước khi lượt kế tiếp.`,
     cardLegend: '+2: bốc 2, mất lượt · Cấm: mất lượt · Đảo: đổi chiều · +4: bốc 4, chọn màu',
-    cardAb: (kind: string, label: string) => kind === 'draw2' ? '+2 — người kế tiếp bốc 2 lá và mất lượt.'
-      : kind === 'skip' ? 'Cấm — người kế tiếp mất lượt.'
-      : kind === 'reverse' ? 'Đảo — đổi chiều chơi.'
-      : kind === 'wild' ? 'Đổi màu — chọn màu tiếp theo.'
-      : kind === 'wild4' ? '+4 — người kế tiếp bốc 4 lá, bạn chọn màu.'
-      : `${label} — đánh lá cùng màu, số hoặc ký hiệu.`,
-    topHint: (label: string) => `Lá trên cùng: ${label} — đánh lá cùng màu, số hoặc ký hiệu.`,
     wild4Note: '+4: người kế tiếp bốc 4 lá và mất lượt, bạn chọn màu.',
+    fxDraw2: '+2 · Bốc 2 lá', fxSkip: 'Cấm · Mất lượt', fxReverse: 'Đảo chiều!', fxWild: 'Đổi màu!', fxWild4: '+4 · Bốc 4 lá',
     challenge: 'Thách thức!', take4: 'Nhận 4 lá',
     draw4Title: (n: string) => `${n} đánh +4!`,
     draw4Prompt: 'Nhận 4 lá, hoặc thách thức nếu nghi họ còn lá đúng màu.',
@@ -108,21 +102,15 @@ const dict = {
     draw: 'Draw 1 card', pass: 'Keep it — pass', playDrawn: 'Play the drawn card',
     drawnPlayable: 'The drawn card is playable!',
     drawnNotPlayable: 'The drawn card cannot be played — tap Keep to pass.',
-    uno: 'UNO!', unoBtn: 'Call UNO!',
+    uno: 'UNO!',
     catchUno: 'Catch UNO!', caughtUno: (n: string) => `${n} forgot to call UNO — draws 2 cards!`,
     unoPendingNote: (n: string) => `${n} has 1 card but didn't call UNO — catch them!`,
     unoSafe: 'Called UNO ✓',
     gotIt: 'Got it',
     oneCardBanner: (n: string) => `${n} has only 1 card left! If ${n} forgets to call UNO, you can catch them before the next turn.`,
     cardLegend: '+2: draw 2, lose turn · Skip: lose turn · Reverse: switch direction · +4: draw 4, pick color',
-    cardAb: (kind: string, label: string) => kind === 'draw2' ? '+2 — the next player draws 2 and loses their turn.'
-      : kind === 'skip' ? 'Skip — the next player loses their turn.'
-      : kind === 'reverse' ? 'Reverse — play goes the other way.'
-      : kind === 'wild' ? 'Wild — pick the next color.'
-      : kind === 'wild4' ? '+4 — the next player draws 4, you pick the color.'
-      : `${label} — play a card of the same color, number or symbol.`,
-    topHint: (label: string) => `Top card: ${label} — play a matching color, number or symbol.`,
     wild4Note: '+4: next player draws 4, loses their turn, you pick the color.',
+    fxDraw2: '+2 · Draw 2', fxSkip: 'Skip · Lose a turn', fxReverse: 'Reverse!', fxWild: 'Wild!', fxWild4: '+4 · Draw 4',
     challenge: 'Challenge!', take4: 'Take 4 cards',
     draw4Title: (n: string) => `${n} played +4!`,
     draw4Prompt: 'Take 4, or challenge if you suspect they hold the old color.',

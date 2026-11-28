@@ -10,7 +10,7 @@
 // without knowing Mèo Nổ from Uno, Ma Sói or Cheese Thief.
 import {
   GameState, Player, createGame, deal, publicState, privateState,
-  playCard, playNope, passNope, canResolveNopeEarly, resolvePendingAction, drawCard, defuse, reinsert,
+  playCard, playPair, playNope, passNope, canResolveNopeEarly, resolvePendingAction, drawCard, defuse, reinsert,
   giveFavorCard, autoTurn, autoResolvePending, advanceTurn, addBot, removeBot,
   MIN_PLAYERS, MAX_PLAYERS, TURN_MS, NOPE_MS, DECISION_MS,
 } from '../../../../games/meo-no/logic';
@@ -126,7 +126,10 @@ export class HostEngine {
     if (s.pendingAction || s.pendingExplode || s.pendingReinsert || s.pendingFavor) return;
     const act = this.botActionTurn.get(b.id) === s.turnCount ? null : botChooseAction(s, b);
     if (act) {
-      if (playCard(s, b, act.cardId, act.targetId)) {
+      const ok = act.cardId2 && act.targetId
+        ? playPair(s, b, act.cardId, act.cardId2, act.targetId)
+        : playCard(s, b, act.cardId, act.targetId);
+      if (ok) {
         this.botActionTurn.set(b.id, s.turnCount);
         this.sync();
         if (s.pendingAction || s.pendingFavor || s.turn !== b.id) return;
@@ -271,6 +274,9 @@ export class HostEngine {
       // nightAction(kind) verbatim — see transport/net.ts).
       case 'playCard':
         if (msg.cardId && playCard(s, player, msg.cardId, msg.targetId)) this.sync();
+        break;
+      case 'playPair':
+        if (msg.cardId && msg.cardId2 && msg.targetId && playPair(s, player, msg.cardId, msg.cardId2, msg.targetId)) this.sync();
         break;
       case 'playNope': if (playNope(s, player)) this.sync(); break;
       case 'passNope': if (passNope(s, player)) this.sync(); break;

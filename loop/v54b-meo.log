@@ -1,0 +1,20 @@
+PASS hub shows Meo No live 
+PASS hub shows Uno live (fixed from v36 coming-soon) 
+FAIL hub has 6 live cards pills=0
+PASS hub has 0 coming-soon cards soon=0
+PASS meo landing fits one screen 844 vs 844
+PASS room created J3CEX
+PASS all 4 joined 
+PASS lobby toggles default nope ON / counts ON / timer OFF {"nope":"true","counts":"true","timer":"false"}
+PASS meo lobby fits one screen 844 vs 844
+PASS game started 
+PASS meo table fits one screen 844 vs 844
+PASS cards were played played=23 draws=26
+PASS defuse flow seen defuse=11 reinsert=2
+PASS nope sheet seen nope=25 clicked=2
+NOTE: peekSeen=4 favorSeen=8 reinsertSeen=2
+PASS results reached 
+PASS results has rankings + standings 
+PASS meo results fits one screen 844 vs 844
+
+== 16/17 verify-meo-no checks, exit FAIL

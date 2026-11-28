@@ -7,7 +7,28 @@ import { HOUR_MS } from '../../../../games/cheese-thief/logic';
 import { sfx, ensureCtx } from '../../transport/sound';
 import { joinVoice, VoiceHandle } from '../../transport/voice';
 import { MouseAvatar, CheeseWedge } from '../../platform/avatars';
+import { ART } from '../../platform/art';
 import { RoleCard, PlayerAvatar } from '../../platform/GameCard';
+
+/* Small inline SVG icons (v54 design pass): controls read as icons, not
+ * emoji. currentColor so the surrounding tone still applies. */
+const ICO = { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true } as const;
+const IcoClock = ({ size = 18 }: { size?: number }) => (<svg {...ICO} width={size} height={size}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>);
+const IcoChat = ({ size = 18 }: { size?: number }) => (<svg {...ICO} width={size} height={size}><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg>);
+const IcoSun = ({ size = 18 }: { size?: number }) => (<svg {...ICO} width={size} height={size}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>);
+const IcoMoon = ({ size = 18 }: { size?: number }) => (<svg {...ICO} width={size} height={size}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>);
+const IcoEye = ({ size = 18 }: { size?: number }) => (<svg {...ICO} width={size} height={size}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>);
+const IcoCrown = ({ size = 16 }: { size?: number }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2.5 7.5 6 10l6-5.5L18 10l3.5-2.5L20 18H4L2.5 7.5Z" /></svg>);
+const IcoPlay = ({ size = 18 }: { size?: number }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5-13-7.5Z" /></svg>);
+const IcoHome = ({ size = 18 }: { size?: number }) => (<svg {...ICO} width={size} height={size}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="M9 22V12h6v10" /></svg>);
+const IcoLink = ({ size = 18 }: { size?: number }) => (<svg {...ICO} width={size} height={size}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>);
+const IcoUsers = ({ size = 18 }: { size?: number }) => (<svg {...ICO} width={size} height={size}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>);
+const IcoBolt = ({ size = 18 }: { size?: number }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" /></svg>);
+const IcoBallot = ({ size = 18 }: { size?: number }) => (<svg {...ICO} width={size} height={size}><rect x="3" y="9" width="18" height="12" rx="2" /><path d="M8 9V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v4" /><path d="M9 14.5l2 2 4-4.5" /></svg>);
+const IcoMic = ({ size = 14 }: { size?: number }) => (<svg {...ICO} width={size} height={size}><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" stroke="none" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>);
+const IcoTrophy = ({ size = 16 }: { size?: number }) => (<svg {...ICO} width={size} height={size}><path d="M7 4h10v5a5 5 0 0 1-10 0V4Z" /><path d="M7 5H4v2a3 3 0 0 0 3 3M17 5h3v2a3 3 0 0 1-3 3M12 14v3M8 21h8M9.5 18h5" /></svg>);
+const IcoCheck = ({ size = 18 }: { size?: number }) => (<svg {...ICO} width={size} height={size} strokeWidth={3}><path d="M4 12.5 9.5 18 20 6.5" /></svg>);
+const IcoPlate = ({ size = 74 }: { size?: number }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#F3D9AE" strokeWidth="1.4" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="4.5" /></svg>);
 
 const MICE = ['🐭', '🐹', '🐰', '🦊', '🐱', '🐶', '🐷', '🐨'];
 const mouseFor = (id: string) => MICE[[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % MICE.length];
@@ -27,13 +48,18 @@ export function DiceFace({ value, size = 96 }: { value: number; size?: number })
   );
 }
 
-const CONFETTI = ['🧀', '🎉', '🐭', '⭐', '🧀', '🎊', '✨', '🧀'];
+// Results confetti: SVG shapes (cheese wedge / star / dot), not emoji.
 export function Confetti() {
-  return <>{CONFETTI.map((e, i) => (
+  return <>{[0, 1, 2, 3, 4, 5, 6, 7].map(i => (
     <span key={i} className="confetti-piece" style={{
-      left: `${6 + i * 12}%`, fontSize: 22 + (i % 3) * 8,
+      left: `${6 + i * 12}%`,
       animationDuration: `${2.6 + (i % 4) * 0.7}s`, animationDelay: `${i * 0.22}s`,
-    }}>{e}</span>))}</>;
+    }}>
+      {i % 3 === 0 ? <CheeseWedge size={20} />
+        : i % 3 === 1
+          ? <svg width="18" height="18" viewBox="0 0 24 24" fill="#FFD94D" aria-hidden="true"><path d="M12 2l2.4 6.9L21 9.3l-5 4.9 1.2 7L12 17.5 6.8 21.2 8 14.2 3 9.3l6.6-.4L12 2Z" /></svg>
+          : <span className="inline-block w-3 h-3 rounded-full bg-[#FFB020]" />}
+    </span>))}</>;
 }
 
 // The countdown ticks inside the pill (1s) instead of a 250ms clock at
@@ -49,7 +75,7 @@ function TimerPill({ endsAt, dark = false }: { endsAt: number | null | undefined
   }, [endsAt]);
   if (secs === null || secs === undefined) return null;
   const label = secs >= 60 ? `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` : `${secs}s`;
-  return <span className={`disp inline-flex items-center gap-1 rounded-full px-3 py-1 font-extrabold text-base ${dark ? 'bg-[#23233F] border-2 border-[#3D3D63] text-[#FFB020]' : 'bg-[#FFFBef] hard-xs text-[#2B2016]'}`}>🕐 {label}</span>;
+  return <span className={`disp inline-flex items-center gap-1 rounded-full px-3 py-1 font-extrabold text-base ${dark ? 'bg-[#23233F] border-2 border-[#3D3D63] text-[#FFB020]' : 'bg-[#FFFBef] hard-xs text-[#2B2016]'}`}><IcoClock size={16} /> {label}</span>;
 }
 
 // The night-hour progress bar ticks inside itself (1s), same reason as TimerPill (A3).
@@ -66,17 +92,21 @@ function HourProgress({ endsAt }: { endsAt: number | null | undefined }) {
 }
 
 const BTN = 'disp px-5 py-3 rounded-2xl font-extrabold hard push disabled:opacity-40';
+// Landing buttons (design v54 + QA: a locked button must stay readable —
+// a solid muted fill, not a faded one).
+const LAND_AMBER = 'disp px-5 py-3 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] disabled:bg-[#E3D3AC] disabled:text-[#8A7B63]';
+const LAND_DARK = 'disp px-5 py-3 rounded-2xl font-extrabold hard push bg-[#33241A] text-[#FFF3CF] disabled:bg-[#E3D3AC] disabled:text-[#8A7B63]';
 const CARD = 'card-cream p-4 sm:p-5';
 
 function HelpModal({ d, onClose }: { d: any; onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className={`${CARD} max-w-lg w-full max-h-[85vh] overflow-auto`} onClick={e => e.stopPropagation()}>
-        <h2 className="text-2xl font-extrabold mb-3">🧀 {d.how}</h2>
+        <h2 className="text-2xl font-extrabold mb-3">{d.how}</h2>
         <ol className="space-y-2 text-left text-[15px] leading-snug">
           {d.tutorial.map((s: string, i: number) => <li key={i}>{s}</li>)}
         </ol>
-        <button className={`${BTN} btn-amber w-full mt-4`} onClick={onClose}>OK 👍</button>
+        <button className={`${BTN} btn-amber w-full mt-4`} onClick={onClose}>{d.okBtn}</button>
       </div>
     </div>
   );
@@ -486,8 +516,8 @@ export default function App() {
     if (fall) lines.push(d.fallWas(fall.name));
     const scored = pub.players.filter(p => ((p as any).wins ?? 0) > 0)
       .sort((a, b) => ((b as any).wins ?? 0) - ((a as any).wins ?? 0));
-    if (scored.length) lines.push('🏆 ' + scored.map(p => `${p.name} ×${(p as any).wins}`).join(' · '));
-    if (myRecord.w + myRecord.l > 0) lines.push('📊 ' + d.recordLine(myRecord.w, myRecord.l));
+    if (scored.length) lines.push(scored.map(p => `${p.name} ×${(p as any).wins}`).join(' · '));
+    if (myRecord.w + myRecord.l > 0) lines.push(d.recordLine(myRecord.w, myRecord.l));
     lines.push(location.origin + location.pathname);
     navigator.clipboard?.writeText(lines.join('\n'));
     setShared(true); setTimeout(() => setShared(false), 1500);
@@ -496,23 +526,23 @@ export default function App() {
   // Personal session record (Cycle 8): my own W/L split by dealt role.
   const MyRecord = () => {
     if (myRecord.w + myRecord.l === 0) return null;
-    const roleChip = (role: string, emoji: string, label: string) => {
+    const roleChip = (role: string, label: string) => {
       const r = myRecord.roles[role];
       if (!r) return null;
-      return <span key={role} className="bg-white hard-xs rounded-full px-2 py-0.5 text-[12px] font-bold">{emoji} {label} {r.w}/{r.g}</span>;
+      return <span key={role} className="bg-white hard-xs rounded-full px-2 py-0.5 text-[12px] font-bold">{label} {r.w}/{r.g}</span>;
     };
     return (
       <div className="bg-[#DFF5E3] hard-sm rounded-3xl p-2 text-[#2B2016]">
         <div className="text-center"><span className="font-extrabold text-[13px]">{d.recordTitle}: </span><span className="font-bold text-teal-700 text-[13px]">{d.recordLine(myRecord.w, myRecord.l)}</span></div>
         <div className="flex flex-wrap justify-center gap-1.5 mt-1 max-h-[58px] overflow-y-auto">
-          {roleChip('sleepyhead', '🐭', d.sleepy)}
-          {roleChip('thief', '😈', d.thief)}
-          {roleChip('fallmouse', '💀', d.fall)}
+          {roleChip('sleepyhead', d.sleepy)}
+          {roleChip('thief', d.thief)}
+          {roleChip('fallmouse', d.fall)}
         </div>
       </div>);
   };
 
-  // Session scoreboard (Cycle 1): rounds won in this room, leader gets 👑.
+  // Session scoreboard (Cycle 1): rounds won in this room, leader gets a crown.
   const Standings = () => {
     const scored = pub!.players.filter(p => ((p as any).wins ?? 0) > 0)
       .sort((a, b) => ((b as any).wins ?? 0) - ((a as any).wins ?? 0));
@@ -523,7 +553,7 @@ export default function App() {
         <div className="font-extrabold text-center text-[13px] mb-1">{d.standings}</div>
         <div className="flex flex-wrap gap-1.5 justify-center max-h-[58px] overflow-y-auto">
           {scored.map((p, si) => (
-            <span key={p.id} className="inline-block bg-white hard-xs rounded-full px-2 py-0.5 text-[12px] font-bold anim-slide-up" style={{ animationDelay: `${si * 70}ms` }}>{mouseFor(p.id)} {p.name} {((p as any).wins === top) && '👑'} 🏆×{(p as any).wins}</span>))}
+            <span key={p.id} className="inline-flex items-center gap-1 bg-white hard-xs rounded-full pl-0.5 pr-2 py-0.5 text-[12px] font-bold anim-slide-up" style={{ animationDelay: `${si * 70}ms` }}><PlayerAvatar avatarId={p.avatar} size={20} fallback={<MouseAvatar seed={p.id} size={20} />} /> {p.name} {((p as any).wins === top) && <IcoCrown size={13} />} ×{(p as any).wins}</span>))}
         </div>
       </div>
     );
@@ -536,48 +566,56 @@ export default function App() {
     const inviteRoomParam = new URLSearchParams(location.search).get('room');
     return (
       <div className="min-h-dvh bg-[#14142B] p-3 sm:p-4">
-        <div className="max-w-xl mx-auto pt-2">
+        <div className="max-w-xl lg:max-w-5xl mx-auto pt-2">
           <TopBar logo={<CheeseWedge size={30} />} d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })} />
           <button className="font-bold text-[#B9BCE0] hover:text-[#FFF3CF] text-sm mt-2 mb-1 px-3 py-2.5 push" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
-          <div className="card-cream anim-pop overflow-hidden !rounded-[28px]">
-            <div className="relative bg-[#171731] px-5 pt-6 text-center overflow-hidden">
+          {/* Design v54: laptop splits into hero (left, navy) + form (right,
+              cream); mobile stays one stacked card. */}
+          <div className="card-cream anim-pop overflow-hidden !rounded-[28px] lg:grid lg:grid-cols-2">
+            <div className="relative bg-[#171731] px-5 pt-5 lg:pt-6 text-center overflow-hidden flex flex-col">
               <div className="stars" style={{ position: 'absolute' }} />
+              <svg width="40" height="40" viewBox="0 0 24 24" className="absolute left-4 top-4 opacity-90" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4 6.8 6.8 0 0 0 20 14.5Z" fill="#FFD94D" /></svg>
               <p className="disp relative text-[#FFB020] font-extrabold tracking-[0.22em] text-[11px] sm:text-xs">{joinMode ? d.invitedEyebrow : d.kicker}</p>
-              <h1 className="disp relative text-[#FFF3CF] font-extrabold text-5xl leading-[1.05] mt-1.5">
-                <svg width="34" height="34" viewBox="0 0 24 24" className="inline-block -mt-3 mr-1"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4 6.8 6.8 0 0 0 20 14.5Z" fill="#FFD94D" /></svg>
+              <h1 className="disp relative text-[#FFF3CF] font-extrabold text-[44px] lg:text-6xl leading-[1.05] mt-1.5">
                 {d.title}
               </h1>
-              <p className="relative text-[#B9BCE0] font-bold mt-2">{joinMode ? d.invitedSub : d.subtitle}</p>
+              <p className="relative text-[#B9BCE0] font-bold mt-2 max-w-sm mx-auto">{joinMode ? d.invitedSub : d.subtitle}</p>
               {joinMode ? (
-                <div className="relative mt-4 pb-5 flex justify-center">
+                <div className="relative mt-auto pt-6 pb-5 flex justify-center">
                   <span className="disp inline-block px-5 py-2 text-lg font-extrabold" style={{ background: '#221D45', border: '2px solid #3A3366', borderRadius: 20, color: '#FFF3CF', letterSpacing: '0.2em' }}>{code.trim().toUpperCase()}</span>
                 </div>
               ) : (
-              <div className="relative h-[104px] mt-1">
+              <div className="relative h-[88px] lg:h-[104px] mt-auto">
                 <div className="absolute inset-x-0 bottom-3 flex items-end justify-center gap-1 sm:gap-2">
-                  {['lan', 'hai', 'mit', 'bo', 'soc'].map((k, i) => (
-                    <span key={k} className="anim-bob inline-block" style={{ animationDelay: `${i * 0.3}s` }}><MouseAvatar seed={'landing-' + k} size={i === 2 ? 58 : 52} /></span>
+                  {['ct-hero-mouse', 'ct-hero-bear', 'ct-hero-rabbit', 'ct-hero-cat'].map((a, i) => (
+                    <span key={a} className="anim-bob inline-block rounded-full bg-[#FFF3CF] border-2 border-[#2B2016] overflow-hidden" style={{ animationDelay: `${i * 0.3}s` }}><img src={ART(`${a}.svg`)} alt="" width={52} height={52} className="block w-11 h-11 lg:w-[52px] lg:h-[52px]" draggable={false} /></span>
                   ))}
                 </div>
-                <div className="absolute left-1/2 -translate-x-1/2 bottom-4 z-10 anim-wiggle"><CheeseWedge size={96} /></div>
+                <div className="absolute left-1/2 -translate-x-1/2 bottom-4 z-10 anim-wiggle origin-bottom scale-[0.83] lg:scale-100"><CheeseWedge size={96} /></div>
                 <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-b from-[#A06A35] to-[#7C4A21] border-t-[3px] border-[#2B2016]" />
               </div>
               )}
             </div>
-            <div className="bg-[#FFF3CF] px-5 py-5 text-left">
+            <div className="bg-[#FFF3CF] px-5 py-4 lg:py-5 text-left">
+              {!joinMode && (
+                <div className="hidden lg:block mb-4">
+                  <h2 className="disp text-[28px] font-extrabold text-[#2B2016] leading-tight">{d.landingTitle}</h2>
+                  <p className="font-bold text-[#8A7B63] mt-1">{d.landingSub}</p>
+                </div>
+              )}
               <label className="text-[11px] font-black tracking-[0.18em] text-[#8A7B63]">{d.nameLabel}</label>
               <input className="inp w-full px-4 py-3 mt-1.5 text-lg font-bold" placeholder={d.name}
                 value={name} maxLength={joinMode ? 12 : 20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }}
                 style={joinMode && !name.trim() ? { borderColor: '#C23B32', background: '#FFEDEA' } : undefined} />
-              {!joinMode && (<button className={`${BTN} btn-amber w-full mt-3.5 text-xl`}
-                disabled={!name.trim() || !!status} onClick={() => { setError(''); getNet().createRoom(name); }}>🏠 {d.create}</button>)}
+              {!joinMode && (<button className={`${LAND_AMBER} w-full mt-3.5 text-xl`}
+                disabled={!name.trim() || !!status} onClick={() => { setError(''); getNet().createRoom(name); }}><span className="inline-flex items-center gap-2"><IcoHome size={20} /> {d.create}</span></button>)}
               {joinMode ? (name.trim() ? (
                 <div className="flex items-baseline justify-between gap-2 mt-2">
                   <p className="font-bold text-[#8A7B63] text-sm">{d.nameHint}</p>
                   <span className="font-bold text-[#8A7B63] text-sm flex-none">{name.length}/12</span>
                 </div>
               ) : (
-                <p className="font-bold text-[#C23B32] text-sm mt-2">⚠ {d.nameRequired}</p>
+                <p className="font-bold text-[#C23B32] text-sm mt-2 flex items-center gap-1.5"><span className="inline-flex w-5 h-5 rounded-full bg-[#C23B32] text-white text-xs font-black items-center justify-center flex-none">!</span> {d.nameRequired}</p>
               )) : (
                 !name.trim() && <p className="text-center font-bold text-[#8A7B63] text-sm mt-2">{d.nameFirst}</p>
               )}
@@ -588,7 +626,7 @@ export default function App() {
               </div>)}
               {joinMode ? (
                 <>
-                  <button className={`${BTN} btn-amber w-full mt-3 text-xl`} disabled={!name.trim() || code.trim().length < 4 || !!status}
+                  <button className={`${LAND_AMBER} w-full mt-3 text-xl`} disabled={!name.trim() || code.trim().length < 4 || !!status}
                     onClick={() => { setError(''); getNet().joinRoom(code, name); }}>{d.joinRoomCode(code.trim().toUpperCase())}</button>
                   {/* Code field stays in the DOM (display:none) so the
                       join-mode harness can still read the prefilled code;
@@ -601,16 +639,18 @@ export default function App() {
                   <input className="inp flex-1 min-w-0 px-3 py-3 uppercase text-lg font-extrabold tracking-[0.25em] text-center" placeholder={d.codePh}
                     value={code} maxLength={5} onChange={e => setCode(e.target.value.toUpperCase())}
                     onKeyDown={e => { if (e.key === 'Enter' && code.trim() && name.trim()) getNet().joinRoom(code, name); }} />
-                  <button className={`${BTN} btn-dark`} disabled={!name.trim() || code.trim().length < 4 || !!status}
+                  <button className={`${LAND_DARK}`} disabled={!name.trim() || code.trim().length < 4 || !!status}
                     onClick={() => { setError(''); getNet().joinRoom(code, name); }}>{d.join}</button>
                 </div>
               )}
               {joinMode && (<p className="text-center mt-3"><button className="font-bold text-sm text-[#8A7B63] underline" onClick={() => setForceCreate(true)}>{d.orCreateNew}</button></p>)}
               {inviteRoomParam && <p className="text-center text-xs font-bold text-[#8A7B63] mt-3">{d.inviteNote}</p>}
-              <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mt-5 text-sm font-extrabold text-[#6B5B43]">
-                <span>👥 {d.playersRange}</span><span>🕐 {d.minsRange}</span><span>⚡ {d.noInstall}</span>
+              <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mt-4 lg:mt-5 text-sm font-extrabold text-[#6B5B43]">
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><IcoUsers size={16} /> {d.playersRange}</span>
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><IcoClock size={16} /> {d.minsRange}</span>
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><IcoBolt size={16} /> {d.noInstall}</span>
               </div>
-              <button className="block mx-auto mt-3 underline font-extrabold text-[#2B2016]" onClick={() => setShowHelp(true)}>{d.how}</button>
+              <button className="block mx-auto mt-2 lg:mt-3 underline font-extrabold text-[#2B2016]" onClick={() => setShowHelp(true)}>{d.howLink}</button>
               {status && <p className="mt-3 text-center text-sky-700 font-bold">{localizeMsg(status)}</p>}
               {(status === 'STATUS_CREATING' || status.startsWith('STATUS_CONNECTING:')) && (
                 <button className="block mx-auto mt-2.5 bg-white hard-xs push rounded-full px-5 py-2 font-extrabold text-[#D63A2F]"
@@ -640,7 +680,7 @@ export default function App() {
   const nameOf = (id?: string | null) => pub?.players.find(p => p.id === id)?.name || '?';
   const lastChat = pub && pub.chat.length ? pub.chat[pub.chat.length - 1] : null;
   const roleLabel = (role?: string | null, isFollower?: boolean) =>
-    (role === 'thief' ? '😈 ' + d.thief : role === 'fallmouse' ? '💀 ' + d.fall : '🐭 ' + d.sleepy) + (isFollower ? ' 🤝' : '');
+    (role === 'thief' ? d.thief : role === 'fallmouse' ? d.fall : d.sleepy) + (isFollower ? ' · ' + d.follower : '');
 
   return (
     <div className={`h-dvh ${bg} p-3 sm:p-4 transition-colors duration-1000 flex flex-col overflow-hidden relative`}>
@@ -648,8 +688,8 @@ export default function App() {
         <div className="flex flex-col lg:flex-row lg:gap-5 flex-1 min-h-0">
         <div className="flex flex-col flex-1 min-h-0">
         <TopBar logo={<CheeseWedge size={30} />} d={d} lang={lang} muted={muted} onToggleMuted={toggleMuted} onHelp={() => setShowHelp(true)} onToggleLang={() => setLang(l => { const n: Lang = l === 'en' ? 'vi' : 'en'; localStorage.setItem('ct_lang', n); return n; })}  tone={tone} voice={{ speaker: voiceSpeaker, mic: voiceMic, muted: voiceMuted, onSpeaker: toggleSpeaker, onMic: toggleMic }}/>
-        {connLost && joined && <div className="bg-red-500 text-white text-center font-bold text-sm rounded-full px-4 py-1 mb-2 anim-pulse-soft shadow">📡 {d.connLost}</div>}
-        {migrating && joined && <div className="bg-amber-500 text-white text-center font-bold text-sm rounded-full px-4 py-1 mb-2 anim-pulse-soft shadow">🔄 {d.statusMigrating}</div>}
+        {connLost && joined && <div className="bg-red-500 text-white text-center font-bold text-sm rounded-full px-4 py-1 mb-2 anim-pulse-soft shadow">{d.connLost}</div>}
+        {migrating && joined && <div className="bg-amber-500 text-white text-center font-bold text-sm rounded-full px-4 py-1 mb-2 anim-pulse-soft shadow">{d.statusMigrating}</div>}
         {error && <><div className="bg-red-100 border border-red-400 text-red-700 rounded-2xl px-4 py-2 mb-3 font-bold">{localizeMsg(error)}
           <button className="float-right w-9 h-9 -mt-1.5 -mr-1.5 flex items-center justify-center text-lg leading-none" onClick={() => setError('')}>✕</button></div><RetryDefaultButton d={d} /></>}
 
@@ -657,10 +697,10 @@ export default function App() {
         {priv?.role && (phase === 'night' || phase === 'recruit' || phase === 'day' || phase === 'voting') && (
           <div className="bg-[#1D1D38] border-2 border-[#3D3D63] rounded-2xl px-3.5 py-2 mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-bold text-[#EDEDF7] relative z-10">
             <span className="disp bg-[#FFB020] text-[#2B2016] text-[11px] font-black rounded-md px-1.5 py-0.5 tracking-wider">{d.secretTag}</span>
-            <span>{priv.role === 'thief' ? d.thief : priv.role === 'fallmouse' ? d.fall : d.sleepy}{priv.isFollower ? ' 🤝' : ''}</span>
+            <span>{priv.role === 'thief' ? d.thief : priv.role === 'fallmouse' ? d.fall : d.sleepy}{priv.isFollower ? ' · ' + d.follower : ''}</span>
             <span className="inline-flex items-center gap-1.5"><DiceFace value={priv.dice ?? 1} size={22} /><span>{d.peekPill(priv.dice ?? 0)} · {d.wakeShort(priv.dice ?? 0)}</span></span>
-            {phase === 'night' && <span>{priv.awake ? '👀 ' + d.youAwake : '💤 ' + d.sleeping}</span>}
-            {priv.peeks && priv.peeks.length > 0 && <span className="text-[#9CC3F5]">{d.peekedShort}: {priv.peeks.map(x => `${nameOf(x.targetId)} · 🎲${x.dice}`).join(', ')}</span>}
+            {phase === 'night' && <span className="inline-flex items-center gap-1.5">{priv.awake ? <><IcoEye size={16} /> {d.youAwake}</> : <><IcoMoon size={15} /> {d.sleeping}</>}</span>}
+            {priv.peeks && priv.peeks.length > 0 && <span className="text-[#9CC3F5]">{d.peekedShort}: {priv.peeks.map(x => `${nameOf(x.targetId)} · ${d.peekPill(x.dice)}`).join(', ')}</span>}
             {priv.knownThiefId && <span className="text-red-300">{d.knowsThief(nameOf(priv.knownThiefId))}</span>}
             {priv.witnessedThiefId && <span className="text-red-300">{d.sawThief(nameOf(priv.witnessedThiefId))}</span>}
             {priv.role === 'thief' && priv.knownFollowerIds.length > 0 && <span className="text-emerald-300">{d.yourFollowers(priv.knownFollowerIds.map(nameOf).join(', '))}</span>}
@@ -691,7 +731,7 @@ export default function App() {
               <button className={`${BTN} btn-amber !px-3.5 !py-2.5 text-sm flex-none`} onClick={() => {
                 navigator.clipboard?.writeText(location.origin + location.pathname + '?room=' + pub.roomCode);
                 setCopied(true); setTimeout(() => setCopied(false), 1500);
-              }}>{copied ? '✅ ' + d.copied : '🔗 ' + d.copyLink}</button>
+              }}>{copied ? <span className="inline-flex items-center gap-1.5"><IcoCheck size={15} /> {d.copied}</span> : <span className="inline-flex items-center gap-1.5"><IcoLink size={15} /> {d.copyLink}</span>}</button>
             </div>
             <div className="flex items-baseline justify-between mt-4 mb-2">
               <h3 className="disp text-lg font-extrabold text-[#2B2016]">{d.players}</h3>
@@ -702,12 +742,12 @@ export default function App() {
                 <div key={p.id} className={`relative flex items-center gap-2.5 rounded-2xl px-3 py-2 hard-sm ${p.id === joined.playerId ? 'bg-[#FFE9B8]' : 'bg-[#FFFBef]'}`}>
                   <PlayerAvatar avatarId={p.avatar} size={42} fallback={<MouseAvatar seed={p.id} size={42} halo="#FFF3CF" state={p.connected ? 'awake' : 'asleep'} />} />
                   <div className="min-w-0 flex-1">
-                    <div className="font-extrabold truncate text-[15px] text-[#2B2016] leading-tight">{p.name} {p.isHost && '👑'}{(p as any).isBot && <span className="text-[10px] font-extrabold bg-[#23233F] text-[#FFB020] rounded-full px-1.5 py-0.5 ml-1">🤖 {d.botTag}</span>}</div>
+                    <div className="font-extrabold truncate text-[15px] text-[#2B2016] leading-tight">{p.name} {p.isHost && <span className="text-[#FFB020] inline-flex align-[-2px]"><IcoCrown size={14} /></span>}{(p as any).isBot && <span className="text-[10px] font-extrabold bg-[#23233F] text-[#FFB020] rounded-full px-1.5 py-0.5 ml-1">{d.botTag}</span>}</div>
                     <div className="text-xs font-bold text-[#8A7B63] truncate">
                       {p.id === joined.playerId && p.isHost ? d.youHost : p.id === joined.playerId ? d.you : (p.wins ?? 0) > 0 ? d.winsSub(p.wins) : !p.connected ? d.offline : ''}
                     </div>
                   </div>
-                  {speakingIds.has(p.id) && <span className="absolute -bottom-2 left-2 bg-[#0E9F6E] text-white text-[11px] rounded-full px-1.5 py-0.5 shadow anim-pulse-soft">🎙️</span>}
+                  {speakingIds.has(p.id) && <span className="absolute -bottom-2 left-2 bg-[#0E9F6E] text-white rounded-full px-1.5 py-0.5 shadow anim-pulse-soft inline-flex"><IcoMic size={12} /></span>}
                   {isHost && p.id !== joined.playerId && (
                     <button title={(p as any).isBot ? d.removeBot : d.kick} className="absolute -top-2 -right-2 w-11 h-11 flex items-center justify-center"
                       onClick={() => { if ((p as any).isBot) getNet().nightAction('removeBot', p.id); else getNet().kick(p.id); }}><span className="bg-[#D63A2F] text-white text-[11px] font-black rounded-full w-6 h-6 border-2 border-[#2B2016] leading-none flex items-center justify-center">✕</span></button>)}
@@ -720,7 +760,7 @@ export default function App() {
             {isHost && pub.players.length > 1 && <p className="text-xs font-bold text-[#8A7B63] italic mt-2">{d.kickHint}</p>}
             {isHost && pub.players.length < 8 && (
               <div className="mt-2">
-                <button className={`${BTN} btn-dark w-full`} disabled={botAdding} onClick={() => { setBotAdding(true); getNet().nightAction('addBot'); }}>🤖 {d.addBot}</button>
+                <button className={`${BTN} btn-dark w-full`} disabled={botAdding} onClick={() => { setBotAdding(true); getNet().nightAction('addBot'); }}>{d.addBot}</button>
                 <p className="font-bold text-[#8A7B63] text-sm text-center mt-1.5">{d.botHint}</p>
               </div>
             )}
@@ -737,7 +777,7 @@ export default function App() {
             </div>
             <div className="mt-auto pt-3">
               <button className="w-full lg:hidden bg-[#FFFBef] hard-sm push rounded-2xl px-3.5 py-2.5 flex items-center gap-2 text-left" onClick={() => setChatSheet(true)}>
-                <span className="text-lg">💬</span>
+                <span className="text-[#6B5B43] inline-flex flex-none"><IcoChat size={18} /></span>
                 <span className="flex-1 min-w-0 truncate font-bold text-[#6B5B43] text-sm">
                   {lastChat ? <><span className="font-extrabold text-[#2B2016]">{lastChat.fromName}:</span> {chatPreview(d, lastChat.text)}</> : d.chatEmpty}
                 </span>
@@ -747,7 +787,7 @@ export default function App() {
                 <>
                   <button className={`${BTN} btn-amber w-full text-xl mt-2.5 !py-3.5`}
                     disabled={pub.players.filter(p => p.connected).length < 4}
-                    onClick={() => getNet().startGame()}>▶ {d.start}</button>
+                    onClick={() => getNet().startGame()}><span className="inline-flex items-center gap-2 justify-center"><IcoPlay size={18} /> {d.start}</span></button>
                   {pub.players.length < 4 && <p className="text-center text-[#D63A2F] font-bold mt-2 text-sm">{d.need4}</p>}
                 </>
               ) : <p className="text-center font-bold text-[#8A7B63] mt-3">{d.waiting}</p>}
@@ -781,8 +821,8 @@ export default function App() {
             </div>
             <div className="mt-auto pt-4 max-w-md w-full mx-auto">
               {pub.revealReady?.includes(joined.playerId) || optReady
-                ? <p className="disp text-center font-extrabold text-[#35D99A] text-lg">{d.imReady}</p>
-                : <button className={`${BTN} btn-amber w-full text-xl !py-3.5`} onClick={() => { setOptReady(true); pendingRef.current.ready = true; getNet().ready(); }}>{d.imReady}</button>}
+                ? <p className="disp text-center font-extrabold text-[#35D99A] text-lg"><span className="inline-flex items-center gap-2 justify-center"><IcoCheck size={20} /> {d.imReady}</span></p>
+                : <button className={`${BTN} btn-amber w-full text-xl !py-3.5`} onClick={() => { setOptReady(true); pendingRef.current.ready = true; getNet().ready(); }}><span className="inline-flex items-center gap-2 justify-center"><IcoCheck size={20} /> {d.imReady}</span></button>}
               <div className="flex items-center justify-center gap-1.5 mt-3">
                 {pub.players.filter(p => p.connected).map(p => (
                   <span key={p.id} className={`w-3 h-3 rounded-full border-2 ${pub.revealReady?.includes(p.id) ? 'bg-[#FFB020] border-[#FFB020]' : 'bg-transparent border-[#3D3D63]'}`} />
@@ -801,12 +841,12 @@ export default function App() {
             {fly && <FlyCheese key={fly.key} x0={fly.x0} y0={fly.y0} dx={fly.dx} dy={fly.dy} onDone={() => setFly(null)} />}
             <div className="flex items-start gap-2 relative z-10">
               <div className="flex-1 min-w-0">
-                <h2 className="disp text-[26px] font-extrabold text-[#FFF3CF] leading-none">🌙 {d.night}</h2>
+                <h2 className="disp text-[26px] font-extrabold text-[#FFF3CF] leading-none flex items-center gap-2"><IcoMoon size={24} /> {d.night}</h2>
                 <p className="text-[#B9BCE0] font-bold text-sm mt-1">{d.hourOf(pub.currentHour ?? 1)}</p>
               </div>
               <TimerPill dark endsAt={pub.hourEndsAt} />
-              <button className="relative lg:hidden bg-[#23233F] border-2 border-[#3D3D63] text-white rounded-xl w-11 h-11 push text-lg flex-none" title={d.chatTitle ?? 'Chat'}
-                onClick={() => setChatSheet(true)}>💬{pub.chat.length > chatSeen && <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-[#D63A2F] rounded-full border-2 border-[#14142B]" />}</button>
+              <button className="relative lg:hidden bg-[#23233F] border-2 border-[#3D3D63] text-white rounded-xl w-11 h-11 push flex-none items-center justify-center flex" title={d.chatTitle ?? 'Chat'}
+                onClick={() => setChatSheet(true)}><IcoChat size={18} />{pub.chat.length > chatSeen && <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-[#D63A2F] rounded-full border-2 border-[#14142B]" />}</button>
             </div>
             <p className="font-bold text-[#B9BCE0] text-xs mt-2 relative z-10 max-w-md w-full mx-auto text-center">{d.hourTimeout}</p>
             <div className="flex items-center justify-between px-1 mt-3 relative z-10 max-w-md w-full mx-auto">
@@ -824,7 +864,7 @@ export default function App() {
             <div className="relative z-10 mt-3 rounded-3xl border-[2.5px] border-[#2B2016] shadow-[0_4px_0_#2B2016] bg-gradient-to-b from-[#A06A35] to-[#7C4A21] px-4 py-3 flex items-center gap-3.5 max-w-md w-full mx-auto">
               <div id="table-cheese" className="flex-none leading-none">
                 {priv.awake
-                  ? (priv.cheesePresentWhenAwake === false ? <span className="text-5xl">🍽️</span> : <span className="anim-wiggle inline-block"><CheeseWedge size={74} /></span>)
+                  ? (priv.cheesePresentWhenAwake === false ? <IcoPlate size={74} /> : <span className="anim-wiggle inline-block"><CheeseWedge size={74} /></span>)
                   : <span className="opacity-40 inline-block"><CheeseWedge size={74} /></span>}
               </div>
               <div className="min-w-0">
@@ -846,19 +886,19 @@ export default function App() {
                   <PlayerAvatar avatarId={p.avatar} size={50} fallback={<MouseAvatar seed={p.id} size={50} state={awakeNow ? (knownThief ? 'thief' : 'awake') : 'asleep'} />} />
                   {!awakeNow && <span className="absolute top-1.5 right-2.5 text-[#7C83B8] font-black text-sm">z</span>}
                   <div className="font-extrabold truncate text-[13px] leading-tight">{p.name}{isMe ? ` (${d.you})` : ''}</div>
-                  {priv.stealById === p.id && <span className="absolute -top-2 -left-2 text-2xl anim-pop">🧀</span>}
+                  {priv.stealById === p.id && <span className="absolute -top-2 -left-2 anim-pop"><CheeseWedge size={26} /></span>}
                   {priv.peeks?.some(x => x.targetId === p.id) && <span className="absolute -top-2 -right-2 bg-[#2E7CD6] text-white text-[11px] font-extrabold rounded-full px-2 py-0.5 border-2 border-[#2B2016] z-20">{d.peekPill(priv.peeks.find(x => x.targetId === p.id)!.dice)}</span>}
-                  {speakingIds.has(p.id) && <span className="absolute -bottom-2 -left-2 bg-[#0E9F6E] text-white text-[11px] rounded-full px-1.5 py-0.5 shadow z-20 anim-pulse-soft">🎙️</span>}
+                  {speakingIds.has(p.id) && <span className="absolute -bottom-2 -left-2 bg-[#0E9F6E] text-white rounded-full px-1.5 py-0.5 shadow z-20 anim-pulse-soft inline-flex"><IcoMic size={12} /></span>}
                   {(priv.knownFollowerIds.includes(p.id) || (isMe && priv.isFollower)) && <span className="absolute -bottom-2 -right-2 text-lg anim-pop">🤝</span>}
                 </div>);
               })}
             </div>
             {priv.awake ? (
               <div className="card-cream anim-pop max-w-md w-full mx-auto mt-auto relative z-10 px-4 py-3.5 text-center">
-                <div className="disp text-lg font-extrabold text-[#2B2016]">👁 {d.youAwake}</div>
+                <div className="disp text-lg font-extrabold text-[#2B2016] inline-flex items-center gap-2 justify-center"><IcoEye size={20} /> {d.youAwake}</div>
                 {priv.cheesePresentWhenAwake === false && <p className="font-bold text-[#D63A2F] mt-1">{d.cheeseGoneWake}</p>}
                 {priv.cheesePresentWhenAwake === true && <p className="font-bold text-[#8A7B63] mt-1">{d.cheeseHere}</p>}
-                {priv.fellowWakers.length > 0 && <p className="mt-1 font-bold text-[#7C4DBD]">👀👀 {d.fellow} ({priv.fellowWakers.map(id => pub.players.find(p => p.id === id)?.name).join(', ')})</p>}
+                {priv.fellowWakers.length > 0 && <p className="mt-1 font-bold text-[#7C4DBD]">{d.fellow} ({priv.fellowWakers.map(id => pub.players.find(p => p.id === id)?.name).join(', ')})</p>}
                 {priv.role === 'thief' && priv.hasActedThisHour && <p className="mt-3 font-extrabold text-[#0B8A5E]">{d.stolenOk}</p>}
                 {priv.role === 'thief' && !priv.hasActedThisHour && <p className="mt-3 font-bold text-[#8A7B63]">{d.stealAuto}</p>}
                 {priv.followerCandidates && (
@@ -870,7 +910,7 @@ export default function App() {
                     </div>
                   </div>)}
                 {priv.isFollower && (
-                  <p className="mt-3 bg-[#DFF5E3] border-2 border-[#0E9F6E] rounded-2xl px-4 py-2 font-extrabold text-[#0B6B4A]">🤝 {d.becameFollower}</p>)}
+                  <p className="mt-3 bg-[#DFF5E3] border-2 border-[#0E9F6E] rounded-2xl px-4 py-2 font-extrabold text-[#0B6B4A]">{d.becameFollower}</p>)}
                 {!priv.isFollower && priv.role !== 'thief' && priv.knownFollowerIds.length > 0 && (
                   <p className="mt-3 font-bold text-[#7C4DBD]">{d.witnessKnows(priv.knownFollowerIds.map(nameOf).join(', '))}</p>)}
                 {priv.canInspect && !optPeek && (
@@ -883,7 +923,7 @@ export default function App() {
                   </div>)}
                 {priv.canInspect && optPeek && !priv.inspected && (
                   <p className="mt-3 font-extrabold text-[#2E7CD6] text-lg">{d.looking}</p>)}
-                {priv.inspected && <p className="mt-3 font-extrabold text-[#2E7CD6] text-lg">🔎 {d.inspected(pub.players.find(p => p.id === priv.inspected!.targetId)?.name || '?', priv.inspected.dice)}</p>}
+                {priv.inspected && <p className="mt-3 font-extrabold text-[#2E7CD6] text-lg inline-flex items-center gap-2 justify-center"><IcoEye size={20} /> {d.inspected(pub.players.find(p => p.id === priv.inspected!.targetId)?.name || '?', priv.inspected.dice)}</p>}
               </div>
             ) : (
               <p className="text-[#B9BCE0] font-bold text-lg text-center mt-auto pb-2 relative z-10">{d.sleeping}</p>
@@ -897,7 +937,7 @@ export default function App() {
             <div className="stars" /><div className="stars2" />
             <div className="flex items-start gap-2 relative z-10 max-w-xl w-full mx-auto">
               <div className="flex-1 min-w-0">
-                <h2 className="disp text-[26px] font-extrabold text-[#FFF3CF] leading-tight">{priv.role === 'thief' ? d.recruitTitle : '🌙 ' + d.night}</h2>
+                <h2 className="disp text-[26px] font-extrabold text-[#FFF3CF] leading-tight">{priv.role === 'thief' ? d.recruitTitle : d.night}</h2>
                 {priv.role === 'thief' && <p className="text-[#B9BCE0] font-bold text-sm mt-0.5">{d.hourOf(6)} · {d.revealSub}</p>}
               </div>
               <TimerPill dark endsAt={pub.recruitEndsAt} />
@@ -911,9 +951,11 @@ export default function App() {
                     <div className="text-sm font-bold text-[#8A7B63]">{d.recruitHint(priv.followersNeeded, priv.followersChosen)}</div>
                   </div>
                 </div>
-                <div className="mt-3 space-y-2">
+                {/* Design v54: laptop shows candidates as a 3-col card grid,
+                    mobile keeps the row list. */}
+                <div className="mt-3 grid grid-cols-1 lg:grid-cols-3 gap-2">
                   {priv.followerCandidates.map(id => (
-                    <div key={id} className="flex items-center gap-2.5 bg-white rounded-2xl hard-sm px-3 py-2">
+                    <div key={id} className="flex lg:flex-col lg:text-center items-center gap-2.5 bg-white rounded-2xl hard-sm px-3 py-2 lg:py-3">
                       <PlayerAvatar avatarId={pub.players.find(x => x.id === id)?.avatar} size={40} fallback={<MouseAvatar seed={id} size={40} halo="#FFF3CF" />} />
                       <span className="flex-1 font-extrabold text-[#2B2016] truncate">{nameOf(id)}</span>
                       <button className={`${BTN} btn-green !px-4 !py-1.5 text-sm flex-none`} onClick={() => getNet().nightAction('chooseFollower', id)}>+ {d.inviteBtn}</button>
@@ -922,7 +964,7 @@ export default function App() {
               </div>
             ) : priv.isFollower ? (
               <div className="card-cream anim-pop max-w-xl w-full mx-auto mt-4 relative z-10 px-4 py-4 text-center">
-                <p className="font-extrabold text-[#0B8A5E] text-xl">🤝 {d.becameFollower}</p>
+                <p className="font-extrabold text-[#0B8A5E] text-xl">{d.becameFollower}</p>
                 {priv.knownThiefId
                   ? <p className="font-bold text-[#D63A2F] mt-1">{d.knowsThief(nameOf(priv.knownThiefId))}</p>
                   : <p className="font-bold text-[#8A7B63] mt-1">{d.followerBlind}</p>}
@@ -933,7 +975,7 @@ export default function App() {
             )}
             <div className="mt-auto relative z-10 flex items-end justify-between gap-3 pt-3 max-w-xl w-full mx-auto">
               <p className="text-[#7C83B8] text-[13px] font-bold leading-snug">{priv.role === 'thief' ? d.recruitNote : ''}</p>
-              <button className="relative lg:hidden bg-[#23233F] border-2 border-[#3D3D63] text-white rounded-2xl px-4 py-2.5 font-extrabold flex-none" onClick={() => setChatSheet(true)}>💬 Chat{pub.chat.length > chatSeen && <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-[#D63A2F] rounded-full border-2 border-[#14142B]" />}</button>
+              <button className="relative lg:hidden bg-[#23233F] border-2 border-[#3D3D63] text-white rounded-2xl px-4 py-2.5 font-extrabold flex-none" onClick={() => setChatSheet(true)}><span className="inline-flex items-center gap-1.5"><IcoChat size={16} /> Chat</span>{pub.chat.length > chatSeen && <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-[#D63A2F] rounded-full border-2 border-[#14142B]" />}</button>
             </div>
           </div>
         )}
@@ -942,7 +984,7 @@ export default function App() {
         {phase === 'day' && (
           <div className="anim-pop flex flex-col flex-1 min-h-0">
             <div className="flex items-center gap-2.5">
-              <span className="w-11 h-11 rounded-full bg-[#FFB020] border-[2.5px] border-[#2B2016] flex items-center justify-center text-[22px] flex-none">☀️</span>
+              <span className="w-11 h-11 rounded-full bg-[#FFB020] border-[2.5px] border-[#2B2016] flex items-center justify-center text-[#2B2016] flex-none"><IcoSun size={24} /></span>
               <div className="flex-1 min-w-0">
                 <h2 className="disp text-[26px] font-extrabold text-[#2B2016] leading-none">{d.dayTitle}</h2>
                 <p className="font-extrabold text-[#D63A2F] text-sm mt-0.5">{d.daySub}</p>
@@ -951,7 +993,7 @@ export default function App() {
             </div>
             <p className="font-bold text-[#8A7B63] text-xs mt-1">{d.discussTimeout}</p>
             {priv?.isFollower && (
-              <p className="bg-[#DFF5E3] border-2 border-[#0E9F6E] rounded-2xl px-4 py-2 mt-3 text-center font-extrabold text-[#0B6B4A] anim-pop">🤝 {d.becameFollower}</p>)}
+              <p className="bg-[#DFF5E3] border-2 border-[#0E9F6E] rounded-2xl px-4 py-2 mt-3 text-center font-extrabold text-[#0B6B4A] anim-pop">{d.becameFollower}</p>)}
             {priv?.witnessedThiefId && (
               <p className="text-center font-extrabold text-[#D63A2F] mt-3">{d.sawThief(nameOf(priv.witnessedThiefId))}</p>)}
             <div className="flex lg:hidden gap-1.5 mt-3 pb-1">
@@ -960,28 +1002,28 @@ export default function App() {
                   <PlayerAvatar avatarId={p.avatar} size={36} fallback={<MouseAvatar seed={p.id} size={36} state={(priv?.knownThiefId === p.id || priv?.witnessedThiefId === p.id) ? 'thief' : 'awake'} />} />
                   <div className="text-[11px] font-extrabold truncate text-[#2B2016]">{p.name}</div>
                   {priv?.peeks?.some(x => x.targetId === p.id) && <span className="absolute -top-2 -right-1.5 bg-[#2E7CD6] text-white text-[11px] font-black rounded-full w-5 h-5 flex items-center justify-center border-2 border-[#2B2016] z-10">{priv.peeks.find(x => x.targetId === p.id)!.dice}</span>}
-                  {speakingIds.has(p.id) && <span className="absolute -bottom-2 left-0 bg-[#0E9F6E] text-white text-[10px] rounded-full px-1 py-0.5 anim-pulse-soft z-10">🎙️</span>}
+                  {speakingIds.has(p.id) && <span className="absolute -bottom-2 left-0 bg-[#0E9F6E] text-white rounded-full px-1 py-0.5 anim-pulse-soft z-10 inline-flex"><IcoMic size={11} /></span>}
                   {(priv?.knownFollowerIds.includes(p.id) || (p.id === joined.playerId && priv?.isFollower)) && <span className="absolute -bottom-2 right-0 text-sm z-10">🤝</span>}
                 </div>))}
             </div>
-            <div className="hidden lg:grid grid-cols-3 gap-2.5 mt-3">
+            <div className="hidden lg:grid grid-cols-4 gap-2.5 mt-3">
               {pub.players.map(p => (
                 <div key={p.id} className={`relative rounded-2xl border-2 px-3 py-3 text-center ${p.id === joined.playerId ? 'bg-[#FFE9B8] border-[#2B2016] shadow-[0_3px_0_#2B2016]' : 'bg-[#FFFBef] border-[#E3D3AC]'}`}>
                   <PlayerAvatar avatarId={p.avatar} size={56} fallback={<MouseAvatar seed={p.id} size={56} state={(priv?.knownThiefId === p.id || priv?.witnessedThiefId === p.id) ? 'thief' : 'awake'} />} />
                   <div className="disp font-extrabold text-lg text-[#2B2016] mt-1 leading-tight">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</div>
                   {priv?.peeks?.some(x => x.targetId === p.id) && <span className="absolute -top-2.5 right-2 bg-[#2E7CD6] text-white text-xs font-extrabold rounded-full px-2.5 py-0.5 border-2 border-[#2B2016] whitespace-nowrap z-10">{d.peekPill(priv.peeks.find(x => x.targetId === p.id)!.dice)}</span>}
-                  {speakingIds.has(p.id) && <span className="absolute top-2 left-2 bg-[#0E9F6E] text-white text-[11px] rounded-full px-1.5 py-0.5 anim-pulse-soft">🎙️</span>}
+                  {speakingIds.has(p.id) && <span className="absolute top-2 left-2 bg-[#0E9F6E] text-white rounded-full px-1.5 py-0.5 anim-pulse-soft inline-flex"><IcoMic size={12} /></span>}
                   {(priv?.knownFollowerIds.includes(p.id) || (p.id === joined.playerId && priv?.isFollower)) && <span className="absolute top-2 right-2 text-lg">🤝</span>}
                 </div>))}
             </div>
             <div className="flex-1 min-h-0 flex flex-col lg:hidden"><ChatPanel chat={pub.chat} myId={joined.playerId} d={d} height="flex" onChat={t => getNet().chat(t)} /></div>
             <div className="mt-3 lg:mt-auto text-center">
               {pub.dayReady?.includes(joined.playerId) || optReadyVote
-                ? <p className="disp font-extrabold text-[#0B8A5E] text-lg">✅ {d.readyVoteDone}</p>
-                : <button className={`${BTN} btn-dark w-full text-lg !py-3`} onClick={() => { setOptReadyVote(true); pendingRef.current.readyVote = true; getNet().readyVote(); }}>{d.readyVoteBtn}</button>}
+                ? <p className="disp font-extrabold text-[#0B8A5E] text-lg"><span className="inline-flex items-center gap-2 justify-center"><IcoCheck size={20} /> {d.readyVoteDone}</span></p>
+                : <button className={`${BTN} btn-dark w-full text-lg !py-3`} onClick={() => { setOptReadyVote(true); pendingRef.current.readyVote = true; getNet().readyVote(); }}><span className="inline-flex items-center gap-2 justify-center"><IcoCheck size={20} /> {d.readyVoteBtn}</span></button>}
               <p className="font-bold text-[#8A7B63] mt-1.5 text-sm">{d.readyVoteOf(pub.dayReady?.length ?? 0, pub.players.filter(p => p.connected).length)}</p>
             </div>
-            {isHost && <button className={`${BTN} btn-amber w-full mt-2`} onClick={() => getNet().toVoting()}>🗳️ {d.toVote}</button>}
+            {isHost && <button className={`${BTN} btn-amber w-full mt-2`} onClick={() => getNet().toVoting()}><span className="inline-flex items-center gap-2 justify-center"><IcoBallot size={18} /> {d.toVote}</span></button>}
           </div>
         )}
 
@@ -989,7 +1031,7 @@ export default function App() {
         {phase === 'voting' && (
           <div className="anim-pop flex flex-col flex-1 min-h-0">
             <div className="flex items-center gap-2.5">
-              <span className="w-11 h-11 rounded-full bg-[#FFB020] border-[2.5px] border-[#2B2016] flex items-center justify-center text-[22px] flex-none">🗳️</span>
+              <span className="w-11 h-11 rounded-full bg-[#FFB020] border-[2.5px] border-[#2B2016] flex items-center justify-center text-[#2B2016] flex-none"><IcoBallot size={22} /></span>
               <div className="flex-1 min-w-0">
                 <h2 className="disp text-[26px] font-extrabold text-[#2B2016] leading-none">{d.voting}</h2>
                 <p className="font-bold text-[#8A7B63] text-sm mt-0.5">{d.votedCount(pub.players.filter(p => p.hasVoted).length, pub.players.length)}</p>
@@ -1010,13 +1052,13 @@ export default function App() {
                   <button key={p.id} disabled={isMe}
                     onClick={() => { setOptVote(p.id); pendingRef.current.vote = p.id; getNet().vote(p.id); }}
                     className={`relative rounded-3xl px-3 pt-4 pb-3 text-center ${isMe ? 'bg-[#FFF3CF] border-[2.5px] border-dashed border-[#D8C69A] opacity-80' : 'card-cream push cursor-pointer'}`}>
-                    <MouseAvatar seed={p.id} size={62} halo="#FFF3CF" state={(priv?.knownThiefId === p.id || priv?.witnessedThiefId === p.id) ? 'thief' : 'awake'} />
+                    <PlayerAvatar avatarId={p.avatar} size={62} fallback={<MouseAvatar seed={p.id} size={62} halo="#FFF3CF" state={(priv?.knownThiefId === p.id || priv?.witnessedThiefId === p.id) ? 'thief' : 'awake'} />} />
                     <div className="disp font-extrabold text-lg text-[#2B2016] mt-1 leading-tight">{p.name}{isMe ? ` (${d.you})` : ''}</div>
                     <div className={`text-[13px] font-bold ${isMe ? 'text-[#8A7B63]' : p.hasVoted ? 'text-[#2B2016]' : 'italic text-[#8A7B63]'}`}>
                       {isMe ? d.cantVoteSelf : p.hasVoted ? d.votedStatus : d.thinkingStatus}
                     </div>
                     {priv?.peeks?.some(x => x.targetId === p.id) && <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-[#2E7CD6] text-white text-xs font-extrabold rounded-full px-2.5 py-0.5 border-2 border-[#2B2016] whitespace-nowrap z-10">{d.peekPill(priv.peeks.find(x => x.targetId === p.id)!.dice)}</span>}
-                    {speakingIds.has(p.id) && <span className="absolute top-2 left-2 bg-[#0E9F6E] text-white text-[11px] rounded-full px-1.5 py-0.5 anim-pulse-soft">🎙️</span>}
+                    {speakingIds.has(p.id) && <span className="absolute top-2 left-2 bg-[#0E9F6E] text-white rounded-full px-1.5 py-0.5 anim-pulse-soft inline-flex"><IcoMic size={12} /></span>}
                     {(priv?.knownFollowerIds.includes(p.id) || (isMe && priv?.isFollower)) && <span className="absolute top-2 right-2 text-lg">🤝</span>}
                   </button>);
                 })}
@@ -1037,7 +1079,7 @@ export default function App() {
               </div>
               <div className="px-3 -mt-7 relative z-10 flex flex-row gap-2 flex-none">
                 <div className="bg-[#FFF3CF] hard rounded-3xl px-3 py-1.5 flex items-center gap-2.5 flex-1 min-w-0">
-                  <MouseAvatar seed={pub.thiefId || ''} size={38} state="thief" halo="#FFFBef" />
+                  <PlayerAvatar avatarId={pub.players.find(p => p.id === pub.thiefId)?.avatar} size={38} fallback={<MouseAvatar seed={pub.thiefId || ''} size={38} state="thief" halo="#FFFBef" />} />
                   <div className="min-w-0">
                     <div className="text-[10px] font-black tracking-[0.06em] text-[#8A7B63] leading-tight">{d.thiefCardLabel}</div>
                     <div className="disp text-xl font-extrabold text-[#2B2016] leading-none truncate">{pub.players.find(p => p.id === pub.thiefId)?.name || '?'}</div>
@@ -1045,7 +1087,7 @@ export default function App() {
                 </div>
                 {pub.players.some(p => (p as any).role === 'fallmouse') && (
                   <div className="bg-[#EFE6FB] hard rounded-3xl px-3 py-1.5 flex items-center gap-2.5 flex-1 min-w-0">
-                    <MouseAvatar seed={pub.players.find(p => (p as any).role === 'fallmouse')?.id || ''} size={38} state="dead" halo="#FFFBef" />
+                    <PlayerAvatar avatarId={pub.players.find(p => (p as any).role === 'fallmouse')?.avatar} size={38} fallback={<MouseAvatar seed={pub.players.find(p => (p as any).role === 'fallmouse')?.id || ''} size={38} state="dead" halo="#FFFBef" />} />
                     <div className="min-w-0">
                       <div className="text-[10px] font-black tracking-[0.06em] text-[#8A7B63] leading-tight">{d.fallCardLabel}</div>
                       <div className="disp text-xl font-extrabold text-[#2B2016] leading-none truncate">{pub.players.find(p => (p as any).role === 'fallmouse')?.name || '?'}</div>
@@ -1053,30 +1095,33 @@ export default function App() {
                   </div>)}
               </div>
               <div className="bg-[#FFF3CF] px-3.5 pt-3 pb-3.5 flex-1 min-h-0 flex flex-col">
+                {/* Design v54: laptop = 2 columns (roles + standings left,
+                    night recap + actions right); mobile stacks in order. */}
+                <div className="flex flex-col lg:grid lg:grid-cols-2 lg:gap-3 flex-1 min-h-0">
+                <div className="min-w-0 flex-none">
                 <h3 className="disp font-extrabold text-base text-[#2B2016]">{d.rolesTitle}</h3>
-                <div className="grid grid-cols-2 gap-1.5 mt-1 flex-none">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5 mt-1 flex-none">
                   {[...pub.players].sort((a, b) => {
                     const w = (p: any) => p.id === pub.thiefId ? 0 : p.id === joined.playerId ? 1 : 2;
                     return w(a) - w(b);
                   }).map(p => {
                     const role = (p as any).role as string | undefined;
-                    const side = role === 'fallmouse' ? 'fallmouse' : (role === 'thief' || p.isFollower) ? 'thief' : 'village';
-                    const winnerSide = pub.winner === 'sleepyheads' ? 'village' : pub.winner === 'fallmouse' ? 'fallmouse' : 'thief';
                     const votes = pub.voteCounts?.find(v => v.id === p.id)?.count ?? 0;
                     return (
-                    <div key={p.id} className={`relative flex items-center gap-2 rounded-2xl hard-sm px-2.5 py-0.5 ${role === 'thief' ? 'bg-[#FDE3E0]' : p.id === joined.playerId ? 'bg-[#FFE9B8]' : 'bg-[#FFFBef]'}`}>
-                      <span className="absolute -top-2 right-2 bg-[#2B2016] text-white text-[10px] font-black rounded-full px-1.5 py-px">{votes} {d.votes}</span>
-                      <MouseAvatar seed={p.id} size={30} halo="#FFFBef" state={role === 'thief' ? 'thief' : role === 'fallmouse' ? 'dead' : 'awake'} />
+                    <div key={p.id} className={`flex items-center gap-2 rounded-2xl hard-sm px-2.5 py-1 ${role === 'thief' ? 'bg-[#FDE3E0]' : p.id === joined.playerId ? 'bg-[#FFE9B8]' : 'bg-[#FFFBef]'}`}>
+                      <PlayerAvatar avatarId={p.avatar} size={36} fallback={<MouseAvatar seed={p.id} size={36} halo="#FFFBef" state={role === 'thief' ? 'thief' : role === 'fallmouse' ? 'dead' : 'awake'} />} />
                       <div className="flex-1 min-w-0">
                         <div className="font-extrabold text-[#2B2016] truncate leading-tight">{p.name}{p.id === joined.playerId ? ` (${d.you})` : ''}</div>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className={`inline-block text-[10px] font-black text-white rounded-full px-1.5 py-px whitespace-nowrap ${role === 'thief' ? 'bg-[#D63A2F]' : role === 'fallmouse' ? 'bg-[#7C4DBD]' : 'bg-[#2E7CD6]'}`}>
                             {role === 'thief' ? d.thief : role === 'fallmouse' ? d.fall : d.sleepy}{p.isFollower ? ' 🤝' : ''}
                           </span>
-                          <span className="inline-block bg-[#2B2016] text-white text-[10px] font-black rounded-full px-1.5 py-px whitespace-nowrap">🎲{p.dice ?? 1}</span>
                         </div>
                       </div>
-                      {side === winnerSide && <span className="text-base flex-none">🏆</span>}
+                      <div className="flex-none flex items-center gap-2">
+                        <span className="text-xs font-extrabold text-[#8A7B63] whitespace-nowrap">{votes} {d.votes}</span>
+                        <DiceFace value={p.dice ?? 1} size={26} />
+                      </div>
                     </div>);
                   })}
                 </div>
@@ -1084,6 +1129,8 @@ export default function App() {
                   <Standings />
                   <MyRecord />
                 </div>
+                </div>
+                <div className="min-w-0 flex flex-col min-h-0 flex-1">
                 {(pub as any).recap?.length > 0 && (
                   <div className="results-recap bg-[#1D1D38] rounded-3xl hard p-3 mt-2 text-left flex-1 min-h-0 overflow-y-auto">
                     <div className="disp font-extrabold text-[#FFF3CF] text-center mb-0.5">{d.recapTitle}</div>
@@ -1112,7 +1159,7 @@ export default function App() {
                     })}
                     {(pub as any).recap.some((e: any) => e.afterNight) && (
                       <div className="flex gap-2.5 mt-1.5">
-                        <span className="disp w-6 h-6 rounded-full flex-none flex items-center justify-center font-extrabold text-[13px] bg-[#3D3D63] text-[#B9BCE0]">🌅</span>
+                        <span className="disp w-6 h-6 rounded-full flex-none flex items-center justify-center font-extrabold text-[13px] bg-[#3D3D63] text-[#B9BCE0]"><IcoSun size={13} /></span>
                         <div className="text-[#EDEDF7] font-bold text-[13px] leading-snug pt-0.5">
                           {(pub as any).recap.filter((e: any) => e.afterNight).map((e: any, i: number) => (
                             <span key={i} className="block">{d.recapRecruit(nameOf(e.ids[0]))}</span>))}
@@ -1121,7 +1168,7 @@ export default function App() {
                     </div>
                   </div>)}
                 <button className="w-full bg-[#FFFBef] hard-sm push rounded-2xl px-3.5 py-2 mt-2 flex items-center gap-2 text-left flex-none" onClick={() => setChatSheet(true)}>
-                  <span className="text-lg">💬</span>
+                  <span className="text-[#5C4B33] inline-flex flex-none"><IcoChat size={18} /></span>
                   <span className="flex-1 min-w-0 truncate font-bold text-[#5C4B33]">
                     {lastChat ? <><span className="font-extrabold text-[#2B2016]">{lastChat.fromName}:</span> {chatPreview(d, lastChat.text)}</> : d.chatEmpty}
                   </span>
@@ -1129,11 +1176,13 @@ export default function App() {
                 </button>
                 <div className="flex gap-2 mt-2 flex-none">
                   <button className={`${BTN} flex-1 !bg-[#DCEBFB] text-[#2B2016] !py-2 !px-3 whitespace-nowrap text-[15px]`} onClick={shareResult}>
-                    {shared ? '✅ ' + d.shareCopied : '📋 ' + d.shareResults}
+                    {shared ? <span className="inline-flex items-center gap-1.5 justify-center"><IcoCheck size={15} /> {d.shareCopied}</span> : d.shareResults}
                   </button>
                   {isHost
                     ? <button className={`${BTN} btn-amber flex-1 !py-2 !px-3 whitespace-nowrap text-[15px]`} onClick={() => getNet().playAgain()}>{d.backLobby}</button>
                     : <p className="flex-1 text-center font-bold text-[#8A7B63] self-center text-[13px] leading-tight line-clamp-2">{d.waiting}</p>}
+                </div>
+                </div>
                 </div>
               </div>
             </div>

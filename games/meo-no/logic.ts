@@ -255,6 +255,28 @@ export function playCard(s: GameState, player: Player, cardId: string, targetId?
   return resolveActionEffect(s, card.kind, player, targetId, rng);
 }
 
+/** Official Exploding Kittens rule: two matching cat cards steal a random
+ *  card from another player. Unlike single action cards, a pair resolves
+ *  at once — it does not open a Nope window. */
+export function playPair(s: GameState, player: Player, cardId1: string, cardId2: string, targetId: string, rng: () => number = Math.random): boolean {
+  if (s.phase !== 'playing' || s.turn !== player.id || !player.alive) return false;
+  if (s.pendingAction || s.pendingExplode || s.pendingReinsert || s.pendingFavor) return false;
+  if (cardId1 === cardId2) return false;
+  const c1 = player.hand.find(c => c.id === cardId1);
+  const c2 = player.hand.find(c => c.id === cardId2);
+  if (!c1 || !c2) return false;
+  if (c1.kind !== 'cat' || c2.kind !== 'cat' || c1.variant !== c2.variant) return false;
+  const target = byId(s, targetId);
+  if (!target || target.id === player.id || !target.alive || !target.hand.length) return false;
+  player.hand = player.hand.filter(c => c.id !== cardId1 && c.id !== cardId2);
+  s.discard.push(c1, c2);
+  const idx = Math.floor(rng() * target.hand.length);
+  const [stolen] = target.hand.splice(idx, 1);
+  player.hand.push(stolen);
+  feed(s, player.id, 'steal', target.id);
+  return true;
+}
+
 /** Apply an action card's effect (after its Nope window closed unblocked). */
 function resolveActionEffect(s: GameState, kind: ActionKind, actor: Player, targetId: string | undefined, rng: () => number = Math.random): boolean {
   switch (kind) {

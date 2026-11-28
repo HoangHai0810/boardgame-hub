@@ -436,7 +436,7 @@ export default function GianDiepApp() {
   if (!joined) {
     return (
       <div className="min-h-dvh bg-[#14142B] text-[#2B2016]">
-        <div className="max-w-md lg:max-w-lg mx-auto">
+        <div className="max-w-md lg:max-w-5xl mx-auto">
           <div className="flex items-center gap-2 px-3 pt-3">
             <button className="disp font-extrabold text-[#FFF3CF] text-sm bg-[#23233F] border-2 border-[#3D3D63] rounded-full px-3 py-2.5 push" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
             <span className="flex-1" />
@@ -446,6 +446,8 @@ export default function GianDiepApp() {
               <button className={`px-2.5 py-1 ${lang === 'en' ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#23233F] text-[#B9BCE0]'}`} onClick={() => { localStorage.setItem('ct_lang', 'en'); setLang('en'); }}>EN</button>
             </span>
           </div>
+          <div className="lg:grid lg:grid-cols-2 lg:gap-8 lg:items-center lg:px-6">
+            <div>
           <div className="text-center px-4 pt-6">
             <p className="disp text-[#FFB020] font-extrabold tracking-[0.22em] text-[11px]">{d.kicker}</p>
             <h1 className="disp text-[#FFF3CF] font-extrabold text-5xl leading-none mt-2">{d.title}</h1>
@@ -454,7 +456,8 @@ export default function GianDiepApp() {
           <div className="flex justify-center mt-5">
             <img src={SPY_ART} alt="" className="w-[200px] rounded-[24px] border-[3px] border-[#2B2016] hard anim-bob" />
           </div>
-          <div className="bg-[#FFF3CF] rounded-t-[28px] px-4 pt-4 pb-6 mt-5">
+            </div>
+          <div className="bg-[#FFF3CF] rounded-t-[28px] lg:rounded-[28px] px-4 pt-4 pb-6 mt-5 lg:mt-0">
             <label className="disp font-extrabold text-sm">{d.name}</label>
             <input className="inp w-full px-4 py-3 font-bold mt-1" placeholder="VD: An"
               value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
@@ -480,6 +483,7 @@ export default function GianDiepApp() {
             <p className="text-center mt-3">
               <button className="font-bold text-sm text-[#8A7B63] underline" onClick={() => setShowHelp(true)}>{d.how}</button>
             </p>
+          </div>
           </div>
           {showHelp && <HelpModal d={d} onClose={() => setShowHelp(false)} />}
         </div>
@@ -552,9 +556,9 @@ export default function GianDiepApp() {
                           className="flex-none text-xs bg-red-100 text-red-600 font-bold rounded-full px-2 py-1 cursor-pointer hover:bg-red-200">✖ {p.isBot ? d.removeBot : d.kick}</span>)}
                     </div>
                   ))}
-                  {Array.from({ length: Math.max(0, MAX_PLAYERS - pub!.players.length) }).map((_, i) => (
-                    <div key={'empty-' + i} className="rounded-2xl border-2 border-dashed border-[#C9BFA5] px-3 py-1 text-center text-[#8A7B63] font-bold text-xs hidden lg:block">{lang === 'vi' ? 'Đang chờ…' : 'Waiting…'}</div>
-                  ))}
+                  {MAX_PLAYERS - pub!.players.length > 0 && (
+                    <div className="rounded-2xl border-2 border-dashed border-[#C9BFA5] px-3 py-1 text-center text-[#8A7B63] font-bold text-xs hidden lg:block">{lang === 'vi' ? `Còn ${MAX_PLAYERS - pub!.players.length} chỗ trống` : `${MAX_PLAYERS - pub!.players.length} seats left`}</div>
+                  )}
                 </div>
                 {joined.isHost && <p className="font-bold text-[#8A7B63] text-sm hidden lg:block">{d.kickHint}</p>}
                 {joined.isHost && pub!.players.length < MAX_PLAYERS && (
@@ -667,6 +671,7 @@ export default function GianDiepApp() {
                   {pub.config.rolesOn && myRole !== null && (
                     <div className="mt-3 inline-block bg-white/95 rounded-full px-4 py-1.5 font-extrabold text-sm text-[#2B2016]">{d.revealYourRole}: {roleName(myRole)}</div>
                   )}
+                  <p className="font-bold text-sm text-[#B9BCE0] mt-3 leading-snug">{d.revealTip}</p>
                 </div>
               </div>
             )}
@@ -826,7 +831,7 @@ export default function GianDiepApp() {
         {phase === 'roundEnd' && pub && pub.roundResult && (
           <div className="lg:grid lg:grid-cols-[340px_1fr] lg:gap-6 lg:items-start max-w-3xl mx-auto">
             <div className="rounded-[28px] border-4 border-white overflow-hidden hard" style={{ background: '#0F766E' }}>
-              <img src={SPY_ART} alt="" className="w-full h-[190px] object-cover" />
+              <img src={SPY_ART} alt="" className="w-full h-[150px] lg:h-[170px] object-cover" />
               <div className="p-5 text-center">
                 <p className="disp text-[#FFB020] font-extrabold tracking-[0.22em] text-[11px]">{d.roundEndTitle} · {d.roundOf(pub.round, pub.config.roundsTotal)}</p>
                 <h2 className="disp font-extrabold text-3xl mt-1 text-white">{pub.roundResult.reason === 'spy-caught' ? d.caughtHeadline : pub.roundResult.winner === 'spy' ? d.spyWon : d.localsWon}</h2>
@@ -844,18 +849,18 @@ export default function GianDiepApp() {
                   <div className="disp font-extrabold text-xl text-[#FFF3CF]">{locName(pub.roundResult.locationIdx)}</div>
                 </div>
               </div>
-              <div className="mt-3 space-y-2">
+              <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-2">
                 {pub.players.map(p => {
                   const pts = pub.roundResult!.points[p.id] ?? 0;
                   const isSpyRow = p.id === pub.roundResult!.spyId;
                   const roleIdx = pub.roundResult!.roles?.[p.id];
                   const rrRole = roleIdx !== undefined && roleIdx !== null ? (LOCATIONS[pub.roundResult!.locationIdx]?.roles[roleIdx]?.[lang] ?? '') : '';
                   return (
-                    <div key={p.id} className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 border-2 hard-xs ${isSpyRow ? 'bg-[#FFB020]/15 border-[#FFB020]' : 'bg-[#23233F] border-[#3D3D63]'}`}>
-                      <PlayerAvatar avatarId={p.avatar} size={40} fallback={<MouseAvatar seed={p.id} size={40} state="awake" />} />
+                    <div key={p.id} className={`flex items-center gap-2 rounded-2xl px-2.5 py-1.5 border-2 hard-xs ${isSpyRow ? 'bg-[#FFB020]/15 border-[#FFB020]' : 'bg-[#23233F] border-[#3D3D63]'}`}>
+                      <PlayerAvatar avatarId={p.avatar} size={32} fallback={<MouseAvatar seed={p.id} size={32} state="awake" />} />
                       <div className="flex-1 min-w-0">
                         <div className="font-extrabold text-[#FFF3CF] truncate">{p.name}{p.id === joined?.playerId ? ` (${d.you})` : ''}</div>
-                        <div className="font-bold text-xs text-[#B9BCE0]">{isSpyRow ? d.spyBadge : rrRole}</div>
+                        <div className="font-bold text-xs text-[#B9BCE0] truncate">{isSpyRow ? d.spyBadge : rrRole}</div>
                       </div>
                       {isSpyRow && <span className="bg-[#D63A2F] text-white text-xs font-extrabold rounded-full px-2.5 py-1 flex-none">{d.spyBadge}</span>}
                       <span className="disp font-extrabold text-[#FFB020] flex-none">{pub.config.pointsOn ? (pts > 0 ? d.pointsEarned(pts) : '—') : `${p.roundWins} ${d.wins}`}</span>

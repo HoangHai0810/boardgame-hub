@@ -418,7 +418,7 @@ export default function MaSoiApp() {
   if (!joined) {
     return (
       <div className="min-h-dvh bg-[#14142B] text-[#2B2016]">
-        <div className="max-w-md lg:max-w-lg mx-auto">
+        <div className="max-w-md lg:max-w-5xl mx-auto">
           <div className="flex items-center gap-2 px-3 pt-3">
             <button className="disp font-extrabold text-[#FFF3CF] text-sm bg-[#23233F] border-2 border-[#3D3D63] rounded-full px-3 py-2.5 push" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
             <span className="flex-1" />
@@ -428,13 +428,16 @@ export default function MaSoiApp() {
               <button className={`px-2.5 py-1 ${lang === 'en' ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#23233F] text-[#B9BCE0]'}`} onClick={() => { localStorage.setItem('ct_lang', 'en'); setLang('en'); }}>EN</button>
             </span>
           </div>
+          <div className="lg:grid lg:grid-cols-2 lg:gap-8 lg:items-center lg:px-6">
+            <div>
           <div className="text-center px-4 pt-4">
             <p className="disp text-[#FFB020] font-extrabold tracking-[0.22em] text-[11px]">{d.kicker}</p>
             <h1 className="disp text-[#FFF3CF] font-extrabold text-5xl leading-none mt-2">{d.title}</h1>
             <p className="text-[#B9BCE0] font-bold mt-2 leading-snug">{d.subtitle}</p>
           </div>
           <MoonVillage width={390} />
-          <div className="bg-[#FFF3CF] rounded-t-[28px] px-4 pt-4 pb-6 -mt-1">
+            </div>
+          <div className="bg-[#FFF3CF] rounded-t-[28px] lg:rounded-[28px] px-4 pt-4 pb-6 -mt-1 lg:mt-0">
             <label className="disp font-extrabold text-sm">{d.name}</label>
             <input className="inp w-full px-4 py-3 font-bold mt-1" placeholder="VD: An"
               value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
@@ -460,6 +463,7 @@ export default function MaSoiApp() {
             <p className="text-center mt-3">
               <button className="font-bold text-sm text-[#8A7B63] underline" onClick={() => setShowHelp(true)}>{d.how}</button>
             </p>
+          </div>
           </div>
           {showHelp && <HelpModal d={d} onClose={() => setShowHelp(false)} />}
         </div>
@@ -514,8 +518,8 @@ export default function MaSoiApp() {
           <div className="disp font-extrabold text-sm">⚙️ {d.rolesSettings}</div>
         )}
         {showSummary && (
-          <div className="font-bold text-[#8A7B63] text-xs mt-1">
-            {roleTable(n, o).map(x => `${roleLabel(d, x.role)} ×${x.count}`).join(' · ')}
+          <div className="flex flex-wrap gap-1.5 mt-1">
+            {roleTable(n, o).map(x => (<span key={x.role} className="inline-block bg-[#FFF3CF] border-2 border-[#E5DCC0] rounded-full px-2 py-0.5 font-extrabold text-xs text-[#2B2016]">{roleLabel(d, x.role)} ×{x.count}</span>))}
           </div>
         )}
         {(!collapsible || open) && (<>

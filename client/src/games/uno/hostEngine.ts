@@ -74,7 +74,7 @@ export class HostEngine {
   private driveBots() {
     const s = this.state;
     if (s.phase !== 'playing') return;
-    const phaseKey = `${s.phase}:${s.turn ?? ''}:${s.round}:${s.pendingDraw4 ? 'd4' : ''}:${s.colorPickPending ?? ''}:${s.unoPending ?? ''}:${s.turnDrawn}:${s.drawnCardId ?? ''}`;
+    const phaseKey = `${s.phase}:${s.turn ?? ''}:${s.round}:${s.pendingDraw4 ? 'd4' : ''}:${s.colorPickPending ?? ''}:${s.unoPending ?? ''}:${s.unoArmed ?? ''}:${s.turnDrawn}:${s.drawnCardId ?? ''}`;
     if (phaseKey !== this.botPhaseKey) { this.botPhaseKey = phaseKey; this.botPending.clear(); }
     const bots = s.players.filter(p => p.isBot && p.connected);
     if (!bots.length) return;
@@ -115,6 +115,8 @@ export class HostEngine {
   private botTurn(b: Player) {
     const s = this.state;
     if (s.phase !== 'playing' || s.turn !== b.id || s.pendingDraw4 || s.colorPickPending) return;
+    // Ring the bell before the 2nd-to-last card, like a human would.
+    if (b.hand.length === 2 && s.unoArmed !== b.id) callUno(s, b);
     const pick = botPickCard(s, b);
     if (pick) {
       if (playCard(s, b, pick.cardId, pick.color)) this.sync();

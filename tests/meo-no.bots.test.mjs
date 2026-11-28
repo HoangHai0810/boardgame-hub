@@ -4,13 +4,13 @@
 //      then node this file. Delete the generated .mjs files afterwards.
 import { strict as assert } from 'node:assert';
 import {
-  createGame, deal, playCard, playNope, resolvePendingAction, drawCard,
+  createGame, deal, playCard, playPair, playNope, resolvePendingAction, drawCard,
   defuse, reinsert, reinsertPositions, giveFavorCard,
   addBot, removeBot, BOT_NAMES, publicState,
   MIN_PLAYERS, MAX_PLAYERS,
 } from '../games/meo-no/logic.mjs';
 import {
-  botChooseAction, botShouldNope, botReinsertPos, botFavorGiveCardId, botFavorTarget,
+  botChooseAction, botShouldNope, botReinsertPos, botFavorGiveCardId, botFavorTarget, botPair,
 } from '../games/meo-no/bots.mjs';
 
 let n = 0;
@@ -188,7 +188,10 @@ function runBotOnlyGame(seed, nBots, config) {
     assert.ok(me && me.alive, 'turn must belong to a living bot');
     const act = botChooseAction(s, me, rng);
     if (act) {
-      assert.ok(playCard(s, me, act.cardId, act.targetId), 'bot action must be legal');
+      const ok = act.cardId2 && act.targetId
+        ? playPair(s, me, act.cardId, act.cardId2, act.targetId, rng)
+        : playCard(s, me, act.cardId, act.targetId, rng);
+      assert.ok(ok, 'bot action must be legal');
       actions++;
       continue;
     }
@@ -226,3 +229,22 @@ t('bot-only game (5 bots, Nope off) runs to a winner', () => {
 });
 
 console.log(`\n== ${n} meo-no bot tests, exit ${process.exitCode ? 'FAIL' : 'PASS'}`);
+
+t('botPair finds a matching pair, ignores mismatched cats', () => {
+  const s = mk([
+    [C('a1', 'cat', 'tabby'), C('a2', 'cat', 'black'), C('a3', 'cat', 'black')],
+    [C('x1', 'skip')],
+  ]);
+  const p = botPair(s, s.players[0]);
+  assert.deepEqual(p, { cardId: 'a2', cardId2: 'a3' });
+  const onlySingles = mk([[C('a1', 'cat', 'tabby'), C('a2', 'cat', 'black')], [C('x1', 'skip')]]);
+  assert.equal(botPair(onlySingles, onlySingles.players[0]), null);
+});
+
+t('botChooseAction steals with a pair when it wants to (rng 0)', () => {
+  const s = mk([
+    [C('a1', 'cat', 'tabby'), C('a2', 'cat', 'tabby'), C('sk', 'skip')],
+    [C('x1', 'skip'), C('x2', 'peek')],
+  ]);
+  assert.deepEqual(botChooseAction(s, s.players[0], () => 0), { cardId: 'a1', cardId2: 'a2', targetId: 'p1' });
+});

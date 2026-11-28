@@ -76,6 +76,34 @@ function UnoCardBack({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
   );
 }
 
+/* Direction arrows: two big curved arrows flanking the piles, showing
+ * which way play goes. Left arrow points up, right arrow points down
+ * (clockwise); the wrapper flips vertically when direction reverses. */
+function DirArrow({ id, flip }: { id: string; flip?: boolean }) {
+  return (
+    <svg width="44" height="132" viewBox="0 0 48 140" aria-hidden="true" className={`flex-none anim-pulse-soft ${flip ? 'rotate-180' : ''}`}>
+      <defs>
+        <marker id={id} markerWidth="14" markerHeight="14" refX="10" refY="7" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L14,7 L0,14 Z" fill="#FFB020" />
+        </marker>
+      </defs>
+      <path d="M 38 128 C 12 98, 12 46, 38 18" fill="none" stroke="#FFB020" strokeWidth="6" strokeLinecap="round" markerEnd={`url(#${id})`} />
+    </svg>
+  );
+}
+
+/* UNO bell: a big round bell button replaces the "Hô UNO" text button.
+ * Ring it BEFORE playing your 2nd-to-last card (2 cards, your turn),
+ * or after reaching 1 card. Armed = green + ✓ badge. */
+function BellIcon({ size = 34 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" fill="currentColor" stroke="none" />
+      <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+    </svg>
+  );
+}
+
 /* Card-fly (v48): a played card flies from the hand (or the player's
  * seat) to the discard pile. Fixed-position clone, pure translate —
  * hand and discard use the same lg size, so no scaling is needed.
@@ -154,6 +182,14 @@ export default function UnoApp() {
   const [fly, setFly] = useState<{ card: Card; from: FlyRect; to: FlyRect } | null>(null);
   const flyFromRef = useRef<{ cardId: string; card: Card; rect: FlyRect } | null>(null);
   const prevTurnRef = useRef<string | null>(null);
+  // Effect-card flash: when a special card lands, flash what it does.
+  const [fx, setFx] = useState<{ kind: string; key: string } | null>(null);
+  const seenTopRef = useRef(false);
+  useEffect(() => {
+    if (!fx) return;
+    const t = setTimeout(() => setFx(null), 1600);
+    return () => clearTimeout(t);
+  }, [fx]);
   const [linkCopied, setLinkCopied] = useState(false);
   const [ackOneCard, setAckOneCard] = useState('');
   const [seenChat, setSeenChat] = useState(0);
@@ -251,6 +287,18 @@ export default function UnoApp() {
     prevPub.current = { phase: pub.phase, round: pub.round };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pub]);
+
+  // Results hold: when someone plays their last card, keep the table
+  // on screen for a moment so everyone sees the winning card (and the
+  // fly animation) before the results screen takes over.
+  const [resultsHold, setResultsHold] = useState(false);
+  useEffect(() => {
+    if (pub?.phase !== 'results') { setResultsHold(false); return; }
+    setResultsHold(true);
+    const t = setTimeout(() => setResultsHold(false), 2500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pub?.phase, pub?.round]);
 
   // A soft chime when my turn starts.
   const prevTurn = useRef<string | null>(null);
@@ -379,6 +427,14 @@ export default function UnoApp() {
       }
     }
     prevTurnRef.current = pub.turn;
+    // Effect-card flash: when the new top card is a special card, flash
+    // what it does so everyone sees it (not just the card face).
+    const isFirstTop = !seenTopRef.current;
+    seenTopRef.current = true;
+    if (!isFirstTop && ['draw2', 'skip', 'reverse', 'wild', 'wild4'].includes(pub.topCard.kind)) {
+      setFx({ kind: pub.topCard.kind, key: topCardId });
+      sfx('fx', muted);
+    }
     if (!from) return;
     const target = document.querySelector('[data-testid="discard-pile"]');
     const tr = target?.getBoundingClientRect();
@@ -409,7 +465,6 @@ export default function UnoApp() {
   };
   const myHand = priv?.myHand ?? [];
   const anyPlayable = myHand.some(canPlay);
-  const hoverCard = myHand.find(c => c.id === hoverCardId) ?? null;
   const fan = fanLayout(myHand.length, 76, fanW, null, 4, 1.6, 110);
 
   const shareText = () => {
@@ -442,7 +497,7 @@ export default function UnoApp() {
   if (!joined) {
     return (
       <div className="min-h-dvh bg-[#14142B] text-[#2B2016]">
-        <div className="max-w-md lg:max-w-lg mx-auto">
+        <div className="max-w-md lg:max-w-5xl mx-auto">
           <div className="flex items-center gap-2 px-3 pt-3">
             <button className="disp font-extrabold text-[#FFF3CF] text-sm bg-[#23233F] border-2 border-[#3D3D63] rounded-full px-3 py-2.5 push" onClick={() => { location.href = location.pathname; }}>{d.backToHub}</button>
             <span className="flex-1" />
@@ -452,6 +507,8 @@ export default function UnoApp() {
               <button className={`px-2.5 py-1 ${lang === 'en' ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#23233F] text-[#B9BCE0]'}`} onClick={() => { localStorage.setItem('ct_lang', 'en'); setLang('en'); }}>EN</button>
             </span>
           </div>
+          <div className="lg:grid lg:grid-cols-2 lg:gap-8 lg:items-center lg:px-6">
+            <div>
           <div className="text-center px-4 pt-6">
             <p className="disp text-[#FFB020] font-extrabold tracking-[0.22em] text-[11px]">{d.kicker}</p>
             <h1 className="disp text-[#FFF3CF] font-extrabold text-5xl leading-none mt-2">{d.title}</h1>
@@ -464,7 +521,8 @@ export default function UnoApp() {
             <span className="rotate-[9deg] translate-y-1"><UnoCardFace card={{ id: 'fan-y2', color: 'yellow', kind: 'draw2' }} size="lg" /></span>
             <span className="rotate-[18deg] translate-y-2"><UnoCardFace card={{ id: 'fan-b5', color: 'blue', kind: 'number', value: 5 }} size="lg" /></span>
           </div>
-          <div className="bg-[#FFF3CF] rounded-t-[28px] px-4 pt-4 pb-6 mt-5">
+            </div>
+          <div className="bg-[#FFF3CF] rounded-t-[28px] lg:rounded-[28px] px-4 pt-4 pb-6 mt-5 lg:mt-0">
             <label className="disp font-extrabold text-sm">{d.name}</label>
             <input className="inp w-full px-4 py-3 font-bold mt-1" placeholder="VD: An"
               value={name} maxLength={20} onChange={e => { setName(e.target.value); sessionStorage.setItem('ct_name', e.target.value); }} />
@@ -490,6 +548,7 @@ export default function UnoApp() {
             <p className="text-center mt-3">
               <button className="font-bold text-sm text-[#8A7B63] underline" onClick={() => setShowHelp(true)}>{d.how}</button>
             </p>
+          </div>
           </div>
           {showHelp && <HelpModal d={d} onClose={() => setShowHelp(false)} />}
         </div>
@@ -572,7 +631,7 @@ export default function UnoApp() {
           </div>
         )}
 
-        {phase === 'playing' && pub && (
+        {(phase === 'playing' || (phase === 'results' && resultsHold)) && pub && (
           <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-4">
             <div className="min-w-0">
               {/* One-card warning (design Uno3): stays until I tap "Đã hiểu" */}
@@ -598,29 +657,47 @@ export default function UnoApp() {
               </div>
 
               {/* table */}
-              <div className={`mt-2 rounded-[28px] border-[3px] border-[#2B2016] hard p-4 ${myTurn ? 'anim-turn-glow' : ''}`} style={{ background: '#14142B' }}>
+              <div className={`relative mt-2 rounded-[28px] border-[3px] border-[#2B2016] hard p-4 ${myTurn ? 'anim-turn-glow' : ''}`} style={{ background: '#14142B' }}>
                 <div className="flex items-center justify-center gap-2 flex-wrap">
-                  <span className={`disp font-extrabold text-[#FFF3CF] text-lg ${myTurn ? 'animate-pulse' : ''}`}>
-                    {myTurn ? d.yourTurn : d.turnOf(turnPlayer?.name ?? '')}
-                  </span>
-                  <span className="text-[#FFF3CF] font-extrabold text-lg" title={pub.direction === 1 ? 'clockwise' : 'counter-clockwise'}>{pub.direction === 1 ? '⟳' : '⟲'}</span>
-                  <TimerPill endsAt={pub.turnEndsAt} dark />
+                  {phase === 'results' ? (
+                    <span className="disp font-extrabold text-[#FFF3CF] text-lg animate-pulse">{playerName(pub.winner)} {d.winner}</span>
+                  ) : (
+                    <>
+                      <span className={`disp font-extrabold text-[#FFF3CF] text-lg ${myTurn ? 'animate-pulse' : ''}`}>
+                        {myTurn ? d.yourTurn : d.turnOf(turnPlayer?.name ?? '')}
+                      </span>
+                      <TimerPill endsAt={pub.turnEndsAt} dark />
+                    </>
+                  )}
                 </div>
-                <p className="text-center font-bold text-[#BFE8D2] text-xs mt-1">{d.turnTimer} — {d.turnTimeout}</p>
-                <div className="flex items-start justify-center gap-4 sm:gap-8 mt-3">
+                {phase !== 'results' && <p className="text-center font-bold text-[#BFE8D2] text-xs mt-1">{d.turnTimer} — {d.turnTimeout}</p>}
+                {fx && (
+                  <div data-testid="fx-flash" className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+                    <div key={fx.key} className="anim-pop disp font-extrabold text-3xl sm:text-4xl px-5 py-2.5 rounded-2xl border-[3px] border-[#2B2016] hard" style={{ background: CARD_COLORS[pub.currentColor], color: '#fff', textShadow: '0 2px 0 rgba(0,0,0,.25)' }}>
+                      {{ draw2: d.fxDraw2, skip: d.fxSkip, reverse: d.fxReverse, wild: d.fxWild, wild4: d.fxWild4 }[fx.kind] ?? ''}
+                    </div>
+                  </div>
+                )}
+                <div className="relative mt-3">
+                <div className="flex items-start justify-center gap-4 sm:gap-8">
                   <button data-testid="draw-pile" disabled={!canDraw || optDrew} onClick={doDraw} className={`text-center disabled:opacity-60 ${canDraw && !anyPlayable && !optDrew ? 'anim-turn-glow rounded-2xl' : ''}`}>
                     <UnoCardBack size="lg" />
                     <span className="block font-extrabold text-[#FFF3CF] text-sm mt-1.5">{d.drawPile} · {pub.deckCount}</span>
                     <span className="block font-bold text-[#BFE8D2] text-xs mt-0.5">{optDrew && !pub.turnDrawn ? '…' : canDraw ? d.draw : pub.turnDrawn ? (drawnIsPlayable ? d.drawnPlayable : d.drawnNotPlayable) : ''}</span>
                   </button>
                   <div className="text-center">
-                    {pub.topCard ? <span data-testid="discard-pile" className="inline-block" style={{ opacity: fly ? 0 : 1 }}><UnoCardFace card={pub.topCard} size="lg" /></span> : <UnoCardBack size="lg" />}
+                    {pub.topCard ? <span data-testid="discard-pile" className={`inline-block ${phase === 'results' ? 'anim-turn-glow rounded-2xl' : ''}`} style={{ opacity: fly ? 0 : 1 }}><UnoCardFace card={pub.topCard} size="lg" /></span> : <UnoCardBack size="lg" />}
                     <span className="mt-1.5 flex items-center justify-center gap-1.5 font-extrabold text-[#FFF3CF] text-sm">
                       <span className="inline-block w-4 h-4 rounded-full border-2 border-white" style={{ background: CARD_COLORS[pub.currentColor] }} />
                       {d.currentColor}: {colorLabel(pub.currentColor)}
                     </span>
                     <span className="block font-bold text-[#BFE8D2] text-xs mt-0.5">{d.discardPile} · {pub.discardCount}</span>
                   </div>
+                </div>
+                <div data-testid="dir-arrows" className="pointer-events-none absolute left-1/2 top-1/2 w-[300px] sm:w-[340px] flex items-center justify-between transition-transform duration-500" style={{ transform: `translate(-50%,-50%) scaleY(${pub.direction === 1 ? 1 : -1})` }}>
+                  <DirArrow id="dirHeadL" />
+                  <DirArrow id="dirHeadR" flip />
+                </div>
                 </div>
 
                 {/* +4 decision (only the challenged player sees the buttons) */}
@@ -641,34 +718,32 @@ export default function UnoApp() {
                 {pub.colorPickPending === joined.playerId && (
                   <div className="mt-3 bg-[#FFFBef] rounded-2xl p-3 text-center hard-sm">
                     <div className="disp font-extrabold">{d.pickColorFirst}</div>
-                    <div className="flex justify-center gap-2 mt-2">
+                    <div className="grid grid-cols-2 gap-2 mt-2">
                       {COLORS.map(c => (
-                        <button key={c} data-testid="color-pick-first" data-color={c} onClick={() => doPickColor(c)} className="w-12 h-12 rounded-2xl border-[3px] border-[#2B2016] push font-extrabold text-white text-lg" style={{ background: CARD_COLORS[c] }} title={colorLabel(c)}>{c === 'red' ? '🔴' : c === 'yellow' ? '🟡' : c === 'green' ? '🟢' : '🔵'}</button>
+                        <button key={c} data-testid="color-pick-first" data-color={c} onClick={() => doPickColor(c)} className="disp px-4 py-3 rounded-2xl font-extrabold hard push text-white text-lg border-[3px] border-[#2B2016]" style={{ background: CARD_COLORS[c] }} title={colorLabel(c)}>{colorLabel(c)}</button>
                       ))}
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Detail bar (v48): one line only — hovered card's ability, or
-               *  the top-card hint. The special-card legend used to sit here
-               *  as a second line; it now lives only in Help (Hải Anh: too
-               *  much text on the table). */}
-              <div className="mt-2 bg-[#221D45] border-2 border-[#F5B02E] rounded-2xl px-3 py-2 font-bold leading-snug text-[#FFF3CF]">
-                <p className="text-[13px]">{hoverCard ? d.cardAb(hoverCard.kind, unoLabel(hoverCard)) : pub.topCard ? d.topHint(unoLabel(pub.topCard)) : ''}</p>
-              </div>
-
-              {/* UNO row */}
-              {pub.unoPending && (
+              {/* UNO bell: ring it BEFORE playing your 2nd-to-last card (2 cards,
+                  your turn), or after reaching 1 card. Armed = green + ✓. */}
+              {((myTurn && myHand.length === 2) || pub.unoPending === joined.playerId) && (
+                <div className="mt-2 flex justify-center">
+                  <button data-testid="uno-bell" aria-label="UNO" title="UNO" onClick={doCallUno}
+                    className={`relative w-16 h-16 rounded-full border-[3px] border-[#2B2016] hard push flex items-center justify-center animate-pulse ${pub.unoArmed === joined.playerId ? 'bg-[#0E9F6E] text-white' : 'bg-[#FFB020] text-[#2B2016]'}`}>
+                    <BellIcon size={34} />
+                    {pub.unoArmed === joined.playerId && <span className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-white border-2 border-[#2B2016] text-[#0E9F6E] font-black text-sm flex items-center justify-center">✓</span>}
+                  </button>
+                </div>
+              )}
+              {pub.unoPending && pub.unoPending !== joined.playerId && (
                 <div className="mt-2">
-                  {pub.unoPending === joined.playerId ? (
-                    <button data-testid="uno-btn" className="w-full disp px-5 py-3 rounded-2xl font-extrabold hard push bg-[#FFB020] text-[#2B2016] text-xl animate-pulse" onClick={doCallUno}>📣 {d.unoBtn}</button>
-                  ) : (
-                    <div className="bg-[#FBE3E0] border-2 border-[#D63A2F] rounded-2xl px-3 py-2 flex items-center gap-2">
-                      <span className="font-bold text-sm flex-1 text-[#7A1F18]">{d.unoPendingNote(unoPendingPlayer?.name ?? '')}</span>
-                      <button data-testid="catch-uno-btn" className="disp px-4 py-2 rounded-xl font-extrabold hard push bg-[#D63A2F] text-white text-sm" onClick={() => doCatchUno(pub.unoPending!)}>{d.catchUno}</button>
-                    </div>
-                  )}
+                  <div className="bg-[#FBE3E0] border-2 border-[#D63A2F] rounded-2xl px-3 py-2 flex items-center gap-2">
+                    <span className="font-bold text-sm flex-1 text-[#7A1F18]">{d.unoPendingNote(unoPendingPlayer?.name ?? '')}</span>
+                    <button data-testid="catch-uno-btn" className="disp px-4 py-2 rounded-xl font-extrabold hard push bg-[#D63A2F] text-white text-sm" onClick={() => doCatchUno(pub.unoPending!)}>{d.catchUno}</button>
+                  </div>
                 </div>
               )}
               {priv?.drawnCardId && myTurn && (
@@ -717,7 +792,7 @@ export default function UnoApp() {
           </div>
         )}
 
-        {phase === 'results' && pub && (
+        {phase === 'results' && !resultsHold && pub && (
           <div className="max-w-md lg:max-w-lg mx-auto text-center">
             <p className="disp text-[#FFB020] font-extrabold tracking-[0.22em] text-xs">{d.results.toUpperCase()}</p>
             <h2 className="disp font-extrabold text-4xl mt-2">{playerName(pub.winner)} {d.winner}</h2>

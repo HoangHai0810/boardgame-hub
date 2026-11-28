@@ -2,7 +2,7 @@
 import { strict as assert } from 'node:assert';
 import {
   createGame, buildDeck, deal, shuffle,
-  playCard, playNope, passNope, nopePassProgress, canResolveNopeEarly, resolvePendingAction, drawCard, defuse, reinsert,
+  playCard, playPair, playNope, passNope, nopePassProgress, canResolveNopeEarly, resolvePendingAction, drawCard, defuse, reinsert,
   reinsertPositions, giveFavorCard, autoTurn, autoResolvePending, advanceTurn,
   publicState, privateState, ekInDeck,
   MIN_PLAYERS, MAX_PLAYERS, TURN_MS, NOPE_MS,
@@ -373,3 +373,42 @@ t('dead players are skipped in turn order', () => {
 });
 
 console.log(`\n== ${n} meo-no logic tests, exit ${process.exitCode ? 'FAIL' : 'PASS'}`);
+
+t('pair: two matching cats steal one random card from the target', () => {
+  const stolen = C('x1', 'skip');
+  const s = mk([
+    [C('a1', 'cat', 'tabby'), C('a2', 'cat', 'tabby'), C('df', 'defuse')],
+    [stolen, C('y2', 'peek')],
+  ]);
+  assert.equal(playPair(s, s.players[0], 'a1', 'a2', 'p1', () => 0), true);
+  // actor: -2 cats +1 stolen = 2 cards; target lost its first card (rng 0)
+  assert.equal(s.players[0].hand.length, 2);
+  assert.equal(s.players[0].hand.some(c => c.id === 'x1'), true);
+  assert.equal(s.players[1].hand.length, 1);
+  assert.equal(s.discard.length, 2);
+  assert.equal(s.feed[s.feed.length - 1].kind, 'steal');
+});
+
+t('pair: mismatched variants, same card twice, non-cats rejected', () => {
+  const s = mk([
+    [C('a1', 'cat', 'tabby'), C('a2', 'cat', 'black'), C('sk', 'skip'), C('sk2', 'skip')],
+    [C('x1', 'skip')],
+  ]);
+  assert.equal(playPair(s, s.players[0], 'a1', 'a2', 'p1'), false);
+  assert.equal(playPair(s, s.players[0], 'a1', 'a1', 'p1'), false);
+  assert.equal(playPair(s, s.players[0], 'sk', 'sk2', 'p1'), false);
+  assert.equal(s.players[0].hand.length, 4);
+  assert.equal(s.players[1].hand.length, 1);
+});
+
+t('pair: self-target, empty-handed target, wrong turn rejected', () => {
+  const s = mk([
+    [C('a1', 'cat', 'tabby'), C('a2', 'cat', 'tabby')],
+    [C('x1', 'skip')],
+    [],
+  ]);
+  assert.equal(playPair(s, s.players[0], 'a1', 'a2', 'p0'), false);
+  assert.equal(playPair(s, s.players[0], 'a1', 'a2', 'p2'), false);
+  assert.equal(playPair(s, s.players[1], 'a1', 'a2', 'p0'), false);
+  assert.equal(s.players[0].hand.length, 2);
+});

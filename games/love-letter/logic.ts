@@ -249,7 +249,14 @@ function endTurn(s: GameState, rng: () => number = Math.random): void {
   s.pendingAction = null;
   const alivePlayers = alive(s);
   if (alivePlayers.length === 1) {
-    finishRound(s, [alivePlayers[0].id], { reason: 'last-standing' }, rng);
+    // The sole survivor's final hand is part of the round result, so
+    // the round-end screen can reveal it (like the showdown below).
+    // Without it the round end showed only the standings — the round's
+    // final result was invisible.
+    const w = alivePlayers[0];
+    const hands: Record<string, Card> = {};
+    if (w.hand[0]) hands[w.id] = w.hand[0];
+    finishRound(s, [w.id], { reason: 'last-standing', hands }, rng);
     return;
   }
   if (s.deck.length === 0) {
@@ -327,6 +334,13 @@ export function playCard(s: GameState, player: Player, cardId: string, rng: () =
     case 'princess':
       knockOut(s, player);
       s.lastPlay.outcome = 'princess';
+      endTurn(s, rng);
+      return true;
+    case 'spy':
+      // Spy has no target: it is just played, and the +1 token favour
+      // is settled at round end from the discard piles. It must NOT
+      // fall into the default branch below (which would open a target
+      // picker for a card that needs no target).
       endTurn(s, rng);
       return true;
     case 'countess':

@@ -1,0 +1,23 @@
+shot v54-landing-laptop.png
+shot v54-landing-phone.png
+landing overflow host: {"scroll":800,"inner":800,"content":623} phone: {"scroll":844,"inner":844,"content":822}
+code: K9QRE
+shot v54-lobby-laptop.png
+shot v54-lobby-phone.png
+lobby overflow host: {"scroll":800,"inner":800,"content":784} phone: {"scroll":844,"inner":844,"content":832}
+shot v54-reveal-laptop.png
+shot v54-reveal-phone.png
+reveal overflow host: {"scroll":800,"inner":800,"content":784} phone: {"scroll":844,"inner":844,"content":832}
+shot v54-night-laptop.png
+shot v54-night-phone.png
+night overflow host: {"scroll":800,"inner":800,"content":784} phone: {"scroll":844,"inner":844,"content":832}
+shot v54-day-laptop.png
+shot v54-day-phone.png
+day overflow host: {"scroll":800,"inner":800,"content":784} phone: {"scroll":844,"inner":844,"content":832}
+vote-ready fail locator.click: Error: strict mode violation: getByRole('button', { name: /bỏ phi
+shot v54-vote-laptop.png
+shot v54-vote-phone.png
+vote overflow host: {"scroll":800,"inner":800,"content":784} phone: {"scroll":844,"inner":844,"content":832}
+shot v54-results-laptop.png
+shot v54-results-phone.png
+results overflow host: {"scroll":800,"inner":800,"content":784} phone: {"scroll":844,"inner":844,"content":832}

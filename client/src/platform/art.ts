@@ -3,7 +3,7 @@
  *  into panels and saved under client/public/art/. Public assets are
  *  copied to dist/ on build; base './' so relative URLs work on the
  *  GitHub Pages subpath. ---------- */
-const ART = (p: string) => `${import.meta.env.BASE_URL}art/${p}`;
+export const ART = (p: string) => `${import.meta.env.BASE_URL}art/${p}`;
 
 /** Mèo Nổ card art, keyed by card kind. */
 export const CAT_ART: Record<string, string> = {
@@ -26,7 +26,7 @@ export const ROLE_ART: Record<string, string> = {
   witch: ART('role-witch.webp'),
   hunter: ART('role-hunter.webp'),
   villager: ART('role-villager.webp'),
-  thief: ART('role-thief.webp'),
+  thief: ART('ct-thief.svg'), // design v54: the design's own masked-mouse illustration (was role-thief.webp)
   /** The CT village mouse reuses the avatar mouse face as its card art. */
   mouse: ART('avatar-mouse.webp'),
 };

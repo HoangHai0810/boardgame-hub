@@ -148,7 +148,7 @@ export default function Hub() {
     <div className="min-h-dvh bg-[#14142B] p-3 sm:p-4">
       <div className="max-w-3xl lg:max-w-6xl mx-auto">
         <div className="flex items-center gap-2.5 pt-1">
-          <CheeseWedge size={34} />
+          <span className="lg:hidden"><CheeseWedge size={34} /></span>
           <span className="disp text-[#FFF3CF] font-extrabold text-2xl leading-none">Sảnh Board Game</span>
           <span className="flex-1" />
           <button className="flex items-center gap-2 rounded-full bg-[#23233F] border-2 border-[#3D3D63] pl-1 pr-3 py-1 push" onClick={() => setShowAvatar(true)} title={d.pickAvatar}>
@@ -170,21 +170,19 @@ export default function Hub() {
           </p>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-2.5 mt-4 sm:mt-5">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mt-4 sm:mt-5">
           {live.map((g, gi) => (
             <a key={g.id} href={playUrl(g.id)} className="col-span-2 lg:col-span-1 card-cream !rounded-[28px] overflow-hidden flex flex-col no-underline anim-enter lift" style={{ animationDelay: `${gi * 70}ms` }}>
               {/* mobile: thin color strip; laptop: tall banner with art/icon + pill */}
               <div className="h-2.5 lg:hidden flex-none" style={{ background: g.color }} />
-              <div className="hidden lg:flex relative items-center px-5 h-[110px] flex-none overflow-hidden" style={{ background: g.color }}>
+              <div className="hidden lg:flex relative items-center px-5 h-[180px] flex-none overflow-hidden" style={{ background: g.color }}>
                 <img src={g.hubArt} alt="" className="absolute inset-0 w-full h-full object-cover" draggable={false} />
-                <span className="absolute top-3 right-3 bg-[#0E9F6E] text-white text-[11px] font-black rounded-full px-2.5 py-1">{d.openNow}</span>
               </div>
               <div className="p-3 sm:p-5 flex flex-col flex-1">
                 <div className="flex items-center gap-3 lg:hidden">
                   <img src={g.hubArt} alt="" className="w-24 h-24 rounded-2xl object-cover flex-none border-2 border-[#2B2016]" draggable={false} />
                   <div className="min-w-0">
                     <div className="disp text-xl font-extrabold text-[#2B2016] leading-tight">{g.name}</div>
-                    <span className="inline-block whitespace-nowrap bg-[#0E9F6E] text-white text-[10px] font-black rounded-full px-2 py-px mt-1">{d.playable}</span>
                   </div>
                 </div>
                 <div className="hidden lg:block disp text-2xl font-extrabold text-[#2B2016] leading-tight">{g.name}</div>
