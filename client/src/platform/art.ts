@@ -40,6 +40,7 @@ export const HUB_ART: Record<string, string> = {
   meo: ART('hub-meo.svg'),
   spy: ART('hub-spy.svg'),
   love: ART('hub-love.svg'),
+  coup: ART('hub-coup.svg'),
 };
 
 /** Spyfall art (design v48): the spy portrait + the restaurant cloche. */
@@ -62,6 +63,17 @@ export const LL_ART: Record<string, string> = {
   king: ART('ll-king.svg'),
   countess: ART('ll-countess.svg'),
   princess: ART('ll-princess.svg'),
+};
+
+/** Coup character art — flat-style portraits drawn for this game (one
+ *  per character: Duke crown, Assassin hood + mask, Captain naval cap,
+ *  Ambassador laurel, Contessa bun + jewel). */
+export const COUP_ART: Record<string, string> = {
+  duke: ART('coup-duke.svg'),
+  assassin: ART('coup-assassin.svg'),
+  captain: ART('coup-captain.svg'),
+  ambassador: ART('coup-ambassador.svg'),
+  contessa: ART('coup-contessa.svg'),
 };
 
 /** The 12 pickable avatars (design: "Chọn avatar của bạn"). */

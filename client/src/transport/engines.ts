@@ -9,6 +9,7 @@ import { HostEngine as UnoEngine } from '../games/uno/hostEngine';
 import { HostEngine as MeoNoEngine } from '../games/meo-no/hostEngine';
 import { HostEngine as GianDiepEngine } from '../games/gian-diep/hostEngine';
 import { HostEngine as LoveLetterEngine } from '../games/love-letter/hostEngine';
+import { HostEngine as CoupEngine } from '../games/coup/hostEngine';
 
 export interface EngineLike {
   state: any;
@@ -30,6 +31,7 @@ export const ENGINES: Record<string, EngineCtor> = {
   'meo-no': MeoNoEngine as unknown as EngineCtor,
   'gian-diep': GianDiepEngine as unknown as EngineCtor,
   'love-letter': LoveLetterEngine as unknown as EngineCtor,
+  'coup': CoupEngine as unknown as EngineCtor,
 };
 
 export function engineFor(gameId: string): EngineCtor | null {

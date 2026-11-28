@@ -52,6 +52,16 @@ function LetterIcon({ size = 44 }: { size?: number }) {
     </svg>
   );
 }
+/** Coup = a gold crown. Flat line icon, readable at 44px. */
+function CoupIcon({ size = 44 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden>
+      <path d="M16 66 L24 30 L38 50 L50 24 L62 50 L76 30 L84 66 Z" fill="#C99327" stroke="#2B2016" strokeWidth="3" strokeLinejoin="round" />
+      <rect x="16" y="66" width="68" height="12" rx="4" fill="#C99327" stroke="#2B2016" strokeWidth="3" />
+      <circle cx="50" cy="72" r="4" fill="#D63A2F" stroke="#2B2016" strokeWidth="2" />
+    </svg>
+  );
+}
 
 /** Uno banner = two overlapping cards (design: "hai lá bài Uno"). */
 function UnoBanner() {
@@ -122,6 +132,14 @@ export default function Hub() {
       hubArt: HUB_ART.love,
       icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#F5E9C8] border-2 border-[#2B2016] flex-none"><LetterIcon size={44} /></span>,
       bannerIcon: <LetterIcon size={72} />,
+      bannerArt: undefined,
+    },
+    {
+      id: 'coup', name: d.coupName, tag: d.coupTag, tagWide: d.coupTagWide,
+      color: '#C99327', min: 2, max: 6, minsMobile: 15, minsWide: 15,
+      hubArt: HUB_ART.coup,
+      icon: <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#F5E9C8] border-2 border-[#2B2016] flex-none"><CoupIcon size={44} /></span>,
+      bannerIcon: <CoupIcon size={72} />,
       bannerArt: undefined,
     },
   ];
