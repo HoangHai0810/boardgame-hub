@@ -94,6 +94,8 @@ export interface FeedEntry {
   by?: string; targetId?: string; action?: ActionKind; char?: CharKind; card?: CharKind;
 }
 
+export interface PlayerStats { actions: number; challengeWins: number; bluffs: number }
+
 export interface GameState {
   roomCode: string;
   phase: Phase;
@@ -107,6 +109,16 @@ export interface GameState {
   winner: string | null;
   eliminationOrder: string[];
   chat: ChatMsg[];
+  /** Per-player session stats (results screen, design v52). Only
+   *  revealed in publicState once the game is over — the bluff count
+   *  would leak live claims if it were public mid-game. */
+  stats: Record<string, PlayerStats>;
+  /** Which game of the session this is (1-based, design "VÁN N"). */
+  round: number;
+  /** INTERNAL, never in publicState: whether the currently pending
+   *  action is a bluff (the actor did not hold the claimed character
+   *  when they declared it). Counted only if the action resolves. */
+  _pendingBluff: boolean;
 }
 
 export function createGame(code: string): GameState {
@@ -115,6 +127,7 @@ export function createGame(code: string): GameState {
     players: [], court: [],
     turn: null, turnEndsAt: null, pending: null,
     feed: [], winner: null, eliminationOrder: [], chat: [],
+    stats: {}, round: 0, _pendingBluff: false,
   };
 }
 
@@ -176,6 +189,10 @@ export function startGame(s: GameState, rng: () => number = Math.random): void {
   }
   s.feed = []; s.winner = null; s.eliminationOrder = [];
   s.pending = null;
+  s.stats = {};
+  for (const p of s.players) s.stats[p.id] = { actions: 0, challengeWins: 0, bluffs: 0 };
+  s.round += 1;
+  s._pendingBluff = false;
   s.phase = 'playing';
   const first = s.players[Math.floor(rng() * s.players.length)];
   if (s.players.length === 2 && first) first.coins = 1;
@@ -262,7 +279,9 @@ function runAfter(s: GameState, after: AfterLose, rng: () => number = Math.rando
   switch (after.type) {
     case 'failAction': {
       // A successfully challenged action fails and its paid coins are
-      // returned to the player (rulebook, Challenges).
+      // returned to the player (rulebook, Challenges). The bluff did
+      // NOT survive, so it is not counted.
+      s._pendingBluff = false;
       const actor = byId(s, after.action.actorId);
       if (actor && after.action.costPaid > 0) actor.coins += after.action.costPaid;
       endTurn(s);
@@ -283,7 +302,9 @@ function runAfter(s: GameState, after: AfterLose, rng: () => number = Math.rando
       break;
     case 'blockStands':
       // The block was proven (or nobody challenged it): the action
-      // fails, paid coins stay spent.
+      // fails, paid coins stay spent. A bluff blocked is not counted
+      // as survived — the action never resolved.
+      s._pendingBluff = false;
       endTurn(s);
       break;
     case 'endTurn':
@@ -294,6 +315,7 @@ function runAfter(s: GameState, after: AfterLose, rng: () => number = Math.rando
 
 function endTurn(s: GameState): void {
   if (s.phase !== 'playing') return;
+  s._pendingBluff = false;
   if (endIfWon(s)) return;
   advanceTurn(s);
 }
@@ -330,6 +352,12 @@ export function declareAction(
     kind, actorId: player.id, targetId: target?.id,
     char: ACTION_CHAR[kind], costPaid: cost,
   };
+  // Session stats: every declared action is one turn, and a character
+  // claim the actor does not hold is a bluff — counted only if the
+  // action later resolves (see resolveAction).
+  const st = s.stats[player.id] ?? (s.stats[player.id] = { actions: 0, challengeWins: 0, bluffs: 0 });
+  st.actions += 1;
+  s._pendingBluff = !!action.char && !player.hand.some(c => c.kind === action.char);
   pushFeed(s, { kind: 'action', by: player.id, targetId: target?.id, action: kind, char: action.char });
   switch (kind) {
     case 'income':
@@ -400,6 +428,10 @@ export function respond(
         ? { type: 'toBlockWindow', action }
         : { type: 'resolveAction', action }, rng);
     } else {
+      // The challenger caught a bluff: the claim fails, the claimant
+      // loses an influence — and the challenger earns a challenge win.
+      const cst = s.stats[player.id] ?? (s.stats[player.id] = { actions: 0, challengeWins: 0, bluffs: 0 });
+      cst.challengeWins += 1;
       pushFeed(s, { kind: 'challenge-fail', by: player.id, targetId: actor.id, char: claimed, action: action.kind });
       loseInfluence(s, actor, { type: 'failAction', action }, rng);
     }
@@ -475,6 +507,10 @@ export function respondBlock(
       // The challenger loses an influence; the block stands.
       loseInfluence(s, player, { type: 'blockStands', action }, rng);
     } else {
+      // The challenger caught a bluffed block: the block fails, the
+      // blocker loses an influence — and the challenger earns a win.
+      const cst = s.stats[player.id] ?? (s.stats[player.id] = { actions: 0, challengeWins: 0, bluffs: 0 });
+      cst.challengeWins += 1;
       pushFeed(s, { kind: 'block-challenge-fail', by: player.id, targetId: blockerId, char: blockChar, action: action.kind });
       // The blocker loses an influence; the block fails, the action proceeds.
       loseInfluence(s, blocker, { type: 'resolveAction', action }, rng);
@@ -484,11 +520,17 @@ export function respondBlock(
   return false;
 }
 
-/** Apply an action that survived every challenge and block. */
+/** Apply an action that survived every challenge and block. A bluff
+ *  that reaches this point survived — count it, then clear the flag. */
 export function resolveAction(s: GameState, action: DeclaredAction, rng: () => number = Math.random): void {
   if (s.phase !== 'playing') return;
   s.pending = null;
   const actor = byId(s, action.actorId);
+  if (s._pendingBluff && actor) {
+    const st = s.stats[actor.id] ?? (s.stats[actor.id] = { actions: 0, challengeWins: 0, bluffs: 0 });
+    st.bluffs += 1;
+  }
+  s._pendingBluff = false;
   if (!actor || !isAlive(actor)) { endTurn(s); return; }
   const target = action.targetId ? byId(s, action.targetId) : undefined;
   switch (action.kind) {
@@ -670,6 +712,9 @@ export function publicState(s: GameState) {
     winner: s.winner,
     eliminationOrder: s.eliminationOrder,
     chat: s.chat,
+    round: s.round,
+    // Stats only at results: the bluff count would leak live claims.
+    stats: s.phase === 'results' ? s.stats : null,
     players: s.players.map(p => ({
       id: p.id, name: p.name, avatar: p.avatar ?? null, isHost: p.isHost, connected: p.connected,
       handCount: p.hand.length, revealed: p.revealed,

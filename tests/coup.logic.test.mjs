@@ -508,4 +508,95 @@ t('feed records actions, challenges, blocks and eliminations', () => {
   assert.ok(s.feed.some(e => e.kind === 'action'));
 });
 
+t('stats: round increments per game, actions counted, stats hidden until results', () => {
+  const s = mk();
+  assert.equal(s.round, 1);
+  assert.deepEqual(s.stats.p0, { actions: 0, challengeWins: 0, bluffs: 0 });
+  // p0 taxes (bluff: they do not hold Duke) and everyone passes.
+  give(s, 'p0', ['assassin', 'captain']);
+  assert.equal(declare(s, 'tax'), true);
+  assert.equal(s.stats.p0.actions, 1);
+  assert.equal(s.stats.p0.bluffs, 0); // not counted until the action resolves
+  assert.equal(publicState(s).stats, null); // hidden mid-game
+  allPass(s);
+  assert.equal(s.stats.p0.bluffs, 1); // survived to resolution
+  assert.equal(s.stats.p0.actions, 1);
+  assert.equal(publicState(s).stats, null);
+});
+
+t('stats: a challenged bluff earns the challenger a win and no bluff point', () => {
+  const s = mk();
+  give(s, 'p0', ['assassin', 'captain']); // no Duke — the Tax is a bluff
+  assert.equal(declare(s, 'tax'), true);
+  assert.equal(respond(s, s.players[1], 'challenge', undefined, rng), true);
+  assert.equal(s.stats.p1.challengeWins, 1);
+  assert.equal(s.stats.p0.bluffs, 0); // exposed, not survived
+  // p0 must lose an influence; they reveal their first card.
+  assert.equal(s.pending.stage, 'chooseLose');
+  assert.equal(chooseLose(s, s.players[0], s.players[0].hand[0].id, rng), true);
+  assert.equal(s.stats.p1.challengeWins, 1);
+});
+
+t('stats: a proven claim earns no bluff point and no challenge win', () => {
+  const s = mk();
+  give(s, 'p0', ['duke', 'captain']); // holds Duke — the Tax is true
+  assert.equal(declare(s, 'tax'), true);
+  assert.equal(respond(s, s.players[1], 'challenge', undefined, rng), true);
+  assert.equal(s.stats.p1.challengeWins, 0);
+  assert.equal(s.stats.p0.bluffs, 0);
+  // The challenger loses an influence; after that the action resolves
+  // (Tax is unblockable) and the turn passes.
+  assert.equal(s.pending.stage, 'chooseLose');
+  assert.equal(chooseLose(s, s.players[1], s.players[1].hand[0].id, rng), true);
+  assert.equal(s.stats.p0.bluffs, 0);
+  assert.equal(s.stats.p0.actions, 1);
+});
+
+t('stats: a bluffed block caught earns the challenger a win; stats show at results', () => {
+  const s = mk();
+  give(s, 'p0', ['assassin', 'captain']);
+  setCoins(s, 'p0', 5);
+  assert.equal(declare(s, 'assassinate', 'p1'), true);
+  // p1 blocks with Contessa they do not hold (bluff block).
+  give(s, 'p1', ['duke', 'captain']);
+  assert.equal(respond(s, s.players[1], 'block', 'contessa', rng), true);
+  // p2 challenges the block and is right.
+  assert.equal(respondBlock(s, s.players[2], 'challenge', rng), true);
+  assert.equal(s.stats.p2.challengeWins, 1);
+  // The blocker loses an influence; the action then resolves.
+  assert.equal(s.pending.stage, 'chooseLose');
+  assert.equal(chooseLose(s, s.players[1], s.players[1].hand[0].id, rng), true);
+  // The assassination was a true claim (p0 holds Assassin), so no bluff.
+  assert.equal(s.stats.p0.bluffs, 0);
+  assert.equal(s.stats.p0.actions, 1);
+  // Drive the game to results and check the public stats appear.
+  s.players[1].eliminated = true; s.players[2].eliminated = true; s.players[3].eliminated = true;
+  s.phase = 'results'; s.winner = 'p0';
+  const pub = publicState(s);
+  assert.ok(pub.stats);
+  assert.equal(pub.stats.p2.challengeWins, 1);
+  assert.equal(pub.stats.p0.actions, 1);
+  assert.equal(pub.round, 1);
+});
+
+t('stats: a blocked bluff is not counted as survived', () => {
+  const s = mk();
+  give(s, 'p0', ['assassin', 'captain']); // Steal claims Captain — a bluff
+  setCoins(s, 'p1', 3);
+  assert.equal(declare(s, 'steal', 'p1'), true);
+  give(s, 'p1', ['captain', 'duke']); // p1 really has Captain
+  assert.equal(respond(s, s.players[1], 'block', 'captain', rng), true);
+  allPass(s); // nobody challenges the block: it stands, action fails
+  assert.equal(s.stats.p0.bluffs, 0);
+  assert.equal(s.stats.p0.actions, 1);
+});
+
+t('round increments on each new game in the session', () => {
+  const s = mk();
+  assert.equal(s.round, 1);
+  startGame(s, rng);
+  assert.equal(s.round, 2);
+  assert.deepEqual(s.stats.p0, { actions: 0, challengeWins: 0, bluffs: 0 });
+});
+
 console.log(`\n== ${n} coup logic tests, exit ${process.exitCode ? 'FAIL' : 'PASS'}`);
