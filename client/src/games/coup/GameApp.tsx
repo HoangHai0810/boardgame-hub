@@ -84,10 +84,26 @@ const ACTION_NAMES = (d: any): Record<ActionKind, string> => ({
   income: d.actIncome, 'foreign-aid': d.actForeignAid, coup: d.actCoup, tax: d.actTax,
   assassinate: d.actAssassinate, steal: d.actSteal, exchange: d.actExchange,
 });
-const ACTION_HINTS = (d: any): Record<ActionKind, string> => ({
-  income: d.actIncomeHint, 'foreign-aid': d.actForeignAidHint, coup: d.actCoupHint, tax: d.actTaxHint,
-  assassinate: d.actAssassinateHint, steal: d.actStealHint, exchange: d.actExchangeHint,
-});
+// The cost of an action as a PICTURE, not words (v53 — Hải Anh: "thay
+// chữ bằng đồ họa"). A coin pill with a signed number; the required
+// character is already shown by the portrait next to the action name,
+// so no "· cần Duke" text is needed anywhere. Green = free money,
+// gold = taken money, red = spent money, violet = swap.
+const ACTION_COST: Record<ActionKind, { n: number; tone: 'gain' | 'take' | 'cost' } | { swap: true }> = {
+  income: { n: 1, tone: 'gain' },
+  'foreign-aid': { n: 2, tone: 'gain' },
+  tax: { n: 3, tone: 'gain' },
+  assassinate: { n: -3, tone: 'cost' },
+  steal: { n: 2, tone: 'take' },
+  exchange: { swap: true },
+  coup: { n: -7, tone: 'cost' },
+};
+function CostChip({ kind }: { kind: ActionKind }) {
+  const c = ACTION_COST[kind];
+  if ('swap' in c) return <span className="inline-flex items-center gap-1 rounded-full bg-[#7C4DBD] text-white px-2 text-xs font-extrabold">⇄</span>;
+  const bg = c.tone === 'gain' ? 'bg-[#0E9F6E] text-white' : c.tone === 'take' ? 'bg-[#FFB020] text-[#2B2016]' : 'bg-[#D63A2F] text-white';
+  return <span className={`inline-flex items-center gap-0.5 rounded-full px-2 text-xs font-extrabold ${bg}`}>🪙 {c.n > 0 ? `+${c.n}` : c.n}</span>;
+}
 function CoupCardFace({ card, d, size = 'md' }: { card: Card; d: any; size?: 'xs' | 'sm' | 'md' | 'lg' }) {
   const box = size === 'lg' ? 'w-[92px] h-[134px]' : size === 'sm' ? 'w-[46px] h-[66px]' : size === 'xs' ? 'w-[34px] h-[50px]' : 'w-[80px] h-[112px]';
   // "AMBASSADOR" (10 chars) truncated at 9px on the 76px md face and at
@@ -106,12 +122,17 @@ function CoupCardFace({ card, d, size = 'md' }: { card: Card; d: any; size?: 'xs
     </span>
   );
 }
-function CoupCardBack({ size = 'md' }: { size?: 'xs' | 'sm' | 'md' | 'lg' }) {
-  const box = size === 'lg' ? 'w-[92px] h-[134px]' : size === 'sm' ? 'w-[46px] h-[66px]' : size === 'xs' ? 'w-[34px] h-[50px]' : 'w-[76px] h-[112px]';
+function CoupCardBack({ size = 'md' }: { size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' }) {
+  const box = size === 'lg' ? 'w-[92px] h-[134px]' : size === 'sm' ? 'w-[46px] h-[66px]' : size === 'xs' ? 'w-[34px] h-[50px]' : size === 'xxs' ? 'w-[15px] h-[22px]' : 'w-[76px] h-[112px]';
+  // xxs = the "×3" visual: three tiny backs side by side instead of the
+  // text "×3" (v53). The crown + ellipse shrink with it.
+  const crown = size === 'xxs' ? 'text-[8px]' : 'text-2xl';
+  const border = size === 'xxs' ? 'border-[2px] rounded-md' : 'border-[3px] rounded-xl';
+  const ellipse = size === 'xxs' ? 'inset-x-[2px]' : 'inset-x-[7px]';
   return (
-    <span className={`relative inline-flex flex-none items-center justify-center rounded-xl border-[3px] border-[#2B2016] ${box}`} style={{ background: '#3B2F1E' }}>
-      <span className="absolute inset-x-[7px] top-1/2 -translate-y-1/2 h-[46%] bg-white/90 rounded-[50%] rotate-[-24deg]" />
-      <span className="relative disp font-extrabold text-2xl">👑</span>
+    <span className={`relative inline-flex flex-none items-center justify-center ${border} border-[#2B2016] ${box}`} style={{ background: '#3B2F1E' }}>
+      <span className={`absolute ${ellipse} top-1/2 -translate-y-1/2 h-[46%] bg-white/90 rounded-[50%] rotate-[-24deg]`} />
+      <span className={`relative disp font-extrabold ${crown}`}>👑</span>
     </span>
   );
 }
@@ -129,6 +150,9 @@ function RevealedChips({ pile }: { pile: Card[] }) {
 
 function HelpModal({ d, onClose }: { d: any; onClose: () => void }) {
   const chars: CharKind[] = ['duke', 'assassin', 'captain', 'ambassador', 'contessa'];
+  // Which action each character blocks — shown as a 🛡️ chip, not a
+  // sentence (v53). Assassin blocks nothing.
+  const BLOCKS: Partial<Record<CharKind, ActionKind>> = { duke: 'foreign-aid', captain: 'steal', ambassador: 'steal', contessa: 'assassinate' };
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className={`${PANEL} max-w-lg w-full max-h-[85vh] overflow-auto p-4 sm:p-5 ${TXT}`} onClick={e => e.stopPropagation()}>
@@ -137,22 +161,25 @@ function HelpModal({ d, onClose }: { d: any; onClose: () => void }) {
           {d.tutorial.map((s: string, i: number) => <li key={i}>{s}</li>)}
         </ol>
         <div className="disp font-extrabold text-lg mt-5">{d.cardsRefTitle}</div>
-        <p className={`font-bold text-sm ${TXT_MUTED}`}>{d.cardsRefSub}</p>
-        <p className={`font-bold text-sm ${TXT_FAINT} mt-1`}>{d.cardsRefHint}</p>
         <div className="flex flex-col gap-1.5 mt-3">
           {chars.map(k => (
             <div key={k} className="flex items-center gap-3 rounded-2xl border-2 border-[#4C3A8A] bg-[#1E0A3C] px-2.5 py-2">
               <CoupCardFace card={{ id: k, kind: k }} d={d} size="sm" />
               <span className="flex-1 min-w-0 text-left">
-                <span className={`block font-extrabold text-sm ${TXT}`}>{CARD_NAMES[k]} <span className={TXT_FAINT}>×3</span></span>
-                <span className={`block font-bold text-xs ${TXT_MUTED} leading-snug`}>{CARD_EFFECTS(d)[k]}</span>
+                <span className="flex items-center gap-1.5">
+                  <span className={`font-extrabold text-sm ${TXT}`}>{CARD_NAMES[k]}</span>
+                  <span className="flex -space-x-1" title="×3">
+                    {[0, 1, 2].map(i => <CoupCardBack key={i} size="xxs" />)}
+                  </span>
+                </span>
+                <span className={`block font-bold text-xs ${TXT_MUTED} leading-snug mt-0.5`}>{CARD_EFFECTS(d)[k]}</span>
               </span>
-              <span className="flex-none w-7 h-7 rounded-full text-white font-extrabold flex items-center justify-center" style={{ background: CARD_COLORS[k] }}>👑</span>
+              {BLOCKS[k] && (
+                <span className="flex-none inline-flex items-center gap-1 rounded-full bg-[#1E0A3C] border-2 border-[#4C3A8A] px-2 py-1 text-[11px] font-extrabold text-[#C4B5FD]">🛡️ {ACTION_NAMES(d)[BLOCKS[k]!]}</span>
+              )}
             </div>
           ))}
         </div>
-        <div className="disp font-extrabold text-lg mt-5">{d.actIncome} · {d.actForeignAid} · {d.actCoup}</div>
-        <p className={`font-bold text-sm ${TXT_MUTED} mt-1`}>{d.actIncomeHint} · {d.actForeignAidHint} · {d.actCoupHint}</p>
         <button className={`${BTN} btn-amber w-full mt-4`} onClick={onClose}>OK 👍</button>
       </div>
     </div>
@@ -717,11 +744,10 @@ export default function CoupApp() {
                         ))}
                       </div>
                     </div>
-                    <p className={`font-bold text-sm ${TXT_MUTED}`}>{d.cardsRefSub} · {d.actCoupHint}</p>
                   </div>
                 )}
                 {!joined.isHost && (
-                  <p className={`font-bold text-sm ${TXT_MUTED} mt-2`}>🕐 {d.secondsUnit(pub!.config.turnSeconds)} · {d.cardsRefSub}</p>
+                  <p className={`font-bold text-sm ${TXT_MUTED} mt-2`}>🕐 {d.secondsUnit(pub!.config.turnSeconds)}</p>
                 )}
                 {joined.isHost ? (
                   <>
@@ -861,16 +887,24 @@ export default function CoupApp() {
                             <div className={`disp font-extrabold text-base leading-tight ${TXT}`}>
                               {pendingAction.char ? d.claimSays(playerName(pendingAction.actorId), CARD_NAMES[pendingAction.char]) : `${playerName(pendingAction.actorId)} · ${ACTION_NAMES(d)[pendingAction.kind]}`}
                             </div>
-                            <p className={`font-bold text-sm ${TXT_MUTED} mt-1`}>
-                              {ACTION_NAMES(d)[pendingAction.kind]} — {ACTION_HINTS(d)[pendingAction.kind]}
-                              {pendingAction.targetId ? ` → ${playerName(pendingAction.targetId)}` : ''}
+                            <p className={`font-bold text-sm ${TXT_MUTED} mt-1 flex items-center gap-1.5 flex-wrap`}>
+                              <span>{ACTION_NAMES(d)[pendingAction.kind]}</span>
+                              <CostChip kind={pendingAction.kind} />
+                              {pendingAction.targetId ? <span>→ {playerName(pendingAction.targetId)}</span> : null}
                             </p>
                           </div>
                         </div>
                         <ResponseCountdown endsAt={pub.turnEndsAt} totalSeconds={pub.config.turnSeconds} />
-                        <p className={`font-bold text-xs ${TXT_FAINT} mt-2`}>
-                          {canChallengeNow ? d.challengeStakes(playerName(pendingAction.actorId)) : canBlockNow ? d.blockStakes : d.passHint}
-                        </p>
+                        {canChallengeNow ? (
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-[#D63A2F]/25 border-2 border-[#D63A2F] px-2.5 py-1 text-xs font-extrabold text-[#F87171]">❌ {d.wrong} · {d.you} −1 lá</span>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-[#0E9F6E]/25 border-2 border-[#0E9F6E] px-2.5 py-1 text-xs font-extrabold text-[#34D399]">✅ {d.right} · {playerName(pendingAction.actorId)} −1 lá</span>
+                          </div>
+                        ) : canBlockNow ? (
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-[#1E0A3C] border-2 border-[#4C3A8A] px-2.5 py-1 text-xs font-extrabold text-[#C4B5FD]">{d.blockStakes}</span>
+                          </div>
+                        ) : null}
                         <div className="flex flex-wrap gap-2 mt-2">
                           {canChallengeNow && (
                             <button data-testid="respond-challenge" className={`${BTN} bg-[#D63A2F] text-white flex-1 min-w-[120px]`} onClick={() => doRespond('challenge')}>🗡️ {iAmTarget && pendingAction.kind === 'assassinate' ? d.challengeName(playerName(pendingAction.actorId)) : d.challenge}</button>
@@ -917,12 +951,11 @@ export default function CoupApp() {
                     {ACTIONS.map(a => {
                       const ok = legal.has(a.kind);
                       const label = ACTION_NAMES(d)[a.kind];
-                      const hint = ACTION_HINTS(d)[a.kind];
                       const char = (ACTION_CHAR as any)[a.kind] as CharKind | undefined;
                       return (
                         <button key={a.kind} data-testid="action-btn" data-action-kind={a.kind} disabled={!ok}
                           onClick={() => { if (a.needsTarget) { setActionPick(a.kind); setPickTarget(null); } else doDeclare(a.kind); }}
-                          className={`rounded-2xl border-[3px] border-[#2B2016] px-2 py-1.5 font-extrabold text-sm push text-left ${ok ? 'bg-[#FFFBef] text-[#2B2016]' : 'bg-[#3D2A6B] text-[#9D8FD0] opacity-60'} ${a.kind === 'coup' ? 'bg-[#D63A2F] !text-white' : ''}`}>
+                          className={`rounded-2xl border-[3px] border-[#2B2016] px-2 py-1 font-extrabold text-sm push text-left ${ok ? 'bg-[#FFFBef] text-[#2B2016]' : 'bg-[#3D2A6B] text-[#9D8FD0] opacity-60'} ${a.kind === 'coup' ? 'bg-[#D63A2F] !text-white' : ''}`}>
                           <span className="flex items-center gap-1.5">
                             {char ? (
                               <span className="w-6 h-6 rounded-full overflow-hidden border-2 border-[#2B2016] flex-none"><img src={COUP_ART[char]} alt="" className="w-full h-full object-cover" draggable={false} /></span>
@@ -931,7 +964,7 @@ export default function CoupApp() {
                             )}
                             <span className="block disp text-sm leading-none">{label}</span>
                           </span>
-                          <span className="block font-bold text-[9px] leading-tight mt-0.5 opacity-80">{hint}</span>
+                          <span className="block mt-1"><CostChip kind={a.kind} /></span>
                         </button>
                       );
                     })}
@@ -1003,8 +1036,9 @@ export default function CoupApp() {
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setActionPick(null)}>
             <div className={`${PANEL} max-w-sm w-full text-center max-h-[85vh] overflow-auto p-4 sm:p-5 ${TXT}`} onClick={e => e.stopPropagation()}>
               <div className="disp font-extrabold text-lg">🎯 {d.chooseTarget}</div>
-              <p className={`font-bold text-[13px] leading-snug ${TXT_MUTED} mt-1`}>
-                {ACTION_NAMES(d)[actionPick]} — {ACTION_HINTS(d)[actionPick]}
+              <p className={`font-bold text-[13px] leading-snug ${TXT_MUTED} mt-1 flex items-center justify-center gap-1.5`}>
+                <span>{ACTION_NAMES(d)[actionPick]}</span>
+                <CostChip kind={actionPick} />
               </p>
               <div className="flex flex-col gap-1.5 mt-2 text-left">
                 {pub!.players.filter(p => p.id !== joined.playerId && !p.eliminated).map(p => (
